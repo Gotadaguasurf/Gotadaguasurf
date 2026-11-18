@@ -7,7 +7,6 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 /* Page-specific rules only — tokens, header, cards, KPI tiles, tables,
@@ -1523,231 +1522,6 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
   };
 }
 
-function buildStatementPdfMarkup(ctx) {
-  const bookings = (ctx.bookings || []).slice().sort((a,b)=>a.checkin.localeCompare(b.checkin));
-  const partner = ctx.partner || 'Partner';
-  const periodLabel = ctx.periodLabel || (ctx.month ? monthLabel(ctx.month) : 'All Months');
-  const totalGross = bookings.reduce((s,b)=>s+b.gross,0);
-  const totalCom = bookings.reduce((s,b)=>s+b.com_amt,0);
-  const totalNet = bookings.reduce((s,b)=>s+b.net,0);
-  const statementSummary = summarizePartnerBalances(partner, bookings);
-  const _toUs = statementSummary.outstandingToUs || 0, _toP = statementSummary.outstandingToPartner || 0;
-  const collects = _toUs >= _toP;
-  const outstanding = collects ? _toUs : _toP;
-  const paid = (statementSummary.paidToUs||0) + (statementSummary.paidToPartner||0);
-  const activeLocations = [...new Set(bookings.map(b=>b.location).filter(Boolean))];
-  const activeMonths = [...new Set(bookings.map(getMonth))].sort();
-  const amountLabel = (_toUs>0 && _toP>0) ? 'Outstanding — both directions' : (collects ? 'Outstanding Due to Gota Dagua Surf' : 'Outstanding We Owe to Partner');
-  const amountNote = [
-    _toUs>0 ? `Partner owes Gota Dagua ${eur(_toUs)} (bookings the partner collected).` : '',
-    _toP>0 ? `Gota Dagua owes the partner ${eur(_toP)} (commission on bookings Gota collected).` : '',
-    (!_toUs && !_toP) ? 'Nothing outstanding for this period.' : ''
-  ].filter(Boolean).join(' ');
-
-  const byMonth = {};
-  bookings.forEach(b => {
-    const m = getMonth(b);
-    if (!byMonth[m]) byMonth[m] = [];
-    byMonth[m].push(b);
-  });
-
-  function chunkRows(items, size = 7) {
-    const chunks = [];
-    for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-    return chunks;
-  }
-
-  const tableHeader = `
-    <thead>
-      <tr style="background:#28394b;color:#d4e8f6;">
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">#</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Guest</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Ref</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Check-in</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Location</th>
-        <th style="padding:9px 10px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Guests</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Package</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Gross</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Rate</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Commission</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Net</th>
-      </tr>
-    </thead>
-  `;
-
-  // Render a chunked set of bookings as one or more tables with the
-  // subtotal pinned to the last chunk's tfoot. Extracted as a helper
-  // because the country-grouped layout for KILROY needs to render
-  // multiple of these (one per country) within a single month section.
-  function renderBookingTables(items, subtotalLabel){
-    const sGross = items.reduce((s,b)=>s+b.gross,0);
-    const sCom = items.reduce((s,b)=>s+b.com_amt,0);
-    const sNet = items.reduce((s,b)=>s+b.net,0);
-    return chunkRows(items).map((chunk, chunkIndex, allChunks) => {
-      const rows = chunk.map((b, idx) => `
-      <tr>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${(chunkIndex * 7) + idx + 1}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-weight:600;">${b.guest || 'Guest'}${b.isRealized === false && b.status ? ` <span style="display:inline-block;background:#e6e6e6;color:#555;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">${b.status.replace(/_/g,' ')}</span>` : ''}${b.isRealized !== false && bookingPayRoute(b)==='partner' ? ` <span title="Guest paid the partner — partner owes us the net" style="display:inline-block;background:#e3f4ea;color:#1f6b3a;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">paid to partner</span>` : ''}${b.isRealized !== false && bookingPayRoute(b)==='gota' ? ` <span title="Guest paid Gota — we owe the partner its commission" style="display:inline-block;background:#fff3d6;color:#7a4f00;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">paid to gota</span>` : ''}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-family:'DM Mono',monospace;font-size:10px;">${b.ref || ''}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${new Date(b.checkin+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${b.location || '—'}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:center;">${b.pax || 1}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${b.package || '—'}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;">${eur(b.gross)}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;">${b.com_pct.toFixed(0)}%</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;color:#1e6fa8;font-weight:700;">${eur(b.com_amt)}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;">${eur(b.net)}</td>
-      </tr>
-    `).join('');
-      const subtotal = chunkIndex === allChunks.length - 1 ? `
-        <tfoot>
-          <tr style="background:#f5f0e8;font-weight:700;">
-            <td colspan="7" style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;">${subtotalLabel}</td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-variant-numeric:tabular-nums;">${eur(sGross)}</td>
-            <td style="padding:10px 10px;border-top:2px solid #e8dfc8;"></td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-variant-numeric:tabular-nums;color:#1e6fa8;">${eur(sCom)}</td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-variant-numeric:tabular-nums;">${eur(sNet)}</td>
-          </tr>
-        </tfoot>
-      ` : '';
-      return `
-        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:${chunkIndex===0?0:12}px;page-break-inside:avoid;">
-          ${tableHeader}
-          <tbody>${rows}</tbody>
-          ${subtotal}
-        </table>
-      `;
-    }).join('');
-  }
-
-  // Country-grouped statement (KILROY only) splits each month's
-  // bookings into per-country tables with a country subtotal, then
-  // closes with a month-total band if more than one country was
-  // present. Every other partner keeps the original single-table
-  // monthly layout via the else branch below.
-  const groupByCountry = partnerBillsByCountry(partner);
-
-  const monthBlocks = activeMonths.map(monthKey => {
-    const items = byMonth[monthKey] || [];
-    const monthGross = items.reduce((s,b)=>s+b.gross,0);
-    const monthCom = items.reduce((s,b)=>s+b.com_amt,0);
-    const monthNet = items.reduce((s,b)=>s+b.net,0);
-
-    let bodyHtml;
-    if(groupByCountry){
-      const countryGroups = groupBookingsByCountry(items);
-      const countrySections = countryGroups.map(([country, cItems])=>`
-        <div style="margin-top:14px;page-break-inside:avoid">
-          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:15px;color:#1e6fa8;margin-bottom:6px;padding:6px 12px;background:#eaf3fb;border-left:4px solid #1e6fa8;border-radius:4px;display:flex;justify-content:space-between;align-items:center">
-            <span>${country}</span>
-            <span style="font-size:11px;color:#6b8099;font-weight:normal;font-family:'Outfit',sans-serif">${cItems.length} booking${cItems.length!==1?'s':''}</span>
-          </div>
-          ${renderBookingTables(cItems, country+' subtotal')}
-        </div>
-      `).join('');
-      const monthTotalBand = countryGroups.length > 1 ? `
-        <div style="margin-top:14px;padding:10px 16px;background:#28394b;color:#fff;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-family:'Outfit',sans-serif">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:700">${monthLabel(monthKey)} total</div>
-          <div style="font-variant-numeric:tabular-nums;font-size:12px">Gross ${eur(monthGross)} · Commission ${eur(monthCom)} · Net ${eur(monthNet)}</div>
-        </div>
-      ` : '';
-      bodyHtml = countrySections + monthTotalBand;
-    } else {
-      bodyHtml = renderBookingTables(items, monthLabel(monthKey)+' subtotal');
-    }
-
-    return `
-      <section style="margin-top:22px;page-break-inside:avoid;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #d4e3f0;">
-          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:22px;color:#28394b;">${monthLabel(monthKey)}</div>
-          <div style="font-size:12px;color:#6b8099;">${items.length} booking${items.length!==1?'s':''}</div>
-        </div>
-        ${bodyHtml}
-      </section>
-    `;
-  }).join('');
-
-  return `
-    <section style="display:grid;grid-template-columns:1.2fr .9fr .9fr;gap:12px;margin-bottom:20px;">
-      <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:#f7fbff;">
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Summary</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:26px;color:#28394b;margin-top:10px;">${periodLabel}</div>
-        <div style="font-size:12px;color:#6b8099;margin-top:8px;">${bookings.length} booking${bookings.length!==1?'s':''} · ${activeLocations.length} location${activeLocations.length!==1?'s':''}</div>
-        <div style="font-size:12px;color:#6b8099;margin-top:4px;">Paid already: ${eur(paid)}</div>
-      </div>
-      <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:#ffffff;">
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Partner commission</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:28px;color:#1e6fa8;margin-top:10px;">${eur(totalCom)}</div>
-        <div style="font-size:12px;color:#6b8099;margin-top:6px;">Gross revenue ${eur(totalGross)}</div>
-      </div>
-      <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:${collects ? '#28394b' : '#7a4f00'};color:#fff;">
-        <div style="font-size:10px;color:${collects ? '#9fc5df' : '#f7d48b'};text-transform:uppercase;letter-spacing:.1em;font-weight:700;">${amountLabel}</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:28px;margin-top:10px;">${(_toUs>0 && _toP>0) ? `${eur(_toUs)} <span style="font-size:14px;opacity:.85">to us</span> · ${eur(_toP)} <span style="font-size:14px;opacity:.85">to partner</span>` : eur(outstanding)}</div>
-        <div style="font-size:12px;color:${collects ? '#d4e8f6' : '#fff4d5'};margin-top:6px;line-height:1.5;">${amountNote}</div>
-      </div>
-    </section>
-    ${monthBlocks}
-    <section style="margin-top:24px;border-top:2px solid #d4e3f0;padding-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div>
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Notes</div>
-        <div style="font-size:12px;color:#4b6278;line-height:1.7;margin-top:8px;">
-          ${collects
-            ? 'The partner collects payment from the guest and transfers the remaining amount due to Gota Dagua Surf after keeping their commission.'
-            : 'Gota Dagua Surf collects the booking and pays the partner commission according to the agreement shown above.'}
-        </div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Net revenue to Gota Dagua Surf</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:28px;color:#28394b;margin-top:8px;">${eur(totalNet)}</div>
-      </div>
-    </section>
-    <section style="margin-top:28px;padding-top:14px;border-top:1px solid #d4e3f0;display:flex;justify-content:space-between;align-items:flex-end;gap:18px;font-size:11px;color:#6b8099;">
-      <div>
-        <div style="font-weight:700;color:#28394b;">Gota Dagua Surf</div>
-        <div>Monthly partner statement · ${periodLabel}</div>
-      </div>
-      <div style="text-align:right;">
-        <div>Generated on ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
-        <div>${partner}</div>
-      </div>
-    </section>
-  `;
-}
-
-function createStatementPdfWrap(ctx){
-  const wrap = document.createElement('div');
-  // Render the wrap inside a fixed-position 1x1 clipped frame so html2canvas
-  // can render it (it skips elements with opacity:0 / display:none / off-
-  // screen positioning) but the user doesn't see it on the live page.
-  wrap.style.background = '#ffffff';
-  wrap.style.color = '#0d1b2a';
-  wrap.style.fontFamily = "'Outfit', sans-serif";
-  wrap.style.width = '794px';
-  wrap.style.margin = '0';
-  wrap.style.padding = '0';
-  wrap.style.boxSizing = 'border-box';
-  wrap.innerHTML = `
-    <div style="background:#ffffff;color:#0d1b2a;width:794px;">
-      <div style="background:linear-gradient(135deg,#28394b 0%,#344d63 100%);color:#fff;padding:34px 42px 28px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;">
-          <div>
-            <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9fc5df;font-weight:700;">Gota Dagua Surf</div>
-            <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:34px;line-height:1.1;margin-top:8px;">${ctx.partner || ''}</div>
-            <div style="font-size:13px;color:#d4e8f6;margin-top:7px;">Monthly partner statement · ${ctx.periodLabel || ''}</div>
-          </div>
-          <div style="text-align:right;min-width:180px;">
-            <div style="font-size:11px;color:#9fc5df;text-transform:uppercase;letter-spacing:.1em;">Generated</div>
-            <div style="font-size:13px;font-weight:700;margin-top:4px;">${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
-            ${ctx.email ? `<div style="font-size:12px;color:#d4e8f6;margin-top:12px;">${ctx.email}</div>` : ''}
-          </div>
-        </div>
-      </div>
-      <div style="padding:26px 42px 34px;">${buildStatementPdfMarkup(ctx)}</div>
-    </div>
-  `;
-  return wrap;
-}
-
 // Render the brand SVG logo to a PNG data URL once, lazily, then cache it
 // so every subsequent PDF reuses the same image without re-rasterizing.
 // We grab the SVG directly from the live header in the DOM so it stays in
@@ -1787,7 +1561,7 @@ async function getPdfLogoDataUrl(){
 // no clipping. Produces a clean professional layout that's reliable on
 // every browser.
 async function generateStatementPdfBlob(){
-  const jsPDF = (window.jspdf && window.jspdf.jsPDF) || (window.html2pdf && window.html2pdf.jsPDF);
+  const jsPDF = window.jspdf && window.jspdf.jsPDF;
   if (!jsPDF) throw new Error('PDF generator not available.');
 
   const ctx = window.currentStatementContext || {};
@@ -2236,7 +2010,7 @@ window.openStatement = function(partner, month, locationFilter) {
         locSections+=`<div style="margin-bottom:14px">
           <div style="font-size:11px;font-weight:700;color:var(--ocean);margin-bottom:6px;padding:5px 8px;background:var(--foam);border-radius:6px;display:inline-block">${loc}</div>
           <table class="tbl stmt-table">
-            <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to GotaDagua</th></tr></thead>
+            <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to Gota Dagua</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -2262,7 +2036,7 @@ window.openStatement = function(partner, month, locationFilter) {
       body+=`<div class="stmt-section">
         <div class="stmt-month-hdr">${monthLabel(m)} <span>${bs.length} booking${bs.length!==1?'s':''}</span></div>
         <table class="tbl stmt-table">
-          <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th>Location</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to GotaDagua</th></tr></thead>
+          <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th>Location</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to Gota Dagua</th></tr></thead>
           <tbody>${rows}</tbody>
           <tfoot><tr><td colspan="7" style="text-align:right">${monthLabel(m)} subtotal</td><td class="r">${eur(mG)}</td><td></td><td class="r" style="color:var(--ocean)">${eur(mC)}</td><td class="r">${eur(mN)}</td></tr></tfoot>
         </table>
@@ -2389,7 +2163,7 @@ function renderSettingsModal() {
       <input type="text" value="${getEmail(p)}" placeholder="email@partner.com" id="pemail_${rowId}">
       <select id="ptype_${rowId}" style="padding:8px 10px;font-size:12px;width:auto">
         <option value="surfcamp" ${type==='surfcamp'?'selected':''}>Surf Camp</option>
-        <option value="surfschool" ${type==='surfschool'?'selected':''}>Escola de Surf</option>
+        <option value="surfschool" ${type==='surfschool'?'selected':''}>Surf School</option>
         <option value="junior_surfcamp" ${type==='junior_surfcamp'?'selected':''}>Junior Surf Camp</option>
         <option value="kids_camp" ${type==='kids_camp'?'selected':''}>Kids Camp Caparica</option>
       </select>
@@ -2438,7 +2212,7 @@ window.addPartnerRow = (type='surfcamp') => {
     <input type="text" placeholder="email@partner.com" id="pemail_${id}">
     <select id="ptype_${id}" style="padding:8px 10px;font-size:12px;width:auto">
       <option value="surfcamp" ${type==='surfcamp'?'selected':''}>Surf Camp</option>
-      <option value="surfschool" ${type==='surfschool'?'selected':''}>Escola de Surf</option>
+      <option value="surfschool" ${type==='surfschool'?'selected':''}>Surf School</option>
       <option value="junior_surfcamp" ${type==='junior_surfcamp'?'selected':''}>Junior Surf Camp</option>
       <option value="kids_camp" ${type==='kids_camp'?'selected':''}>Kids Camp Caparica</option>
     </select>
@@ -2532,7 +2306,7 @@ window.saveSettings = async () => {
   rateChanges.forEach(ch => ch.targets.forEach(b => { b.com_pct = ch.newRate; recalcBooking(b); }));
 
   try {
-    const synced = await persistAllToSupabase({syncPartners:true, syncStatuses:false, rateChanges});
+    const synced = await persistAllToSupabase({syncPartners:true, rateChanges});
     // Only NOW commit to localStorage + re-render. Until this point
     // a failure rolls back cleanly via the snapshot below.
     saveState();
@@ -2654,10 +2428,6 @@ async function verifySupabaseSetup() {
   setStorageNotice('cloud');
   return true;
 }
-function setAuthError(msg='') {
-  const el = document.getElementById('pwError');
-  if (el) el.textContent = msg;
-}
 function renderCurrentPage() {
   renderPartnersPage();
   updateBadge();
@@ -2767,10 +2537,6 @@ function buildPartnerRowsFromState() {
     is_active: true
   }));
 }
-async function bootstrapSeedDataIfNeeded() {
-  // Auto-seeding disabled — start clean, let the user import real data.
-  return;
-}
 async function loadFromSupabase() {
   if (__loadingFromSupabase) return;
   if (__cloudMode !== 'cloud') {
@@ -2815,20 +2581,6 @@ async function loadFromSupabase() {
     let partnerRows = partnersRes.data || [];
     let bookingRows = bookingsAll || [];
     let statusRows = statusesRes.data || [];
-
-    if (!bookingRows.length) {
-      await bootstrapSeedDataIfNeeded();
-      const [partnersReload, bookingsAllReload, statusesReload] = await Promise.all([
-        client.from('partners').select('*').eq('is_active', true).order('name'),
-        fetchAllBookings(),
-        client.from('partner_month_status').select('month_key,status,notes,partner_id,partners(name)').order('month_key', { ascending: true })
-      ]);
-      if (partnersReload.error) throw partnersReload.error;
-      if (statusesReload.error) throw statusesReload.error;
-      partnerRows = partnersReload.data || [];
-      bookingRows = bookingsAllReload || [];
-      statusRows = statusesReload.data || [];
-    }
 
     allBookings = bookingRows.map(mapBookingRowToApp);
     partnerEmails = {};
@@ -2991,25 +2743,14 @@ async function syncStatusToSupabase(partner, month, value) {
   if (error) throw error;
   return true;
 }
-async function persistStatusesToSupabase() {
-  if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
-  const entries = Object.entries(statusStore || {});
-  for (const [key, value] of entries) {
-    const [partner, month] = key.split('||');
-    if (!partner || !month) continue;
-    await syncStatusToSupabase(partner, month, value || '');
-  }
-  return true;
-}
 // rateChanges: [{ partner, oldRate, newRate, targets }] — re-prices only the bookings
 // that followed the old default (see persistRateChangeToBookings).
-async function persistAllToSupabase({ syncPartners = true, syncStatuses = true, rateChanges = [] } = {}) {
+async function persistAllToSupabase({ syncPartners = true, rateChanges = [] } = {}) {
   __suppressRealtimeRefresh = true;
   try {
     if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
     if (syncPartners) await persistPartnersToSupabase();
     for (const ch of rateChanges) await persistRateChangeToBookings(ch.partner, ch.oldRate, ch.newRate, ch.targets);
-    if (syncStatuses) await persistStatusesToSupabase();
     saveState();
     return true;
   } catch (err) {
@@ -3036,38 +2777,6 @@ function subscribeRealtime() {
     })
     .subscribe();
 }
-async function checkPassword() {
-  const email = document.getElementById('pwEmail').value.trim();
-  const password = document.getElementById('pwInput').value;
-  if (!email || !password) {
-    setAuthError('Please enter your email and password.');
-    return;
-  }
-  setAuthError('Signing in...');
-  try {
-    const { error } = await getAuthClient().auth.signInWithPassword({ email, password });
-    if (error) {
-      setAuthError(error.message);
-      return;
-    }
-    document.getElementById('pwScreen').style.display = 'none';
-    const badge = document.getElementById('userBadge');
-    if (badge) {
-      badge.style.display = 'inline-block';
-      badge.textContent = email;
-    }
-    await verifySupabaseSetup();
-    if (__cloudMode === 'cloud') {
-      await loadFromSupabase();
-      subscribeRealtime();
-    } else {
-      renderCurrentPage();
-    }
-    setAuthError('');
-  } catch (e) {
-    setAuthError(e?.message || 'Could not sign in.');
-  }
-}
 async function signOutTeam() {
   const client = getAuthClient();
   try {
@@ -3077,19 +2786,7 @@ async function signOutTeam() {
     }
   } catch (e) {}
   try { await client.auth.signOut({ scope: 'local' }); } catch (e) {}   // this device only
-  const badge = document.getElementById('userBadge');
-  if (badge) {
-    badge.style.display = 'none';
-    badge.textContent = '';
-  }
-  try {
-    document.getElementById('pwEmail').value = '';
-    document.getElementById('pwInput').value = '';
-  } catch (e) {}
-  setAuthError('');
-  // the old in-page password screen is gone: sign in again from the hub
-  const pw = document.getElementById('pwScreen');
-  if (pw) pw.style.display = 'flex'; else location.href = '/';
+  location.href = '/';   // sign in again from the hub
 }
 // phones: «Account → Log out» in the drawer (AppShell) runs this handler
 AppShell.setAccount({ signOut: signOutTeam });
