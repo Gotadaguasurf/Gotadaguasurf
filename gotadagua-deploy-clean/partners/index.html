@@ -422,6 +422,7 @@ function saveState() {
 // A fresh load starts empty; loadFromSupabase() fills everything a moment later.
 let allBookings, partnerEmails, partnerContacts, partnerRates, partnerCollects, partnerTypes, statusStore;
 let partnersHaveContactCol = false;
+let loadedPartnerNames = new Set();   // lowercase names of the active partner records loaded from the database
 const saved = loadState();
 if (saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 || saved.version === 5)) {
   allBookings = saved.bookings;
@@ -2233,7 +2234,12 @@ window.addPartnerRow = (type='surfcamp') => {
 
 window.removePartnerRow = (i) => {
   const row = document.getElementById('prow_'+i);
-  if(row) row.remove();
+  if(!row) return;
+  // A partner with bookings stays: its bookings, statuses and invoices are filed under that name.
+  const name = (document.getElementById('pname_'+i)?.defaultValue || '').trim();
+  const n = name ? allBookings.filter(b => partnerNameEquals(b.partner, name)).length : 0;
+  if(n){ notify(`${name} has ${n} booking${n===1?'':'s'} — it stays in the list with its own email, rate and money flow.`, 'info'); return; }
+  row.remove();
 };
 
 window.saveSettings = async () => {
@@ -2310,9 +2316,12 @@ window.saveSettings = async () => {
 
   try {
     const synced = await persistAllToSupabase({syncPartners:true, rateChanges});
-    // Only NOW commit to localStorage + re-render. Until this point
-    // a failure rolls back cleanly via the snapshot below.
+    // Only NOW commit + re-render. Until this point a failure rolls back
+    // cleanly via the snapshot below. Then read the records back, so the
+    // modal shows what is stored (a removed row with bookings comes back
+    // with its own email, rate and money flow, never with defaults).
     saveState();
+    try { await loadFromSupabase(); } catch (e) { console.warn('[Partners] reload after save failed', e); }
     renderPartnersPage();
     renderSettingsModal();
     const notice = document.getElementById('saveNotice');
@@ -2522,15 +2531,17 @@ window.setBookingExternalRef = async function(bookingRef, externalRef){
     return false;
   }
 };
+// Rows for the partners table, split by where the name comes from:
+//   settings    — a partner the page loaded or the Partners & Rates modal holds (partnerRates keys)
+//   bookingOnly — a name seen only on bookings (new partner, a removed row, an archived record)
+// persistPartnersToSupabase never writes defaults over a stored record (PRT-10, 18 Nov 2026).
 function buildPartnerRowsFromState() {
-  const names = [...new Set([
-    ...Object.keys(partnerRates || {}),
-    ...Object.keys(partnerEmails || {}),
-    ...Object.keys(partnerCollects || {}),
-    ...Object.keys(partnerTypes || {}),
-    ...(allBookings || []).map(b => b.partner).filter(Boolean).filter(p => p !== DIRECT_LABEL)
-  ])];
-  return names.map(name => ({
+  const lc = s => String(s||'').trim().toLowerCase();
+  const settings = Object.keys(partnerRates || {}).filter(n => n && n !== DIRECT_LABEL);
+  const settingsLc = new Set(settings.map(lc));
+  const bookingOnly = [...new Set((allBookings || []).map(b => b.partner).filter(p => p && p !== DIRECT_LABEL))]
+    .filter(n => !settingsLc.has(lc(n)));
+  const row = name => ({
     name,
     email: partnerEmails[name] || '',
     commission_pct: Number(partnerRates[name] ?? 20),
@@ -2538,7 +2549,8 @@ function buildPartnerRowsFromState() {
     partner_type: partnerTypes[name] || 'surfcamp',
     ...(partnersHaveContactCol ? { contact_name: getContactName(name) || null } : {}),
     is_active: true
-  }));
+  });
+  return { settings: settings.map(row), bookingOnly: bookingOnly.map(row) };
 }
 async function loadFromSupabase() {
   if (__loadingFromSupabase) return;
@@ -2605,6 +2617,7 @@ async function loadFromSupabase() {
     // only, lost in incognito). Cloud value wins; the column check keeps the
     // page working before supabase/partners-contact-name.sql is applied.
     partnersHaveContactCol = partnerRows.some(r => Object.prototype.hasOwnProperty.call(r, 'contact_name'));
+    loadedPartnerNames = new Set(partnerRows.map(r => String(r.name || '').trim().toLowerCase()));
     partnerRows.forEach(row => {
       if (row.contact_name) partnerContacts[row.name] = row.contact_name;
       partnerRates[row.name] = Number(row.commission_pct ?? 20);
@@ -2626,26 +2639,43 @@ async function loadFromSupabase() {
     __loadingFromSupabase = false;
   }
 }
+// Saves Partners & Rates. Only the records this page loaded are updated; a name
+// the database already holds under another record (archived, or another casing)
+// is never overwritten or re-activated, and a name seen only on bookings is
+// inserted only when no record has it. Removing a row with no bookings archives
+// it (is_active = false); a row with bookings keeps its stored email, rate and
+// money flow.
 async function persistPartnersToSupabase() {
   if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
   _partnersPending = true;
-  await withRetry(async () => {
-    const client = getAuthClient();
-    const partnerRows = buildPartnerRowsFromState();
-    if (partnerRows.length) {
-      const { error } = await client.from('partners').upsert(partnerRows, { onConflict: 'name' });
-      if (error) throw error;
-    }
-    const { data: existingRows, error: fetchError } = await client.from('partners').select('name');
-    if (fetchError) throw fetchError;
-    const currentNames = new Set(partnerRows.map(p => p.name));
-    const inactiveNames = (existingRows || []).map(r => r.name).filter(name => !currentNames.has(name));
-    if (inactiveNames.length) {
-      const { error } = await client.from('partners').update({ is_active: false }).in('name', inactiveNames);
-      if (error) throw error;
-    }
-  }, 'persist partners');
-  _partnersPending = false;
+  try {
+    await withRetry(async () => {
+      const client = getAuthClient();
+      const lc = s => String(s||'').trim().toLowerCase();
+      const { data: existingRows, error: fetchError } = await client.from('partners').select('name');
+      if (fetchError) throw fetchError;
+      const stored = new Set((existingRows || []).map(r => lc(r.name)));
+      const { settings, bookingOnly } = buildPartnerRowsFromState();
+      const updates = settings.filter(r => loadedPartnerNames.has(lc(r.name)));
+      const inserts = [...settings, ...bookingOnly].filter(r => !stored.has(lc(r.name)));
+      if (updates.length) {
+        const { error } = await client.from('partners').upsert(updates, { onConflict: 'name' });
+        if (error) throw error;
+      }
+      if (inserts.length) {
+        const { error } = await client.from('partners').upsert(inserts, { onConflict: 'name', ignoreDuplicates: true });
+        if (error) throw error;
+      }
+      const keep = new Set([...settings, ...bookingOnly].map(r => lc(r.name)));
+      const archive = (existingRows || []).map(r => r.name).filter(n => loadedPartnerNames.has(lc(n)) && !keep.has(lc(n)));
+      if (archive.length) {
+        const { error } = await client.from('partners').update({ is_active: false }).in('name', archive);
+        if (error) throw error;
+      }
+    }, 'persist partners');
+  } finally {
+    _partnersPending = false;
+  }
   return true;
 }
 async function fetchPartnerIdMap() {

@@ -126,3 +126,42 @@ test('+ invoice saves the row but leaves the month status alone; errors are a to
   expect(errs).toEqual([]);
   await ctx.close();
 });
+
+// ── PRT-10 ───────────────────────────────────────────────────────────────────
+test('Partners & Rates save: stored records are never reset to defaults or re-activated; only real edits are written', async ({ browser }) => {
+  const tables = fixture();
+  tables.partners.push({ id: 'p-quiet', name: 'Quiet Partner', email: 'quiet@example.com', commission_pct: 12, collects_from_guest: true, partner_type: 'surfcamp', is_active: true, no_monthly_invoice: false, contact_name: null });
+  tables.bookings.push({ ...tables.bookings[0], id: 'b-new', booking_ref: '2026-2999', partner_name: 'Fresh Hostel' });   // a name with no record yet
+  const { ctx, page, calls, errs } = await openPartners(browser, { tables });
+  await page.evaluate(() => window.openSettings());
+  const rowOf = name => page.locator('#partnerRatesList .partner-row').filter({ has: page.locator(`input[value="${name}"]`) });
+  // X on a partner with bookings: refused with a message, the row stays
+  await rowOf('Blue Wave Travel').locator('button.btn-r').click();
+  await expect(page.locator('#toast')).toContainText('Blue Wave Travel has 3 bookings');
+  await expect(rowOf('Blue Wave Travel')).toHaveCount(1);
+  // X on a partner with no bookings: removed, archived on save
+  await rowOf('Quiet Partner').locator('button.btn-r').click();
+  await expect(rowOf('Quiet Partner')).toHaveCount(0);
+  // a real edit
+  await rowOf('Tide Riders').locator('input[id^="pemail_"]').fill('desk@tide.example.com');
+  calls.length = 0;
+  await page.evaluate(() => window.saveSettings());
+  await expect.poll(() => calls.some(c => c.write === 'partners' && c.method === 'PATCH')).toBe(true);
+  const posts = calls.filter(c => c.write === 'partners' && c.method === 'POST');
+  const written = posts.flatMap(c => [].concat(c.body).map(r => ({ ...r, prefer: c.prefer })));
+  const byName = Object.fromEntries(written.map(r => [r.name, r]));
+  // the archived record that still has a booking is not touched (it showed with defaults in the modal)
+  expect(byName['Old Harbour Hostel']).toBeUndefined();
+  // loaded records keep their stored values; the edit goes through
+  expect(byName['Tide Riders']).toMatchObject({ email: 'desk@tide.example.com', commission_pct: 15, collects_from_guest: false, is_active: true });
+  expect(byName['Tide Riders'].prefer).toContain('merge-duplicates');
+  expect(byName['Blue Wave Travel']).toMatchObject({ email: 'bluewavetravel@example.com', commission_pct: 20, contact_name: 'Anna' });
+  // a name seen only on bookings is inserted, never merged over an existing record
+  expect(byName['Fresh Hostel'].prefer).toContain('ignore-duplicates');
+  // only the removed row is archived
+  const patch = calls.find(c => c.write === 'partners' && c.method === 'PATCH');
+  expect(patch.body).toEqual({ is_active: false });
+  expect(patch.url.replace(/\+/g, ' ')).toContain('name=in.(Quiet Partner)');
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
