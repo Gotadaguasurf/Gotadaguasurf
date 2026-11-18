@@ -3794,8 +3794,9 @@ async function saveMeetingFromForm(companyId){
 // exist — the tab still lists every received email, just without
 // unread tracking, and shows a hint instead of erroring.
 let INBOX_MSGS = [];      // inbound messages
-let INBOX_OUT  = [];      // outbound, thread_id + timestamp only — used to
-                          // tell which inbound messages are still unanswered
+let INBOX_OUT  = [];      // outbound on the inbox's threads, thread_id +
+                          // timestamp only — used to tell which inbound
+                          // messages are still unanswered
 let INBOX_HAS_READ_COL = true;
 let INBOX_HAS_ARCHIVE  = true;
 let INBOX_THREAD_MAP   = {};   // key -> message ids, for the archive button
@@ -3835,11 +3836,18 @@ async function loadInbox(){
   } else if(!error){ INBOX_HAS_READ_COL = true; INBOX_HAS_ARCHIVE = true; }
   if(error){ console.warn('loadInbox failed', error); INBOX_MSGS = []; }
   else INBOX_MSGS = data || [];
-  const out = await c.from('email_messages')
+  // What we sent on THESE threads, however long ago. This used to read the
+  // newest 1000 outbound emails of the whole CRM; a few campaign days pushed
+  // September's answers out of that window and 13 answered conversations
+  // came back as «Needs reply» (the badge said 22, the truth was 9).
+  const threadIds = [...new Set(INBOX_MSGS.map(m => m.thread_id).filter(Boolean))];
+  const chunks = [];
+  for(let i = 0; i < threadIds.length; i += 100) chunks.push(threadIds.slice(i, i + 100));
+  const outs = await Promise.all(chunks.map(ids => fetchAllRows(() => c.from('email_messages')
     .select('thread_id,sent_at,created_at')
-    .eq('direction','outbound').not('thread_id','is',null)
-    .order('sent_at', { ascending:false }).limit(1000);
-  INBOX_OUT = out.data || [];
+    .eq('direction','outbound').in('thread_id', ids).order('id'))));
+  outs.forEach(o => { if(o.error) console.warn('loadInbox: outbound read failed', o.error); });
+  INBOX_OUT = outs.flatMap(o => o.data);
   updateNavInboxCount();
 }
 
