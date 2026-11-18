@@ -225,6 +225,24 @@ for (const mode of ['silent', 'error']) {
   });
 }
 
+test('camp hub: a refused delete whose line was removed meanwhile (another device) does not keep the pill red', async ({ page }) => {
+  const db = await openHub(page);
+  await hydrated(page);
+  await page.evaluate(() => showPage('expenses'));
+  const id = fixture()[0].id;
+  db.failDeletes = 'error';
+  await page.evaluate(i => delLedger(i), id);
+  await expect.poll(() => pill(page)).toEqual({ failed: true, text: 'Delete failed — tap to retry' });
+  // The line goes on another device; this one reloads the ledger.
+  db.failDeletes = '';
+  db.rows = db.rows.filter(r => r.id !== id);
+  await page.evaluate(() => hydrateLedgerFromSupabase({ mergeLocal: false }));
+  expect(await page.evaluate(i => S.ledger.some(x => x.id === i), id)).toBe(false);
+  await page.locator('#savePill').click();
+  await expect.poll(() => pill(page)).toEqual({ failed: false, text: 'Saved' });
+  expect(await page.evaluate(() => HUB_FAILED_OPS.size)).toBe(0);
+});
+
 test('camp hub: «Deleted.» and the Camp Tab message wait for the database', async ({ page }) => {
   const db = await openHub(page);
   await hydrated(page);

@@ -9595,7 +9595,9 @@ async function delLedger(id,{confirmed=false}={}){
   // the user still gets a clear preview before any destructive action.
   // (confirmed = the red pill sending again a delete the user already confirmed.)
   const entry = S.ledger.find(x=>x.id===id);
-  if(!entry) return;
+  // Gone meanwhile (deleted on another device, the ledger reloaded): a delete the
+  // pill still holds for it has nothing left to do — let go of it, or the pill stays red.
+  if(!entry){ if(HUB_FAILED_OPS.delete('delete:'+id)) hubRefreshSavePill(); return; }
   if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){ toast('This line comes from HQ. Delete it in HQ → Expenses.','err'); return; }
   if(String(entry.sourceKind||'')==='cash_count'){ toast('Cash count lines are locked.','err'); return; }
   const typeLbl = entry.type==='income' ? 'revenue' : entry.type==='transfer' ? 'transfer' : 'expense';
