@@ -261,6 +261,29 @@ test('revenue: idempotent — the same file again changes nothing', () => {
   expect(again.upserts).toEqual([]); expect(again.unchanged).toBe(2);
 });
 
+// Postgres jsonb keeps an object's keys by length, then by bytes: {methods, dates, amounts} is read back as
+// {dates, amounts, methods}. Comparing with a plain JSON.stringify never matched, so the daily run rewrote and
+// snapshotted every booking (18 Nov 2026: 305 of 310 «changed», 0 material — audit PRT-03 / SEAM-04).
+const asJsonb = v => Array.isArray(v) ? v.map(asJsonb) : v && typeof v === 'object'
+  ? Object.fromEntries(Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)).map(k => [k, asJsonb(v[k])])) : v;
+test('revenue: the row read back from Postgres (jsonb key order) is unchanged — only a real change is written and snapshotted', () => {
+  const file = (status, due) => RV.parse(revCsv([{ ref: '2026-40', total: '650.00', channel: 'KILROY', via: 'Backoffice via KILROY', pct: '20' }, { ref: '2026-41', total: '99.50', status, due }])).rows;
+  const stored = RV.plan(file('Deposit paid', '49.50'), [], ['Kilroy']).upserts.map(asJsonb);
+  expect(Object.keys(stored[0].raw_payload.payments)).toEqual(['dates', 'amounts', 'methods']);   // the order the 18 Nov snapshots show
+  const again = RV.plan(file('Deposit paid', '49.50'), stored, ['Kilroy']);
+  expect(again.upserts).toEqual([]); expect(again.changes).toEqual([]); expect(again.unchanged).toBe(2);
+  expect(RV.summarize(again, { rows: file('Deposit paid', '49.50'), missing: [], unknownLocations: [] }).counts).toMatchObject({ upserts: 0, changed: 0, unchanged: 2 });
+  // deposit → paid: that booking only, as a material change
+  const paid = RV.plan(file('Paid', '0.00'), stored, ['Kilroy']);
+  expect(paid.upserts.map(u => u.booking_ref)).toEqual(['2026-41']); expect(paid.unchanged).toBe(1);
+  expect(paid.changes[0].material.map(d => d.field).sort()).toEqual(['raw.due', 'raw.status']);
+  // the comparison still looks inside the object: another payment method in Bookinglayer is a change («extra information»)
+  const other = stored.map(b => b.booking_ref === '2026-40' ? { ...b, raw_payload: { ...b.raw_payload, payments: { ...b.raw_payload.payments, methods: 'PayPal' } } } : b);
+  const pay = RV.plan(file('Deposit paid', '49.50'), other, ['Kilroy']);
+  expect(pay.upserts.map(u => u.booking_ref)).toEqual(['2026-40']);
+  expect(pay.changes[0]).toMatchObject({ ref: '2026-40', material: [], extra: ['raw.payments'] });
+});
+
 test('revenue: «List of locations» names → the stay wins (as the HQ import)', () => {
   expect(RV.locationOf('Surf Camp Portugal, Surf Camp Ahangama', 'Surf Camp Ahangama Package')).toMatchObject({ code: 'LK', name: 'Surf Camp Ahangama' });
   expect(RV.locationOf('Tamraght Camp', '')).toMatchObject({ code: 'MA', name: 'Tamraght Camp' });
