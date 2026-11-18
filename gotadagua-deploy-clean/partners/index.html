@@ -7,7 +7,6 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='-15 0 92 92'><path fill='%231e6fa8' d='M61.7,51.9c-.4-9-5.5-16.5-9.7-24.1-2.9-4.8-5.3-9.8-9.3-13.9-3.9-4.4-6.5-9.8-10.8-13.9C19.2,16.6-.5,39.9,0,61.9c9.4-7.9,20.1-17.7,33.1-17.8,3,0,7.2,0,9.5,2.2,1.7,1.7,3.2,4.2,2,6.5-.3.5-1.9,2.7-2.3,2.9-12.9,7.4-20.3,18.6-16.5,33.7,3.1,1.3,8,1,11.1-.3,2.7-.3,5.1-1.3,7.5-2.5,8.7-2.9,14.5-11.1,15.5-20.1,1.2-4.7,2.1-9.7,1.8-14.6h0Z'/></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link rel="stylesheet" href="/lib/app-shell.css">
 <style>
 /* Page-specific rules only — tokens, header, cards, KPI tiles, tables,
@@ -306,6 +305,7 @@ body{overflow-x:hidden}
       <div class="settings-section">
         <div class="settings-section-title">Partner Commission Rates</div>
         <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Edit commission % and money flow per partner. <strong style="color:var(--navy)">They pay us</strong> = partner collects from guest and sends us the net amount. <strong style="color:var(--navy)">We pay them</strong> = we collect from guest and owe them their commission.</p>
+        <p class="hint" id="contactColHint" style="display:none;font-size:12px;color:var(--amber-text);margin-bottom:10px">Contact names can't be stored yet: what you type in «Contact Name» is used until the page reloads, then lost.</p>
         <div id="partnerRatesList"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-s" onclick="addPartnerRow(&#39;surfcamp&#39;)">Add surf camp partner</button><button class="btn btn-s" onclick="addPartnerRow(&#39;surfschool&#39;)">Add surf school partner</button></div>
       </div>
@@ -423,6 +423,7 @@ function saveState() {
 // A fresh load starts empty; loadFromSupabase() fills everything a moment later.
 let allBookings, partnerEmails, partnerContacts, partnerRates, partnerCollects, partnerTypes, statusStore;
 let partnersHaveContactCol = false;
+let loadedPartnerNames = new Set();   // lowercase names of the active partner records loaded from the database
 const saved = loadState();
 if (saved && (saved.version === 2 || saved.version === 3 || saved.version === 4 || saved.version === 5)) {
   allBookings = saved.bookings;
@@ -451,6 +452,12 @@ let expandedPartner = null;
 let expandedLocation = null; // location filter inside expanded partner
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
+// Messages use the shared toast; an error stays 6 s so it can be read (no blocking alert boxes).
+function notify(msg, kind = 'err'){
+  AppShell.toast(String(msg).replace(/\n/g, ' '), kind);
+  const t = document.getElementById('toast');
+  if(t && kind === 'err'){ clearTimeout(t._t); t._t = setTimeout(() => { t.className = 'toast'; }, 6000); }
+}
 const eur = v => '€' + (+v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const getMonth = b => b.checkin.slice(0,7);
 const monthLabel = m => { const [y,mo]=m.split('-'); return new Date(+y,+mo-1,1).toLocaleString('en',{month:'long',year:'numeric'}); };
@@ -611,16 +618,12 @@ window.addPartnerInvoice = async function(partner, month){
     });
     if(error) throw error;
     await reloadPartnerInvoices();
-    // An invoice on the month = "Invoice Sent" (Miguel, 9 Nov 2026: «estas
-    // coisas têm de ser automáticas»). The DB trigger does the same; this
-    // keeps the screen in step and covers a database without the trigger.
-    const cur = getStatus(partner, month);
-    if(cur !== 'Paid' && cur !== 'Invoice Sent'){
-      try { setStatus(partner, month, await advanceStatusOnServer(partner, month, 'Invoice Sent')); }
-      catch(err){ console.error('[Partners] could not mark Invoice Sent', err); }
-    }
+    // The month stays where it is: «Invoice Sent» only once the reply with the
+    // invoice has really gone out (Miguel, 9 Nov 2026 — the row trigger was
+    // dropped by supabase/partner-status-no-invoice-trigger.sql for that reason).
     renderPartnersPage();
-  }catch(e){ alert('Could not save the invoice: ' + (e && e.message || e)); }
+    notify(`Invoice ${num.trim()} saved — set «Invoice Sent» once the email with it has gone out`, 'ok');
+  }catch(e){ notify('Could not save the invoice: ' + (e && e.message || e)); }
 };
 
 // ── ADVANCE BALANCE (partner_ledger) ──────────────────────────────────────────
@@ -745,21 +748,21 @@ window.addLedgerEntry = async function(partner, kind){
   const step = () => `Step ${++n} of ${total} — `;
   const date = prompt(`${label} · ${partner}\n${step()}Date (YYYY-MM-DD)`, new Date().toISOString().slice(0,10));
   if(!date) return;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())){ alert('Date must look like 2026-10-13'); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())){ notify('Date must look like 2026-10-13'); return; }
   const amt = prompt(step() + (kind === 'adjustment' ? 'Amount — positive = in our favour (less to pay / more credit), negative = we owe more' : 'Amount in € (as on the bank statement)'));
   if(amt === null) return;
   const amount = Number(String(amt).replace(/\s/g,'').replace(',', '.'));
-  if(!Number.isFinite(amount) || amount === 0 || (kind !== 'adjustment' && amount < 0)){ alert('Not a valid amount'); return; }
+  if(!Number.isFinite(amount) || amount === 0 || (kind !== 'adjustment' && amount < 0)){ notify('Not a valid amount'); return; }
   let bank = null, bankRef = null;
   if(kind !== 'adjustment'){
     // Only money that really moved counts ("quando metes pago tem mesmo de estar pago no banco").
     bank = (prompt(step() + 'Which bank? Type santander or cgd', 'santander') || '').trim().toLowerCase() || null;
     bankRef = (prompt(step() + 'Statement line as printed (e.g. TRF.IMED. P/ Juvigo-E01613117)') || '').trim();
-    if(!bank || !bankRef){ alert('A payment needs the bank and the statement line — only money that is on the statement goes in.'); return; }
+    if(!bank || !bankRef){ notify('A payment needs the bank and the statement line — only money that is on the statement goes in.'); return; }
   }
   const ref = (prompt(step() + (kind === 'adjustment' ? 'Short reference (e.g. "Acerto Nicolas 3 Set")' : 'Partner invoice number (optional)')) || '').trim() || null;
   const appliesTo = (prompt(step() + 'Bookings month it belongs to, if not the month of the date (YYYY-MM, optional)') || '').trim() || null;
-  if(appliesTo && !/^\d{4}-\d{2}$/.test(appliesTo)){ alert('Month must look like 2026-08'); return; }
+  if(appliesTo && !/^\d{4}-\d{2}$/.test(appliesTo)){ notify('Month must look like 2026-08'); return; }
   const notes = (prompt(step() + 'Note (what it is / why)') || '').trim() || null;
   try{
     const client = getAuthClient();
@@ -771,7 +774,7 @@ window.addLedgerEntry = async function(partner, kind){
     if(error) throw error;
     await reloadPartnerLedger();
     renderPartnersPage();
-  }catch(e){ alert('Could not save: ' + (e && e.message || e)); }
+  }catch(e){ notify('Could not save: ' + (e && e.message || e)); }
 };
 window.removeLedgerEntry = async function(id){
   if(!confirm('Remove this movement from the advance balance? (it is kept in the database as removed)')) return;
@@ -780,7 +783,7 @@ window.removeLedgerEntry = async function(id){
     if(error) throw error;
     await reloadPartnerLedger();
     renderPartnersPage();
-  }catch(e){ alert('Could not remove: ' + (e && e.message || e)); }
+  }catch(e){ notify('Could not remove: ' + (e && e.message || e)); }
 };
 
 // Who collected the money for THIS booking. Bookinglayer tells us per
@@ -930,7 +933,7 @@ window.handleStatusChange = async function(partner, month, el) {
     el.value = previous;
     el.className = 'status-select '+(STATUS_CLS[previous]||'s-none');
     renderPartnersPage();
-    alert('Could not save the status. ' + (err?.message || ''));
+    notify('Could not save the status. ' + (err?.message || ''));
   }
 };
 
@@ -961,23 +964,52 @@ function openBalanceTotals(bookings){
   const r2=x=>+x.toFixed(2);
   return {toUs:r2(toUs), toPartner:r2(toPartner), paidToUs:r2(paidToUs), paidToPartner:r2(paidToPartner)};
 }
+// Money already in the bank (partner_ledger «received») for months still open to us.
+// Only reported, never subtracted: a month leaves «still owe us» when it is marked
+// Paid (Miguel, 16 Sep 2026; a partial payment is reported, not marked — PRT-04).
+// Partners paid by advances keep theirs in the advance balance. Spellings of one
+// company match through lib/partner-alias.js.
+function receivedOnOpenMonths(bookings){
+  const A = window.PartnerAlias;
+  const key = (name, m) => A.key(name) + '||' + m;
+  const groups = {};   // company × month → worth on Paid records / on open records
+  bookings.forEach(b => { const m = getMonth(b), k = key(b.partner, m);
+    const g = groups[k] || (groups[k] = { m, recs: {} });
+    (g.recs[String(b.partner).trim().toLowerCase()] = g.recs[String(b.partner).trim().toLowerCase()] || { name: b.partner, bks: [] }).bks.push(b); });
+  const got = {};
+  Object.values(partnerLedger).forEach(rows => {
+    if(rows.some(r => r.kind !== 'received')) return;
+    rows.forEach(r => { const k = key(r.partner_name, ledgerMonth(r)); got[k] = (got[k] || 0) + (+r.amount || 0); });
+  });
+  let sum = 0;
+  Object.keys(groups).forEach(k => {
+    if(!got[k]) return;
+    let paidWorth = 0, openWorth = 0;
+    Object.values(groups[k].recs).forEach(rec => { const w = monthSplit(rec.bks).owedToUs; if(monthIsPaid(rec.name, groups[k].m)) paidWorth += w; else openWorth += w; });
+    // what arrived first covers the records already marked Paid; never more than is open
+    sum += Math.min(openWorth, Math.max(0, got[k] - paidWorth));
+  });
+  return +sum.toFixed(2);
+}
 function renderKPIs(id) {
   const fb=filtered();
-  const tG=fb.reduce((s,b)=>s+b.gross,0), tC=fb.reduce((s,b)=>s+b.com_amt,0), tN=fb.reduce((s,b)=>s+b.net,0);
   const open = openBalanceTotals(fb);
-  const pCount=new Set(fb.map(b=>b.partner)).size;
+  const inBank = receivedOnOpenMonths(fb);
+  // Revenue tiles count realized bookings only (Paid / Confirmed / Deposit paid),
+  // the same rule as the HQ Overview (hq_overview_rollup): a cancelled booking
+  // stays visible in the statement with its grey badge but is not revenue.
+  const realized = fb.filter(b=>b.isRealized!==false);
+  const tG=realized.reduce((s,b)=>s+b.gross,0), tN=realized.reduce((s,b)=>s+b.net,0);
   // Direct bookings for the same period
-  const directBks = activeMonth==='all'
-    ? allBookings.filter(b=>b.partner===DIRECT_LABEL)
-    : allBookings.filter(b=>b.partner===DIRECT_LABEL && getMonth(b)===activeMonth);
+  const directBks = allBookings.filter(b=>b.partner===DIRECT_LABEL && b.isRealized!==false && (activeMonth==='all' || getMonth(b)===activeMonth));
   const directTotal = directBks.reduce((s,b)=>s+b.gross,0);
   const grossTotal = tG + directTotal; // partner gross + direct = matches Bookinglayer "Total"
   const totalRevenue = tN + directTotal; // net from partners + 100% from direct = your real take-home
   const commissionPaid = grossTotal - totalRevenue;
   document.getElementById(id).innerHTML=`
-    <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not · received ${eur(open.paidToUs)}</div></div>
+    <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not${inBank > 0.004 ? ` · <b>${eur(inBank)}</b> of it already in the bank` : ''} · months marked Paid ${eur(open.paidToUs)}</div></div>
     <div class="kpi"><div class="kpi-label">We still owe partners</div><div class="kpi-value kv-amber">${eur(open.toPartner)}</div><div class="kpi-sub">commission not marked Paid · paid ${eur(open.paidToPartner)}</div></div>
-    <div class="kpi"><div class="kpi-label">Total gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · matches Bookinglayer</div></div>
+    <div class="kpi"><div class="kpi-label">Total gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · realized bookings, as in the HQ</div></div>
     <div class="kpi"><div class="kpi-label">Partner gross revenue</div><div class="kpi-value">${eur(tG)}</div><div class="kpi-sub">${activeMonth==='all'?'All months':monthLabel(activeMonth)}</div></div>
     <div class="kpi"><div class="kpi-label">Net from partners</div><div class="kpi-value kv-ocean">${eur(tN)}</div><div class="kpi-sub">After commissions (−${eur(commissionPaid)})</div></div>
     <div class="kpi"><div class="kpi-label">Direct bookings</div><div class="kpi-value kv-ocean">${eur(directTotal)}</div><div class="kpi-sub">${directBks.length} booking${directBks.length!==1?'s':''} · 100% ours</div></div>
@@ -1523,231 +1555,6 @@ function buildStatementEmailPayload(partner, periodLabel, bookings){
   };
 }
 
-function buildStatementPdfMarkup(ctx) {
-  const bookings = (ctx.bookings || []).slice().sort((a,b)=>a.checkin.localeCompare(b.checkin));
-  const partner = ctx.partner || 'Partner';
-  const periodLabel = ctx.periodLabel || (ctx.month ? monthLabel(ctx.month) : 'All Months');
-  const totalGross = bookings.reduce((s,b)=>s+b.gross,0);
-  const totalCom = bookings.reduce((s,b)=>s+b.com_amt,0);
-  const totalNet = bookings.reduce((s,b)=>s+b.net,0);
-  const statementSummary = summarizePartnerBalances(partner, bookings);
-  const _toUs = statementSummary.outstandingToUs || 0, _toP = statementSummary.outstandingToPartner || 0;
-  const collects = _toUs >= _toP;
-  const outstanding = collects ? _toUs : _toP;
-  const paid = (statementSummary.paidToUs||0) + (statementSummary.paidToPartner||0);
-  const activeLocations = [...new Set(bookings.map(b=>b.location).filter(Boolean))];
-  const activeMonths = [...new Set(bookings.map(getMonth))].sort();
-  const amountLabel = (_toUs>0 && _toP>0) ? 'Outstanding — both directions' : (collects ? 'Outstanding Due to Gota Dagua Surf' : 'Outstanding We Owe to Partner');
-  const amountNote = [
-    _toUs>0 ? `Partner owes Gota Dagua ${eur(_toUs)} (bookings the partner collected).` : '',
-    _toP>0 ? `Gota Dagua owes the partner ${eur(_toP)} (commission on bookings Gota collected).` : '',
-    (!_toUs && !_toP) ? 'Nothing outstanding for this period.' : ''
-  ].filter(Boolean).join(' ');
-
-  const byMonth = {};
-  bookings.forEach(b => {
-    const m = getMonth(b);
-    if (!byMonth[m]) byMonth[m] = [];
-    byMonth[m].push(b);
-  });
-
-  function chunkRows(items, size = 7) {
-    const chunks = [];
-    for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-    return chunks;
-  }
-
-  const tableHeader = `
-    <thead>
-      <tr style="background:#28394b;color:#d4e8f6;">
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">#</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Guest</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Ref</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Check-in</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Location</th>
-        <th style="padding:9px 10px;text-align:center;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Guests</th>
-        <th style="padding:9px 10px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Package</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Gross</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Rate</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Commission</th>
-        <th style="padding:9px 10px;text-align:right;font-size:9px;text-transform:uppercase;letter-spacing:.08em;">Net</th>
-      </tr>
-    </thead>
-  `;
-
-  // Render a chunked set of bookings as one or more tables with the
-  // subtotal pinned to the last chunk's tfoot. Extracted as a helper
-  // because the country-grouped layout for KILROY needs to render
-  // multiple of these (one per country) within a single month section.
-  function renderBookingTables(items, subtotalLabel){
-    const sGross = items.reduce((s,b)=>s+b.gross,0);
-    const sCom = items.reduce((s,b)=>s+b.com_amt,0);
-    const sNet = items.reduce((s,b)=>s+b.net,0);
-    return chunkRows(items).map((chunk, chunkIndex, allChunks) => {
-      const rows = chunk.map((b, idx) => `
-      <tr>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${(chunkIndex * 7) + idx + 1}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-weight:600;">${b.guest || 'Guest'}${b.isRealized === false && b.status ? ` <span style="display:inline-block;background:#e6e6e6;color:#555;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">${b.status.replace(/_/g,' ')}</span>` : ''}${b.isRealized !== false && bookingPayRoute(b)==='partner' ? ` <span title="Guest paid the partner — partner owes us the net" style="display:inline-block;background:#e3f4ea;color:#1f6b3a;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">paid to partner</span>` : ''}${b.isRealized !== false && bookingPayRoute(b)==='gota' ? ` <span title="Guest paid Gota — we owe the partner its commission" style="display:inline-block;background:#fff3d6;color:#7a4f00;border-radius:5px;padding:1px 6px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:4px;vertical-align:middle">paid to gota</span>` : ''}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;font-family:'DM Mono',monospace;font-size:10px;">${b.ref || ''}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${new Date(b.checkin+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${b.location || '—'}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:center;">${b.pax || 1}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;">${b.package || '—'}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;">${eur(b.gross)}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;">${b.com_pct.toFixed(0)}%</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;color:#1e6fa8;font-weight:700;">${eur(b.com_amt)}</td>
-        <td style="padding:9px 10px;border-bottom:1px solid #d4e3f0;text-align:right;font-variant-numeric:tabular-nums;">${eur(b.net)}</td>
-      </tr>
-    `).join('');
-      const subtotal = chunkIndex === allChunks.length - 1 ? `
-        <tfoot>
-          <tr style="background:#f5f0e8;font-weight:700;">
-            <td colspan="7" style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;">${subtotalLabel}</td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-variant-numeric:tabular-nums;">${eur(sGross)}</td>
-            <td style="padding:10px 10px;border-top:2px solid #e8dfc8;"></td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-variant-numeric:tabular-nums;color:#1e6fa8;">${eur(sCom)}</td>
-            <td style="padding:10px 10px;text-align:right;border-top:2px solid #e8dfc8;font-variant-numeric:tabular-nums;">${eur(sNet)}</td>
-          </tr>
-        </tfoot>
-      ` : '';
-      return `
-        <table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:${chunkIndex===0?0:12}px;page-break-inside:avoid;">
-          ${tableHeader}
-          <tbody>${rows}</tbody>
-          ${subtotal}
-        </table>
-      `;
-    }).join('');
-  }
-
-  // Country-grouped statement (KILROY only) splits each month's
-  // bookings into per-country tables with a country subtotal, then
-  // closes with a month-total band if more than one country was
-  // present. Every other partner keeps the original single-table
-  // monthly layout via the else branch below.
-  const groupByCountry = partnerBillsByCountry(partner);
-
-  const monthBlocks = activeMonths.map(monthKey => {
-    const items = byMonth[monthKey] || [];
-    const monthGross = items.reduce((s,b)=>s+b.gross,0);
-    const monthCom = items.reduce((s,b)=>s+b.com_amt,0);
-    const monthNet = items.reduce((s,b)=>s+b.net,0);
-
-    let bodyHtml;
-    if(groupByCountry){
-      const countryGroups = groupBookingsByCountry(items);
-      const countrySections = countryGroups.map(([country, cItems])=>`
-        <div style="margin-top:14px;page-break-inside:avoid">
-          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:15px;color:#1e6fa8;margin-bottom:6px;padding:6px 12px;background:#eaf3fb;border-left:4px solid #1e6fa8;border-radius:4px;display:flex;justify-content:space-between;align-items:center">
-            <span>${country}</span>
-            <span style="font-size:11px;color:#6b8099;font-weight:normal;font-family:'Outfit',sans-serif">${cItems.length} booking${cItems.length!==1?'s':''}</span>
-          </div>
-          ${renderBookingTables(cItems, country+' subtotal')}
-        </div>
-      `).join('');
-      const monthTotalBand = countryGroups.length > 1 ? `
-        <div style="margin-top:14px;padding:10px 16px;background:#28394b;color:#fff;border-radius:8px;display:flex;justify-content:space-between;align-items:center;font-family:'Outfit',sans-serif">
-          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;font-weight:700">${monthLabel(monthKey)} total</div>
-          <div style="font-variant-numeric:tabular-nums;font-size:12px">Gross ${eur(monthGross)} · Commission ${eur(monthCom)} · Net ${eur(monthNet)}</div>
-        </div>
-      ` : '';
-      bodyHtml = countrySections + monthTotalBand;
-    } else {
-      bodyHtml = renderBookingTables(items, monthLabel(monthKey)+' subtotal');
-    }
-
-    return `
-      <section style="margin-top:22px;page-break-inside:avoid;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid #d4e3f0;">
-          <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:22px;color:#28394b;">${monthLabel(monthKey)}</div>
-          <div style="font-size:12px;color:#6b8099;">${items.length} booking${items.length!==1?'s':''}</div>
-        </div>
-        ${bodyHtml}
-      </section>
-    `;
-  }).join('');
-
-  return `
-    <section style="display:grid;grid-template-columns:1.2fr .9fr .9fr;gap:12px;margin-bottom:20px;">
-      <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:#f7fbff;">
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Summary</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:26px;color:#28394b;margin-top:10px;">${periodLabel}</div>
-        <div style="font-size:12px;color:#6b8099;margin-top:8px;">${bookings.length} booking${bookings.length!==1?'s':''} · ${activeLocations.length} location${activeLocations.length!==1?'s':''}</div>
-        <div style="font-size:12px;color:#6b8099;margin-top:4px;">Paid already: ${eur(paid)}</div>
-      </div>
-      <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:#ffffff;">
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Partner commission</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:28px;color:#1e6fa8;margin-top:10px;">${eur(totalCom)}</div>
-        <div style="font-size:12px;color:#6b8099;margin-top:6px;">Gross revenue ${eur(totalGross)}</div>
-      </div>
-      <div style="border:1px solid #d4e3f0;border-radius:14px;padding:16px 18px;background:${collects ? '#28394b' : '#7a4f00'};color:#fff;">
-        <div style="font-size:10px;color:${collects ? '#9fc5df' : '#f7d48b'};text-transform:uppercase;letter-spacing:.1em;font-weight:700;">${amountLabel}</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:28px;margin-top:10px;">${(_toUs>0 && _toP>0) ? `${eur(_toUs)} <span style="font-size:14px;opacity:.85">to us</span> · ${eur(_toP)} <span style="font-size:14px;opacity:.85">to partner</span>` : eur(outstanding)}</div>
-        <div style="font-size:12px;color:${collects ? '#d4e8f6' : '#fff4d5'};margin-top:6px;line-height:1.5;">${amountNote}</div>
-      </div>
-    </section>
-    ${monthBlocks}
-    <section style="margin-top:24px;border-top:2px solid #d4e3f0;padding-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div>
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Notes</div>
-        <div style="font-size:12px;color:#4b6278;line-height:1.7;margin-top:8px;">
-          ${collects
-            ? 'The partner collects payment from the guest and transfers the remaining amount due to Gota Dagua Surf after keeping their commission.'
-            : 'Gota Dagua Surf collects the booking and pays the partner commission according to the agreement shown above.'}
-        </div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:10px;color:#6b8099;text-transform:uppercase;letter-spacing:.1em;font-weight:700;">Net revenue to Gota Dagua Surf</div>
-        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:28px;color:#28394b;margin-top:8px;">${eur(totalNet)}</div>
-      </div>
-    </section>
-    <section style="margin-top:28px;padding-top:14px;border-top:1px solid #d4e3f0;display:flex;justify-content:space-between;align-items:flex-end;gap:18px;font-size:11px;color:#6b8099;">
-      <div>
-        <div style="font-weight:700;color:#28394b;">Gota Dagua Surf</div>
-        <div>Monthly partner statement · ${periodLabel}</div>
-      </div>
-      <div style="text-align:right;">
-        <div>Generated on ${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
-        <div>${partner}</div>
-      </div>
-    </section>
-  `;
-}
-
-function createStatementPdfWrap(ctx){
-  const wrap = document.createElement('div');
-  // Render the wrap inside a fixed-position 1x1 clipped frame so html2canvas
-  // can render it (it skips elements with opacity:0 / display:none / off-
-  // screen positioning) but the user doesn't see it on the live page.
-  wrap.style.background = '#ffffff';
-  wrap.style.color = '#0d1b2a';
-  wrap.style.fontFamily = "'Outfit', sans-serif";
-  wrap.style.width = '794px';
-  wrap.style.margin = '0';
-  wrap.style.padding = '0';
-  wrap.style.boxSizing = 'border-box';
-  wrap.innerHTML = `
-    <div style="background:#ffffff;color:#0d1b2a;width:794px;">
-      <div style="background:linear-gradient(135deg,#28394b 0%,#344d63 100%);color:#fff;padding:34px 42px 28px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;">
-          <div>
-            <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9fc5df;font-weight:700;">Gota Dagua Surf</div>
-            <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:34px;line-height:1.1;margin-top:8px;">${ctx.partner || ''}</div>
-            <div style="font-size:13px;color:#d4e8f6;margin-top:7px;">Monthly partner statement · ${ctx.periodLabel || ''}</div>
-          </div>
-          <div style="text-align:right;min-width:180px;">
-            <div style="font-size:11px;color:#9fc5df;text-transform:uppercase;letter-spacing:.1em;">Generated</div>
-            <div style="font-size:13px;font-weight:700;margin-top:4px;">${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
-            ${ctx.email ? `<div style="font-size:12px;color:#d4e8f6;margin-top:12px;">${ctx.email}</div>` : ''}
-          </div>
-        </div>
-      </div>
-      <div style="padding:26px 42px 34px;">${buildStatementPdfMarkup(ctx)}</div>
-    </div>
-  `;
-  return wrap;
-}
-
 // Render the brand SVG logo to a PNG data URL once, lazily, then cache it
 // so every subsequent PDF reuses the same image without re-rasterizing.
 // We grab the SVG directly from the live header in the DOM so it stays in
@@ -1787,7 +1594,7 @@ async function getPdfLogoDataUrl(){
 // no clipping. Produces a clean professional layout that's reliable on
 // every browser.
 async function generateStatementPdfBlob(){
-  const jsPDF = (window.jspdf && window.jspdf.jsPDF) || (window.html2pdf && window.html2pdf.jsPDF);
+  const jsPDF = window.jspdf && window.jspdf.jsPDF;
   if (!jsPDF) throw new Error('PDF generator not available.');
 
   const ctx = window.currentStatementContext || {};
@@ -2111,7 +1918,7 @@ async function sendStatementEmail(ctxArg){
   const ctx = (ctxArg && ctxArg.partner) ? ctxArg : (window.currentStatementContext || {});
   const em = ctx.email || getEmail(ctx.partner);
   if(!em){
-    alert(`No email for ${ctx.partner || 'this partner'}.\nAdd it in Partners & Rates.`);
+    notify(`No email for ${ctx.partner || 'this partner'}.\nAdd it in Partners & Rates.`);
     return;
   }
 
@@ -2178,7 +1985,7 @@ async function markOverviewSent(partner, month){
     console.error('[Partners] could not mark Overview Sent', err);
     setStatus(partner, month, previous);
     renderPartnersPage();
-    alert('The email opened, but the month could not be marked "Overview Sent". ' + (err?.message || ''));
+    notify('The email opened, but the month could not be marked "Overview Sent". ' + (err?.message || ''));
   }
 }
 
@@ -2236,7 +2043,7 @@ window.openStatement = function(partner, month, locationFilter) {
         locSections+=`<div style="margin-bottom:14px">
           <div style="font-size:11px;font-weight:700;color:var(--ocean);margin-bottom:6px;padding:5px 8px;background:var(--foam);border-radius:6px;display:inline-block">${loc}</div>
           <table class="tbl stmt-table">
-            <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to GotaDagua</th></tr></thead>
+            <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to Gota Dagua</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -2262,7 +2069,7 @@ window.openStatement = function(partner, month, locationFilter) {
       body+=`<div class="stmt-section">
         <div class="stmt-month-hdr">${monthLabel(m)} <span>${bs.length} booking${bs.length!==1?'s':''}</span></div>
         <table class="tbl stmt-table">
-          <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th>Location</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to GotaDagua</th></tr></thead>
+          <thead><tr><th>#</th><th>Guest</th><th>Ref</th><th>Check-in</th><th>Location</th><th class="r">Guests</th><th>Package</th><th class="r">Gross</th><th class="r">Commission %</th><th class="r">Commission</th><th class="r">Net to Gota Dagua</th></tr></thead>
           <tbody>${rows}</tbody>
           <tfoot><tr><td colspan="7" style="text-align:right">${monthLabel(m)} subtotal</td><td class="r">${eur(mG)}</td><td></td><td class="r" style="color:var(--ocean)">${eur(mC)}</td><td class="r">${eur(mN)}</td></tr></tfoot>
         </table>
@@ -2301,7 +2108,7 @@ window.openStatement = function(partner, month, locationFilter) {
     sendBtn.disabled = true;
     sendBtn.style.opacity='0.4';
     sendBtn.title='No email set — add it in Partners & Rates';
-    sendBtn.onclick=function(){alert('No email for '+partner+'.\nAdd it in Partners & Rates.');};
+    sendBtn.onclick=function(){notify('No email for '+partner+'.\nAdd it in Partners & Rates.');};
   }
 
   window.currentStatementContext = { partner, month, locationFilter, email: em, bookings: sendBks, viewBookings: bks, periodLabel: period2 };
@@ -2320,10 +2127,10 @@ window.saveStatementPDF = async () => {
     console.error(e);
     try {
       window.print();
-      alert('Automatic PDF generation failed, so the print dialog was opened as a fallback. You can choose "Save as PDF" there.');
+      notify('Automatic PDF generation failed, so the print dialog was opened instead — choose "Save as PDF" there.', 'info');
     } catch (printErr) {
       console.error(printErr);
-      alert('Could not create the PDF.');
+      notify('Could not create the PDF.');
     }
   }
 };
@@ -2389,7 +2196,7 @@ function renderSettingsModal() {
       <input type="text" value="${getEmail(p)}" placeholder="email@partner.com" id="pemail_${rowId}">
       <select id="ptype_${rowId}" style="padding:8px 10px;font-size:12px;width:auto">
         <option value="surfcamp" ${type==='surfcamp'?'selected':''}>Surf Camp</option>
-        <option value="surfschool" ${type==='surfschool'?'selected':''}>Escola de Surf</option>
+        <option value="surfschool" ${type==='surfschool'?'selected':''}>Surf School</option>
         <option value="junior_surfcamp" ${type==='junior_surfcamp'?'selected':''}>Junior Surf Camp</option>
         <option value="kids_camp" ${type==='kids_camp'?'selected':''}>Kids Camp Caparica</option>
       </select>
@@ -2423,6 +2230,8 @@ function renderSettingsModal() {
   ratesHTML += renderRows('kids_camp') || `<div style="font-size:12px;color:var(--muted);padding:10px 12px 18px">No kids camp partners yet.</div>`;
 
   document.getElementById('partnerRatesList').innerHTML = ratesHTML;
+  // supabase/audit-w4-partners.sql adds partners.contact_name; until then say so instead of losing it silently (PRT-11)
+  const cHint = document.getElementById('contactColHint'); if(cHint) cHint.style.display = (__cloudMode === 'cloud' && !partnersHaveContactCol) ? '' : 'none';
   document.getElementById('saveNotice').classList.remove('show');
 }
 
@@ -2438,7 +2247,7 @@ window.addPartnerRow = (type='surfcamp') => {
     <input type="text" placeholder="email@partner.com" id="pemail_${id}">
     <select id="ptype_${id}" style="padding:8px 10px;font-size:12px;width:auto">
       <option value="surfcamp" ${type==='surfcamp'?'selected':''}>Surf Camp</option>
-      <option value="surfschool" ${type==='surfschool'?'selected':''}>Escola de Surf</option>
+      <option value="surfschool" ${type==='surfschool'?'selected':''}>Surf School</option>
       <option value="junior_surfcamp" ${type==='junior_surfcamp'?'selected':''}>Junior Surf Camp</option>
       <option value="kids_camp" ${type==='kids_camp'?'selected':''}>Kids Camp Caparica</option>
     </select>
@@ -2456,7 +2265,12 @@ window.addPartnerRow = (type='surfcamp') => {
 
 window.removePartnerRow = (i) => {
   const row = document.getElementById('prow_'+i);
-  if(row) row.remove();
+  if(!row) return;
+  // A partner with bookings stays: its bookings, statuses and invoices are filed under that name.
+  const name = (document.getElementById('pname_'+i)?.defaultValue || '').trim();
+  const n = name ? allBookings.filter(b => partnerNameEquals(b.partner, name)).length : 0;
+  if(n){ notify(`${name} has ${n} booking${n===1?'':'s'} — it stays in the list with its own email, rate and money flow.`, 'info'); return; }
+  row.remove();
 };
 
 window.saveSettings = async () => {
@@ -2532,10 +2346,13 @@ window.saveSettings = async () => {
   rateChanges.forEach(ch => ch.targets.forEach(b => { b.com_pct = ch.newRate; recalcBooking(b); }));
 
   try {
-    const synced = await persistAllToSupabase({syncPartners:true, syncStatuses:false, rateChanges});
-    // Only NOW commit to localStorage + re-render. Until this point
-    // a failure rolls back cleanly via the snapshot below.
+    const synced = await persistAllToSupabase({syncPartners:true, rateChanges});
+    // Only NOW commit + re-render. Until this point a failure rolls back
+    // cleanly via the snapshot below. Then read the records back, so the
+    // modal shows what is stored (a removed row with bookings comes back
+    // with its own email, rate and money flow, never with defaults).
     saveState();
+    try { await loadFromSupabase(); } catch (e) { console.warn('[Partners] reload after save failed', e); }
     renderPartnersPage();
     renderSettingsModal();
     const notice = document.getElementById('saveNotice');
@@ -2564,7 +2381,7 @@ window.saveSettings = async () => {
     Array.prototype.push.apply(allBookings, prev.bookings);
     renderPartnersPage();
     renderSettingsModal();
-    alert('Could not save partner settings. ' + (err?.message || ''));
+    notify('Could not save partner settings. ' + (err?.message || ''));
   }
 };
 
@@ -2585,6 +2402,7 @@ let __authClient = null;
 let __realtimeChannel = null;
 let __loadingFromSupabase = false;
 let __suppressRealtimeRefresh = false;
+let __reloadTimer = null, __reloadAgain = false;   // realtime: one debounced reload (scheduleReload)
 let __cloudMode = 'unknown';
 
 function isMissingTableError(err) {
@@ -2654,10 +2472,6 @@ async function verifySupabaseSetup() {
   setStorageNotice('cloud');
   return true;
 }
-function setAuthError(msg='') {
-  const el = document.getElementById('pwError');
-  if (el) el.textContent = msg;
-}
 function renderCurrentPage() {
   renderPartnersPage();
   updateBadge();
@@ -2689,9 +2503,17 @@ function normalizeStatusNotes(rows) {
 // the booking moves into one of these statuses (next CSV import upserts
 // the row with the new status, so commission then counts automatically).
 const REALIZED_BOOKING_STATUSES = new Set(['paid','confirmed','deposit_paid']);
+// Only the columns this page reads, and five keys of raw_payload instead of the
+// whole Bookinglayer payload (PRT-13: about a third of the bytes of select *).
+const BOOKING_COLUMNS = 'id,booking_ref,booker,check_in_on,location,pax,package,partner_name,total,partner_commission_pct,commission_amount,net_amount,country,'
+  + 'rp_status:raw_payload->>status,rp_booking_source:raw_payload->>bookingSource,rp_source:raw_payload->>source,rp_due:raw_payload->>due,'
+  + 'rp_external_ref:raw_payload->>external_ref,rp_external_ref2:raw_payload->>externalRef';
 
 function mapBookingRowToApp(row) {
   const partner = row.partner_name && row.partner_name.trim() ? row.partner_name.trim() : DIRECT_LABEL;
+  // raw_payload keys arrive as rp_* columns (BOOKING_COLUMNS); a full row still works
+  const rp = row.raw_payload || { status: row.rp_status, bookingSource: row.rp_booking_source, source: row.rp_source, due: row.rp_due, external_ref: row.rp_external_ref, externalRef: row.rp_external_ref2 };
+  row = { ...row, raw_payload: rp };
   const status = (row.raw_payload && row.raw_payload.status) ? String(row.raw_payload.status).trim().toLowerCase().replace(/\s+/g, '_') : ''; // 'Deposit paid' → 'deposit_paid'
   const isRealized = !status || REALIZED_BOOKING_STATUSES.has(status); // empty status = legacy data, treat as realized
   const gross = Number(row.total || 0);
@@ -2749,15 +2571,17 @@ window.setBookingExternalRef = async function(bookingRef, externalRef){
     return false;
   }
 };
+// Rows for the partners table, split by where the name comes from:
+//   settings    — a partner the page loaded or the Partners & Rates modal holds (partnerRates keys)
+//   bookingOnly — a name seen only on bookings (new partner, a removed row, an archived record)
+// persistPartnersToSupabase never writes defaults over a stored record (PRT-10, 18 Nov 2026).
 function buildPartnerRowsFromState() {
-  const names = [...new Set([
-    ...Object.keys(partnerRates || {}),
-    ...Object.keys(partnerEmails || {}),
-    ...Object.keys(partnerCollects || {}),
-    ...Object.keys(partnerTypes || {}),
-    ...(allBookings || []).map(b => b.partner).filter(Boolean).filter(p => p !== DIRECT_LABEL)
-  ])];
-  return names.map(name => ({
+  const lc = s => String(s||'').trim().toLowerCase();
+  const settings = Object.keys(partnerRates || {}).filter(n => n && n !== DIRECT_LABEL);
+  const settingsLc = new Set(settings.map(lc));
+  const bookingOnly = [...new Set((allBookings || []).map(b => b.partner).filter(p => p && p !== DIRECT_LABEL))]
+    .filter(n => !settingsLc.has(lc(n)));
+  const row = name => ({
     name,
     email: partnerEmails[name] || '',
     commission_pct: Number(partnerRates[name] ?? 20),
@@ -2765,11 +2589,8 @@ function buildPartnerRowsFromState() {
     partner_type: partnerTypes[name] || 'surfcamp',
     ...(partnersHaveContactCol ? { contact_name: getContactName(name) || null } : {}),
     is_active: true
-  }));
-}
-async function bootstrapSeedDataIfNeeded() {
-  // Auto-seeding disabled — start clean, let the user import real data.
-  return;
+  });
+  return { settings: settings.map(row), bookingOnly: bookingOnly.map(row) };
 }
 async function loadFromSupabase() {
   if (__loadingFromSupabase) return;
@@ -2790,12 +2611,15 @@ async function loadFromSupabase() {
       const PAGE_SIZE = 1000;
       let all = [];
       let from = 0;
+      let cols = BOOKING_COLUMNS;
       for(;;){
         const { data, error } = await client
           .from('bookings')
-          .select('*')
+          .select(cols)
           .order('check_in_on', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
+        // the slim read refused (a column renamed, an older API)? read whole rows instead of showing nothing
+        if(error && cols !== '*' && from === 0){ console.warn('[Partners] slim bookings read refused, reading full rows', error); cols = '*'; continue; }
         if(error) throw error;
         if(!data || data.length === 0) break;
         all = all.concat(data);
@@ -2816,19 +2640,14 @@ async function loadFromSupabase() {
     let bookingRows = bookingsAll || [];
     let statusRows = statusesRes.data || [];
 
-    if (!bookingRows.length) {
-      await bootstrapSeedDataIfNeeded();
-      const [partnersReload, bookingsAllReload, statusesReload] = await Promise.all([
-        client.from('partners').select('*').eq('is_active', true).order('name'),
-        fetchAllBookings(),
-        client.from('partner_month_status').select('month_key,status,notes,partner_id,partners(name)').order('month_key', { ascending: true })
-      ]);
-      if (partnersReload.error) throw partnersReload.error;
-      if (statusesReload.error) throw statusesReload.error;
-      partnerRows = partnersReload.data || [];
-      bookingRows = bookingsAllReload || [];
-      statusRows = statusesReload.data || [];
-    }
+    // Invoices and the advance ledger load side by side: one round trip of
+    // wait, not two, before the state below is swapped in one go (no
+    // half-reset state — bookings without their partner settings — between awaits).
+    await Promise.all([
+      reloadPartnerInvoices().catch(e => { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }),
+      reloadPartnerLedger().catch(e => { console.warn('[Partners] partner_ledger not loaded', e); partnerLedger = {}; }),
+      reloadPartnerFlags().catch(() => { partnerNoInvoice = new Set(); }),   // column not there yet → nobody is flagged
+    ]);
 
     allBookings = bookingRows.map(mapBookingRowToApp);
     partnerEmails = {};
@@ -2838,18 +2657,11 @@ async function loadFromSupabase() {
     partnerTypes = {};
     statusStore = normalizeStatusRows(statusRows);
     statusNotes = normalizeStatusNotes(statusRows);
-    // Invoices and the advance ledger load side by side: one round trip of
-    // wait, not two, before the partner settings below are applied.
-    await Promise.all([
-      reloadPartnerInvoices().catch(e => { console.warn('[Partners] partner_invoices not loaded', e); partnerInvoices = {}; }),
-      reloadPartnerLedger().catch(e => { console.warn('[Partners] partner_ledger not loaded', e); partnerLedger = {}; }),
-      reloadPartnerFlags().catch(() => { partnerNoInvoice = new Set(); }),   // column not there yet → nobody is flagged
-    ]);
-
     // contact_name lives in Supabase since 7 Nov 2026 (before: localStorage
     // only, lost in incognito). Cloud value wins; the column check keeps the
     // page working before supabase/partners-contact-name.sql is applied.
     partnersHaveContactCol = partnerRows.some(r => Object.prototype.hasOwnProperty.call(r, 'contact_name'));
+    loadedPartnerNames = new Set(partnerRows.map(r => String(r.name || '').trim().toLowerCase()));
     partnerRows.forEach(row => {
       if (row.contact_name) partnerContacts[row.name] = row.contact_name;
       partnerRates[row.name] = Number(row.commission_pct ?? 20);
@@ -2869,28 +2681,46 @@ async function loadFromSupabase() {
     throw err;
   } finally {
     __loadingFromSupabase = false;
+    if (__reloadAgain) { __reloadAgain = false; scheduleReload(); }
   }
 }
+// Saves Partners & Rates. Only the records this page loaded are updated; a name
+// the database already holds under another record (archived, or another casing)
+// is never overwritten or re-activated, and a name seen only on bookings is
+// inserted only when no record has it. Removing a row with no bookings archives
+// it (is_active = false); a row with bookings keeps its stored email, rate and
+// money flow.
 async function persistPartnersToSupabase() {
   if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
   _partnersPending = true;
-  await withRetry(async () => {
-    const client = getAuthClient();
-    const partnerRows = buildPartnerRowsFromState();
-    if (partnerRows.length) {
-      const { error } = await client.from('partners').upsert(partnerRows, { onConflict: 'name' });
-      if (error) throw error;
-    }
-    const { data: existingRows, error: fetchError } = await client.from('partners').select('name');
-    if (fetchError) throw fetchError;
-    const currentNames = new Set(partnerRows.map(p => p.name));
-    const inactiveNames = (existingRows || []).map(r => r.name).filter(name => !currentNames.has(name));
-    if (inactiveNames.length) {
-      const { error } = await client.from('partners').update({ is_active: false }).in('name', inactiveNames);
-      if (error) throw error;
-    }
-  }, 'persist partners');
-  _partnersPending = false;
+  try {
+    await withRetry(async () => {
+      const client = getAuthClient();
+      const lc = s => String(s||'').trim().toLowerCase();
+      const { data: existingRows, error: fetchError } = await client.from('partners').select('name');
+      if (fetchError) throw fetchError;
+      const stored = new Set((existingRows || []).map(r => lc(r.name)));
+      const { settings, bookingOnly } = buildPartnerRowsFromState();
+      const updates = settings.filter(r => loadedPartnerNames.has(lc(r.name)));
+      const inserts = [...settings, ...bookingOnly].filter(r => !stored.has(lc(r.name)));
+      if (updates.length) {
+        const { error } = await client.from('partners').upsert(updates, { onConflict: 'name' });
+        if (error) throw error;
+      }
+      if (inserts.length) {
+        const { error } = await client.from('partners').upsert(inserts, { onConflict: 'name', ignoreDuplicates: true });
+        if (error) throw error;
+      }
+      const keep = new Set([...settings, ...bookingOnly].map(r => lc(r.name)));
+      const archive = (existingRows || []).map(r => r.name).filter(n => loadedPartnerNames.has(lc(n)) && !keep.has(lc(n)));
+      if (archive.length) {
+        const { error } = await client.from('partners').update({ is_active: false }).in('name', archive);
+        if (error) throw error;
+      }
+    }, 'persist partners');
+  } finally {
+    _partnersPending = false;
+  }
   return true;
 }
 async function fetchPartnerIdMap() {
@@ -2991,25 +2821,14 @@ async function syncStatusToSupabase(partner, month, value) {
   if (error) throw error;
   return true;
 }
-async function persistStatusesToSupabase() {
-  if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
-  const entries = Object.entries(statusStore || {});
-  for (const [key, value] of entries) {
-    const [partner, month] = key.split('||');
-    if (!partner || !month) continue;
-    await syncStatusToSupabase(partner, month, value || '');
-  }
-  return true;
-}
 // rateChanges: [{ partner, oldRate, newRate, targets }] — re-prices only the bookings
 // that followed the old default (see persistRateChangeToBookings).
-async function persistAllToSupabase({ syncPartners = true, syncStatuses = true, rateChanges = [] } = {}) {
+async function persistAllToSupabase({ syncPartners = true, rateChanges = [] } = {}) {
   __suppressRealtimeRefresh = true;
   try {
     if (__cloudMode !== 'cloud') throw new Error('Cloud sync is unavailable right now.');
     if (syncPartners) await persistPartnersToSupabase();
     for (const ch of rateChanges) await persistRateChangeToBookings(ch.partner, ch.oldRate, ch.newRate, ch.targets);
-    if (syncStatuses) await persistStatusesToSupabase();
     saveState();
     return true;
   } catch (err) {
@@ -3020,53 +2839,25 @@ async function persistAllToSupabase({ syncPartners = true, syncStatuses = true, 
     setTimeout(() => { __suppressRealtimeRefresh = false; }, 400);
   }
 }
+// A burst of realtime events (an import touches hundreds of bookings) gives ONE
+// reload, 500 ms after the last event; an event during a reload queues another.
+function scheduleReload() {
+  if (__suppressRealtimeRefresh) return;
+  clearTimeout(__reloadTimer);
+  __reloadTimer = setTimeout(() => {
+    if (__loadingFromSupabase) { __reloadAgain = true; return; }
+    loadFromSupabase().catch(console.error);
+  }, 500);
+}
 function subscribeRealtime() {
   if (__cloudMode !== 'cloud') return;
   const client = getAuthClient();
   if (__realtimeChannel) client.removeChannel(__realtimeChannel);
   __realtimeChannel = client.channel('partner-tracker-db')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-      if (!__suppressRealtimeRefresh) loadFromSupabase().catch(console.error);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'partners' }, () => {
-      if (!__suppressRealtimeRefresh) loadFromSupabase().catch(console.error);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_month_status' }, () => {
-      if (!__suppressRealtimeRefresh) loadFromSupabase().catch(console.error);
-    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'partners' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_month_status' }, scheduleReload)
     .subscribe();
-}
-async function checkPassword() {
-  const email = document.getElementById('pwEmail').value.trim();
-  const password = document.getElementById('pwInput').value;
-  if (!email || !password) {
-    setAuthError('Please enter your email and password.');
-    return;
-  }
-  setAuthError('Signing in...');
-  try {
-    const { error } = await getAuthClient().auth.signInWithPassword({ email, password });
-    if (error) {
-      setAuthError(error.message);
-      return;
-    }
-    document.getElementById('pwScreen').style.display = 'none';
-    const badge = document.getElementById('userBadge');
-    if (badge) {
-      badge.style.display = 'inline-block';
-      badge.textContent = email;
-    }
-    await verifySupabaseSetup();
-    if (__cloudMode === 'cloud') {
-      await loadFromSupabase();
-      subscribeRealtime();
-    } else {
-      renderCurrentPage();
-    }
-    setAuthError('');
-  } catch (e) {
-    setAuthError(e?.message || 'Could not sign in.');
-  }
 }
 async function signOutTeam() {
   const client = getAuthClient();
@@ -3077,19 +2868,7 @@ async function signOutTeam() {
     }
   } catch (e) {}
   try { await client.auth.signOut({ scope: 'local' }); } catch (e) {}   // this device only
-  const badge = document.getElementById('userBadge');
-  if (badge) {
-    badge.style.display = 'none';
-    badge.textContent = '';
-  }
-  try {
-    document.getElementById('pwEmail').value = '';
-    document.getElementById('pwInput').value = '';
-  } catch (e) {}
-  setAuthError('');
-  // the old in-page password screen is gone: sign in again from the hub
-  const pw = document.getElementById('pwScreen');
-  if (pw) pw.style.display = 'flex'; else location.href = '/';
+  location.href = '/';   // sign in again from the hub
 }
 // phones: «Account → Log out» in the drawer (AppShell) runs this handler
 AppShell.setAccount({ signOut: signOutTeam });

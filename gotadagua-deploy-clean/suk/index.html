@@ -197,7 +197,7 @@ const $ = (id) => document.getElementById(id);
 const eur = (n) => BusinessPnl.eur(n);
 const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
 const fmtDay = (d) => { const [y, m, dd] = String(d || '').slice(0, 10).split('-').map(Number); return m ? `${dd} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]}` : '—'; };
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = AppShell.esc;   // one HTML escape for every page (lib/app-shell.js)
 // same rule as public.hq_doc_status() (supabase/one-formula.sql): a line needs a PDF unless it is exempt, a salary/benefit/tax,
 // or off the books («[por fora» note, or paid in cash with no invoice — counts in the P&L, never goes to the accountant)
 const docMissing = (i) => !/\[por fora/i.test(String(i.notes || '')) && !i.drive_link && !i.doc_exempt_reason && !/\[sem fatura/i.test(String(i.notes || '')) && !['Salary', 'Benefits', 'Taxes'].includes(i.category_name || '') && i.payment_type !== 'Cash';
