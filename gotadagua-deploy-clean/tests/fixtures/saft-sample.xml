@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invented test file. No real customer, document or amount. -->
+<AuditFile xmlns="urn:OECD:StandardAuditFile-Tax:PT_1.04_01" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Header>
+    <AuditFileVersion>1.04_01</AuditFileVersion>
+    <CompanyID>515059927</CompanyID>
+    <TaxRegistrationNumber>515059927</TaxRegistrationNumber>
+    <TaxAccountingBasis>F</TaxAccountingBasis>
+    <CompanyName>Water Movements Lda</CompanyName>
+    <CompanyAddress><AddressDetail>Rua de Teste 1</AddressDetail><City>Lisboa</City><PostalCode>1000-001</PostalCode><Country>PT</Country></CompanyAddress>
+    <FiscalYear>2026</FiscalYear>
+    <StartDate>2026-10-01</StartDate>
+    <EndDate>2026-10-31</EndDate>
+    <CurrencyCode>EUR</CurrencyCode>
+    <DateCreated>2026-11-02</DateCreated>
+    <TaxEntity>Global</TaxEntity>
+    <ProductCompanyTaxID>500000000</ProductCompanyTaxID>
+    <SoftwareCertificateNumber>0</SoftwareCertificateNumber>
+    <ProductID>Test/Test</ProductID>
+    <ProductVersion>1.0</ProductVersion>
+  </Header>
+  <MasterFiles>
+    <Customer>
+      <CustomerID>C-1</CustomerID>
+      <AccountID>Desconhecido</AccountID>
+      <CustomerTaxID>500000001</CustomerTaxID>
+      <CompanyName>Blue Tribe Travel, Lda</CompanyName>
+      <BillingAddress><AddressDetail>Desconhecido</AddressDetail><City>Desconhecido</City><PostalCode>0000-000</PostalCode><Country>PT</Country></BillingAddress>
+      <SelfBillingIndicator>0</SelfBillingIndicator>
+    </Customer>
+    <Customer>
+      <CustomerID>C-2</CustomerID>
+      <AccountID>Desconhecido</AccountID>
+      <CustomerTaxID>999999990</CustomerTaxID>
+      <CompanyName>João Açaí Example</CompanyName>
+      <BillingAddress><AddressDetail>Desconhecido</AddressDetail><City>Desconhecido</City><PostalCode>0000-000</PostalCode><Country>PT</Country></BillingAddress>
+      <SelfBillingIndicator>0</SelfBillingIndicator>
+    </Customer>
+    <Customer>
+      <CustomerID>C-3</CustomerID>
+      <AccountID>Desconhecido</AccountID>
+      <CustomerTaxID>999999990</CustomerTaxID>
+      <CompanyName>Anna Example</CompanyName>
+      <BillingAddress><AddressDetail>Desconhecido</AddressDetail><City>Desconhecido</City><PostalCode>0000-000</PostalCode><Country>DE</Country></BillingAddress>
+      <SelfBillingIndicator>0</SelfBillingIndicator>
+    </Customer>
+    <Product><ProductType>S</ProductType><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription><ProductNumberCode>STAY</ProductNumberCode></Product>
+  </MasterFiles>
+  <SourceDocuments>
+    <SalesInvoices>
+      <NumberOfEntries>10</NumberOfEntries>
+      <TotalDebit>300.00</TotalDebit>
+      <TotalCredit>2191.50</TotalCredit>
+      <Invoice>
+        <InvoiceNo>FT T1/1</InvoiceNo>
+        <ATCUD>TESTCODE-1</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-01T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-01</InvoiceDate>
+        <InvoiceType>FT</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-01T10:00:00</SystemEntryDate>
+        <CustomerID>C-1</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>1000.00</UnitPrice><TaxPointDate>2026-10-01</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>1000.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>60.00</TaxPayable><NetTotal>1000.00</NetTotal><GrossTotal>1060.00</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FT T1/2</InvoiceNo>
+        <ATCUD>TESTCODE-2</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-02T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-02</InvoiceDate>
+        <InvoiceType>FT</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-02T10:00:00</SystemEntryDate>
+        <CustomerID>C-2</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>500.00</UnitPrice><TaxPointDate>2026-10-02</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>500.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>30.00</TaxPayable><NetTotal>500.00</NetTotal><GrossTotal>530.00</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FT T1/3</InvoiceNo>
+        <ATCUD>TESTCODE-3</ATCUD>
+        <DocumentStatus><InvoiceStatus>A</InvoiceStatus><InvoiceStatusDate>2026-10-03T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-03</InvoiceDate>
+        <InvoiceType>FT</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-03T10:00:00</SystemEntryDate>
+        <CustomerID>C-3</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>589.00</UnitPrice><TaxPointDate>2026-10-03</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>589.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>0.00</TaxPayable><NetTotal>589.00</NetTotal><GrossTotal>589.00</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FT T1/5</InvoiceNo>
+        <ATCUD>TESTCODE-5</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-05T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-05</InvoiceDate>
+        <InvoiceType>FT</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-05T10:00:00</SystemEntryDate>
+        <CustomerID>C-3</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>589.00</UnitPrice><TaxPointDate>2026-10-05</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>589.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>0.00</TaxPayable><NetTotal>589.00</NetTotal><GrossTotal>589.00</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FT T1/6</InvoiceNo>
+        <ATCUD>TESTCODE-6</ATCUD>
+        <DocumentStatus><InvoiceStatus>A</InvoiceStatus><InvoiceStatusDate>2026-10-20T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-20</InvoiceDate>
+        <InvoiceType>FT</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-20T10:00:00</SystemEntryDate>
+        <CustomerID>C-2</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>120.00</UnitPrice><TaxPointDate>2026-10-20</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>120.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>7.20</TaxPayable><NetTotal>120.00</NetTotal><GrossTotal>127.20</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>NC T1/1</InvoiceNo>
+        <ATCUD>TESTCODE-1</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-08T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-08</InvoiceDate>
+        <InvoiceType>NC</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-08T10:00:00</SystemEntryDate>
+        <CustomerID>C-2</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>100.00</UnitPrice><TaxPointDate>2026-10-08</TaxPointDate>
+          <References><Reference>FT T1/2</Reference><Reason>Devolução</Reason></References>
+          <Description>Surf week</Description><DebitAmount>100.00</DebitAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>6.00</TaxPayable><NetTotal>100.00</NetTotal><GrossTotal>106.00</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>NC T1/2</InvoiceNo>
+        <ATCUD>TESTCODE-2</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-09T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-09</InvoiceDate>
+        <InvoiceType>NC</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-09T10:00:00</SystemEntryDate>
+        <CustomerID>C-1</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>200.00</UnitPrice><TaxPointDate>2026-10-09</TaxPointDate>
+          <References><Reference>FT OLD/9</Reference><Reason>Devolução</Reason></References>
+          <Description>Surf week</Description><DebitAmount>200.00</DebitAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>12.00</TaxPayable><NetTotal>200.00</NetTotal><GrossTotal>212.00</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FR S2/1</InvoiceNo>
+        <ATCUD>TESTCODE-1</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-10T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-10</InvoiceDate>
+        <InvoiceType>FR</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-10T10:00:00</SystemEntryDate>
+        <CustomerID>C-2</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>45.00</UnitPrice><TaxPointDate>2026-10-10</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>45.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>2.70</TaxPayable><NetTotal>45.00</NetTotal><GrossTotal>47.70</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FR S2/2</InvoiceNo>
+        <ATCUD>TESTCODE-2</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-11T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-11</InvoiceDate>
+        <InvoiceType>FR</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-11T10:00:00</SystemEntryDate>
+        <CustomerID>C-3</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>45.00</UnitPrice><TaxPointDate>2026-10-11</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>45.00</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>2.70</TaxPayable><NetTotal>45.00</NetTotal><GrossTotal>47.70</GrossTotal></DocumentTotals>
+      </Invoice>
+      <Invoice>
+        <InvoiceNo>FS S2/3</InvoiceNo>
+        <ATCUD>TESTCODE-3</ATCUD>
+        <DocumentStatus><InvoiceStatus>N</InvoiceStatus><InvoiceStatusDate>2026-10-12T10:00:00</InvoiceStatusDate><SourceID>1</SourceID><SourceBilling>P</SourceBilling></DocumentStatus>
+        <Hash>0</Hash><HashControl>1</HashControl>
+        <Period>10</Period>
+        <InvoiceDate>2026-10-12</InvoiceDate>
+        <InvoiceType>FS</InvoiceType>
+        <SpecialRegimes><SelfBillingIndicator>0</SelfBillingIndicator><CashVATSchemeIndicator>0</CashVATSchemeIndicator><ThirdPartiesBillingIndicator>0</ThirdPartiesBillingIndicator></SpecialRegimes>
+        <SourceID>1</SourceID>
+        <SystemEntryDate>2026-10-12T10:00:00</SystemEntryDate>
+        <CustomerID>C-3</CustomerID>
+        <Line>
+          <LineNumber>1</LineNumber><ProductCode>STAY</ProductCode><ProductDescription>Surf week</ProductDescription>
+          <Quantity>1</Quantity><UnitOfMeasure>un</UnitOfMeasure><UnitPrice>12.50</UnitPrice><TaxPointDate>2026-10-12</TaxPointDate>
+          <Description>Surf week</Description><CreditAmount>12.50</CreditAmount>
+          <Tax><TaxType>IVA</TaxType><TaxCountryRegion>PT</TaxCountryRegion><TaxCode>RED</TaxCode><TaxPercentage>6</TaxPercentage></Tax>
+        </Line>
+        <DocumentTotals><TaxPayable>0.75</TaxPayable><NetTotal>12.50</NetTotal><GrossTotal>13.25</GrossTotal></DocumentTotals>
+      </Invoice>
+    </SalesInvoices>
+    <WorkingDocuments>
+      <NumberOfEntries>1</NumberOfEntries><TotalDebit>0.00</TotalDebit><TotalCredit>10.00</TotalCredit>
+      <WorkDocument><DocumentNumber>PF T1/1</DocumentNumber><WorkType>PF</WorkType><WorkDate>2026-10-01</WorkDate><CustomerID>C-1</CustomerID><DocumentTotals><TaxPayable>0.00</TaxPayable><NetTotal>10.00</NetTotal><GrossTotal>10.00</GrossTotal></DocumentTotals></WorkDocument>
+    </WorkingDocuments>
+    <Payments>
+      <NumberOfEntries>2</NumberOfEntries><TotalDebit>0.00</TotalDebit><TotalCredit>1590.00</TotalCredit>
+      <Payment><PaymentRefNo>RG T1/1</PaymentRefNo><TransactionDate>2026-10-02</TransactionDate><PaymentType>RG</PaymentType><CustomerID>C-1</CustomerID></Payment>
+      <Payment><PaymentRefNo>RG T1/2</PaymentRefNo><TransactionDate>2026-10-03</TransactionDate><PaymentType>RG</PaymentType><CustomerID>C-2</CustomerID></Payment>
+    </Payments>
+  </SourceDocuments>
+</AuditFile>
