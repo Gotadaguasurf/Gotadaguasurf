@@ -128,19 +128,18 @@ begin
 end $$;
 
 
--- ── 1.6 Functions anyone could call without logging in (SEC-02, SEC-13) ────
+-- ── 1.6 A function anyone could call without logging in (SEC-02, SEC-13) ───
 -- touch_outreach_interaction: SECURITY DEFINER and executable by anon (sets
 -- last_interaction_at on any company). The CRM's insert triggers call it as the
 -- logged-in user, so authenticated keeps it.
 revoke execute on function public.touch_outreach_interaction(uuid) from public, anon;
 grant  execute on function public.touch_outreach_interaction(uuid) to authenticated, service_role;
--- The two auth.users trigger functions: a trigger does not need EXECUTE, so no
--- client needs it either. handle_new_auth_user is the only SECURITY DEFINER
--- function in public without a search_path (legacy, masked by
--- handle_platform_user; dropping it is in PART 2).
+-- handle_new_auth_user (legacy auth.users trigger, masked by handle_platform_user)
+-- is the only SECURITY DEFINER function in public without a search_path. Its body
+-- (read 18 Nov 2026) names public.platform_profiles in full, so pinning the path
+-- changes nothing it does. Dropping it is in PART 2. (No revoke on the trigger
+-- functions: a function returning «trigger» cannot be called through the API.)
 alter function public.handle_new_auth_user() set search_path = public;
-revoke execute on function public.handle_new_auth_user() from public, anon, authenticated;
-revoke execute on function public.handle_platform_user() from public, anon, authenticated;
 
 
 -- ── 1.7 An invitee may only mark their own invite accepted (SEC-20) ────────
@@ -179,7 +178,8 @@ create trigger trg_invitation_self_accept_only
 -- Policy daily_fx_rates_insert_auth was «with check (true)»: any login — even
 -- one with no area at all — could store the day's rate first, and the first
 -- writer wins for every camp. Now: an active person with at least one active
--- area (every camp hub and Camp Tab account has one). Reading is unchanged.
+-- area (every camp hub and Camp Tab account has one). Reading is unchanged; the
+-- hub's write is best-effort (camp-hub writeSupabaseFxRate catches a refusal).
 -- The second half (a sane range per currency, DATA-05) waits for the rate fix.
 create or replace function public.has_active_membership()
 returns boolean
@@ -199,7 +199,9 @@ create policy daily_fx_rates_insert_member on public.daily_fx_rates
 
 -- ── 1.9 CRM attachments: only the CRM team writes (SEC-15, first half) ─────
 -- Any login could upload, replace or delete any file in the crm-assets bucket.
--- Only the CRM page uploads there (crm/index.html, CRM_FILES_BUCKET). Reading
+-- Only the CRM page uploads there (crm/index.html, CRM_FILES_BUCKET); the 123
+-- files of the last 120 days were all uploaded by one HQ / CRM member (read-only
+-- check, 18 Nov 2026). Reading
 -- stays public (the files travel in emails as links). Cleaning the 796 MB is in
 -- the «for Miguel» list, not here.
 drop policy if exists "team can upload crm assets"  on storage.objects;

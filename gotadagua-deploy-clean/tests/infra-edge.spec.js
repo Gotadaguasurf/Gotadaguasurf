@@ -13,7 +13,8 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs'); const path = require('path');
 const { stripTypeScriptTypes } = require('node:module');
-const { loadEdge, loadModule, fakeJwt } = require('./edge-loader');
+const { loadEdge, loadModule, fakeJwt, bundle } = require('./edge-loader');
+const vm = require('vm');
 test.skip(typeof stripTypeScriptTypes !== 'function', 'needs Node 22.13+ (node:module stripTypeScriptTypes)');
 
 // ── a small PostgREST-like fake ─────────────────────────────────────────────
@@ -129,6 +130,17 @@ test('daily-backup: the cron key, the backup secret and an HQ login run it; the 
   expect(t.db.T.automation_runs[0]).toMatchObject({ job: 'daily-backup', ok: true });
   t = mk(on); expect((await t.fn.call({ headers: { Authorization: `Bearer ${ANON}`, 'x-backup-secret': 'b-secret' } })).status).toBe(200);
   t = mk(on); expect((await t.fn.call({ headers: { Authorization: 'Bearer jwt-hq' } })).status).toBe(200);
+});
+
+test('daily-backup: a service-role key of the other format passes only when the Auth admin API accepts it', async () => {
+  const other = fakeJwt({ role: 'service_role', ref: 'x' });                                    // not the key the function holds
+  for (const [answer, status] of [[200, 200], [401, 401]]) {
+    const db = fakeDb(); const asked = [];
+    const fn = loadEdge('daily-backup', { env: { ENFORCE_CALLER_CHECKS: 'true' }, createClient: clientFactory(db),
+      fetch: async (url, init) => { asked.push([String(url), init.headers.apikey]); return new Response('{}', { status: answer }); } });
+    expect((await fn.call({ headers: { Authorization: `Bearer ${other}` } })).status).toBe(status);
+    expect(asked[0]).toEqual(['https://db.example/auth/v1/admin/users?per_page=1', other]);
+  }
 });
 
 test('daily-backup: before the SQL is run (no automation_runs table) the backup still finishes', async () => {
@@ -282,6 +294,16 @@ test('drive-sync and run-month-end do nothing unless their own flag is on, even 
   r = await fn.call({ headers: { 'x-month-end-secret': 'm' }, body: {} });
   expect(r.body).toMatchObject({ ok: false, disabled: true });
   expect(db.calls.filter(c => c.op !== 'select')).toHaveLength(0);
+});
+
+// ── every function still compiles (the ones no other test loads, mail-ingest included) ──
+test('every Edge Function and its _shared imports compile', () => {
+  const dir = path.join(__dirname, '..', 'supabase', 'functions');
+  for (const name of fs.readdirSync(dir)) {
+    const f = path.join(dir, name, 'index.ts');
+    if (name.startsWith('_') || !fs.existsSync(f)) continue;
+    expect(() => new vm.Script(bundle(f), { filename: `${name}/index.ts` }), name).not.toThrow();
+  }
 });
 
 // ── every function says who may call it (SEC-19, SEC-18) ───────────────────
