@@ -151,3 +151,18 @@ test('UXC-09: a dropped connection is not «ask Miguel to run a .sql file» — 
   await expect(box).not.toContainText('supabase/');
   await expect(box.locator('button', { hasText: 'Retry' })).toBeVisible();
 });
+
+test('CH-08 / SEAM-08: the surf school has no Sri Lanka tours and a 1 € fallback rate; Portugal reads «Coliving Portugal Caparica» bookings', async ({ page }) => {
+  await openHub(page, [], { slug: 'surf-school', locations: { id: 'loc-ss', name: 'Surf School', slug: 'surf-school', currency: 'EUR', default_fx_to_eur: 1, camp_tab_mode: 'per_guest' } });
+  const r = await page.evaluate(() => ({ tours: TOUR_MENU_ITEMS.length, fx: FX_FALLBACK_THIS_LOC, pt: OV_BL_LOCATION_LABELS.portugal }));
+  expect(r.tours).toBe(0);
+  expect(r.fx).toBe(1);
+  expect(r.pt).toContain('Coliving Portugal Caparica');
+});
+
+test('UXC-12: an empty week has ONE «Import report by hand» button (the empty state\'s), not two', async ({ page }) => {
+  await openHub(page, []);
+  await page.evaluate(() => showPage('week'));
+  await expect(page.locator('#weekRoot .empty-title')).toHaveText('No guests this week', { timeout: 10000 });
+  await expect(page.locator('#weekRoot button', { hasText: 'Import report by hand' })).toHaveCount(1);
+});

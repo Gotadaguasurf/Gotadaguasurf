@@ -499,6 +499,8 @@ body{min-height:100dvh}
   .wpl-tbl tr.wpl-sel td.wpl-wk{background:var(--ocean-soft)}
   .wpl-tbl tr.wpl-future td.wpl-wk{background:var(--surface-2)}
 }
+/* the icon and the word of a header tab sit on one line (audit UXC-12) */
+.nav-btn-label{display:inline-flex;align-items:center;gap:6px}
 </style>
 </head>
 <body>
@@ -1164,7 +1166,9 @@ const TOUR_MENU_BY_LOCATION={
   // Portugal & Junior Camp don't have a fixed tour list yet — start with an
   // empty array so the Tours UI exists but the menu is editable in-app.
   portugal:[],
-  'junior-camp':[]
+  'junior-camp':[],
+  // The surf school sells no camp tours: an empty list, not Sri Lanka's (audit CH-08).
+  'surf-school':[]
 };
 const TOUR_MENU_ITEMS = (TOUR_MENU_BY_LOCATION[__HUB_LOCATION_SLUG] || TOUR_MENU_BY_LOCATION['sri-lanka']).map(t=>({...t}));
 const DRINK_MENU_ITEMS=[
@@ -1357,7 +1361,8 @@ const FX_FALLBACK_PER_EUR = {
   'portugal':    1,
   // Both forms — see LOCAL_CURRENCY_PINNED note.
   'junior-camp': 1,
-  'junior':      1
+  'junior':      1,
+  'surf-school': 1    // a euro location: never the 330 LKR fallback (CH-08)
 };
 const FX_FALLBACK_THIS_LOC = FX_FALLBACK_PER_EUR[__HUB_LOCATION_SLUG] ?? 330;
 let LOCAL_PER_EUR = (parseFloat(localStorage.getItem(FX_KEY)||'') || FX_FALLBACK_THIS_LOC);
@@ -5058,7 +5063,7 @@ let ovBookings=[];
 const OV_BL_LOCATION_LABELS={
   'sri-lanka':['Surf Camp Ahangama'],
   'morocco':['Tamraght Camp'],
-  'portugal':['Surf Camp Portugal'],
+  'portugal':['Surf Camp Portugal','Coliving Portugal Caparica'],   // = hq_booking_location_slug in SQL (SEAM-08)
   'junior-camp':['Junior Camp Caparica','Kids Camp Caparica'],
   'surf-school':['Surf School Caparica'],
 };

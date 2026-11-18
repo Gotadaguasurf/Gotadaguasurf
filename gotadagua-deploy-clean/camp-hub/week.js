@@ -943,7 +943,8 @@
       <span class="wk-count">${plural(nGuests, 'guest')}</span>
       <span class="hint wk-file">${W.meta ? `Bookinglayer report imported ${h(fileStamp(W.meta.at))}` : 'No Bookinglayer report imported yet'}</span></div>`;
     if (!nGuests && !rows.length) {
-      root.innerHTML = head + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Bookinglayer's camp report brings the guests every hour. To import by hand: the camp report, or the Guests export with the «${h(CC.preset || 'Semana Sri Lanka')}» preset.</p>
+      // The empty state has its own «Import report by hand»: the header copy goes, one button for one action (UXC-12).
+      root.innerHTML = head.replace(/<button class="btn btn-s" onclick="WeekUI\.setMode\('import'\)">[\s\S]*?<\/button>/, '') + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Bookinglayer's camp report brings the guests every hour. To import by hand: the camp report, or the Guests export with the «${h(CC.preset || 'Semana Sri Lanka')}» preset.</p>
         <button class="btn btn-p" onclick="WeekUI.setMode('import')">${ic('upload')} Import report by hand</button></div>`;
       return;
     }
