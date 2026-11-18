@@ -91,7 +91,10 @@
     const lines = kids(el, 'Line');
     const refs = []; let reason = '';
     lines.forEach(l => kids(l, 'References').forEach(r => {
-      const ref = txt(r, 'Reference'); if (ref && !refs.includes(ref)) refs.push(ref);
+      // spelt like doc_no («FT IN2/0123» → «FT IN2/123») so it meets the register row
+      const said = txt(r, 'Reference'), sp = splitDocNo(said);
+      const ref = sp ? `${sp.doc_type} ${sp.series}/${sp.number}` : said;
+      if (ref && !refs.includes(ref)) refs.push(ref);
       if (!reason) reason = txt(r, 'Reason');
     }));
     const raw = { lines: lines.length };

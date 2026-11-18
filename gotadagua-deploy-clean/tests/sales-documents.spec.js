@@ -185,6 +185,15 @@ test('saft parser: reads every invoice with its customer, status, totals and wha
 });
 
 // ── the rules (pure) ──────────────────────────────────────────────────────
+test('saft parser: a credit-note reference with leading zeros is spelt like the register row', async ({ page }) => {
+  await page.goto('about:blank');
+  await page.addScriptTag({ path: path.join(__dirname, '..', 'lib', 'saft.js') });
+  const xml = SAMPLE.replace('<Reference>FT T1/2</Reference>', '<Reference>FT T1/0002</Reference>');
+  const nc = await page.evaluate((x) => Saft.parse(x).documents.find(d => d.doc_no === 'NC T1/1'), xml);
+  expect(nc.credits_doc_no).toBe('FT T1/2');
+  expect(nc.raw.references).toEqual(['FT T1/2']);
+});
+
 const D = (doc_no, doc_date, customer_id, extra = {}) => ({ doc_no, ...Saft.splitDocNo(doc_no), doc_date, customer_id, customer_name: customer_id, customer_tax_id: '999999990', gross: 100, status: 'N', credits_doc_no: null, ...extra });
 
 test('saft rules: document numbers are normalised the same way everywhere', () => {
