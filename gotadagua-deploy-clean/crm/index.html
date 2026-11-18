@@ -2891,25 +2891,33 @@ async function setCampaignStatus(id, status){
 
 // Resume never sends blind: the emails were written when the campaign was
 // queued, weeks ago for a paused one. Show how many are waiting, since when,
-// and the first one exactly as it will go out; the person decides.
+// and the first one in the queue as stored; the person decides.
 async function openResumeCampaign(id){
   const supa = getClient();
-  const [campR, firstR, pendR, sentR] = await Promise.all([
+  const [campR, firstR, pendR, sentR, gmailR] = await Promise.all([
     supa.from('email_campaigns').select('*').eq('id', id).maybeSingle(),
+    // Same order as email-dispatch (created_at, then id): a campaign's rows
+    // are inserted together and share one created_at.
     supa.from('email_queue').select('to_email,subject,body,error,created_at')
-      .eq('campaign_id', id).eq('status','pending').order('created_at', { ascending: true }).limit(1),
+      .eq('campaign_id', id).eq('status','pending').order('created_at', { ascending: true }).order('id', { ascending: true }).limit(1),
     fetchAllRows(() => supa.from('email_queue').select('to_email,subject').eq('campaign_id', id).eq('status','pending').order('id')),
     fetchAllRows(() => supa.from('email_queue').select('to_email,subject').eq('status','sent').order('id')),
+    gmailPausedIds([id]),
   ]);
   const c = campR.data, first = (firstR.data || [])[0], pending = pendR.data || [];
   if(campR.error || !c){ toast('Could not load the campaign' + (campR.error ? ': ' + campR.error.message : '')); return; }
+  // Never resume without the preview: a failed read is not «nothing waiting».
+  const readErr = firstR.error || pendR.error || sentR.error;
+  if(readErr){ toast('Could not load the waiting emails: ' + (readErr.message || readErr)); return; }
   if(!first){ setCampaignStatus(id, 'running'); return; }   // nothing waiting: nothing to review
   const key = r => (r.to_email || '').trim().toLowerCase() + '|' + (r.subject || '').trim().toLowerCase();
   const alreadySent = new Set((sentR.data || []).map(key));
   const repeats = pending.filter(r => alreadySent.has(key(r))).length;
   const weeks = Math.floor((Date.now() - new Date(first.created_at).getTime()) / (7 * 86400000));
   const age = weeks >= 1 ? ` (${weeks} week${weeks > 1 ? 's' : ''} ago)` : '';
-  const byGmail = /^HTTP 4/.test(first.error || '');
+  // The Gmail error sits on the one row the dispatcher was sending, not
+  // necessarily on the first in the queue.
+  const byGmail = gmailR.has(id);
   const n = pending.length;
 
   document.getElementById('resumeCampaignModal')?.remove();
@@ -2929,7 +2937,7 @@ async function openResumeCampaign(id){
           ${byGmail ? `<br><span style="color:var(--red)">Gmail stopped it on ${fmtDate(c.updated_at)} (sending limit). Nothing has gone out since.</span>` : ''}
           ${repeats ? `<br><span id="resumeRepeats" style="color:var(--amber-text);font-weight:600">${repeats} of these people already received an email with this same subject.</span>` : ''}
         </div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px">First email that will go out</div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:14px 0 6px">First email in the queue</div>
         <div style="border:1px solid var(--border);border-radius:8px;background:var(--foam);padding:10px 12px;font-size:12.5px;line-height:1.55">
           <div style="color:var(--muted)">To ${escHtml(first.to_email)}</div>
           <div id="resumeSubject" style="font-weight:700;margin:2px 0 8px">${escHtml(first.subject)}</div>

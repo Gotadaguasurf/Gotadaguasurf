@@ -225,6 +225,7 @@ Deno.serve(async (req) => {
       .eq('campaign_id', campaign.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })   // rows queued together share created_at; the CRM's Resume preview uses this order
       .limit(campBudget)
     if (!rows?.length) {
       // Nothing pending → campaign is finished.

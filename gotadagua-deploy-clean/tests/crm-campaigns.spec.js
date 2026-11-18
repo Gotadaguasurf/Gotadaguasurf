@@ -162,6 +162,34 @@ test('paused by Gmail: red chip on the dashboard and in the list; Resume shows t
   await expect(page.locator('#campaignAlert')).toBeHidden();
 });
 
+// In production a campaign's rows are inserted together and share one created_at (192 and 103 rows tie on
+// the two paused ones), and the Gmail error sits on whichever row the dispatcher was sending.
+test('Resume preview: rows that share created_at, the Gmail error not on the first row; a failed read never resumes', async ({ page }) => {
+  const t = campaignTables();
+  const gq = t.email_queue.filter(q => q.campaign_id === uuid(2, 'e') && q.status === 'pending');
+  const same = gq[0].created_at;
+  gq.forEach(q => { q.created_at = same; });
+  gq[5].error = gq[0].error; gq[0].error = null;                                           // marker on a later row
+  const { tables } = await stubCrm(page, t);
+  await openCrm(page); await openCampaigns(page);
+  const card = page.locator('#campaignList > .card').nth(1);
+  await expect(card.locator('.badge-red')).toHaveText('Paused by Gmail · 201 not sent');
+  await card.locator('button', { hasText: 'Resume' }).click();
+  const modal = page.locator('#resumeCampaignModal');
+  await expect(modal).toContainText('Gmail stopped it on');
+  await expect(modal.locator('#resumeSubject')).toHaveText('Re: Surf trip for your club');  // lowest id first, as the dispatcher sends
+  await modal.locator('button', { hasText: 'Keep paused' }).click();
+
+  // the pending rows cannot be read: no preview, and the campaign stays paused
+  await page.route(/rest\/v1\/email_queue\?.*select=to_email%2Csubject%2Cbody/, r => r.fulfill({ status: 500, contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ message: 'boom' }) }));
+  await card.locator('button', { hasText: 'Resume' }).click();
+  await page.waitForTimeout(500);
+  await expect(modal).toHaveCount(0);
+  expect(tables.email_campaigns[1].status).toBe('paused');
+  expect(tables.email_queue.filter(q => q.error).length).toBe(1);
+});
+
 test('paused by Gmail: no chip when nothing is paused by Gmail', async ({ page }) => {
   const t = campaignTables();
   t.email_queue.forEach(q => { q.error = null; });
