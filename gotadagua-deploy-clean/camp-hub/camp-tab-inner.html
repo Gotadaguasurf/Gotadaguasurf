@@ -1082,7 +1082,7 @@ function queueStaffSync(){
 window.addEventListener('beforeunload',e=>{
   if(_campPendingSave){
     e.preventDefault();
-    e.returnValue='Há alterações ainda a guardar. Tem a certeza?';
+    e.returnValue='Changes are still being saved. Leave anyway?';
   }
 });
 function isGiftLine(item){

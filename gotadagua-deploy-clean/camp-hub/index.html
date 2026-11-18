@@ -1676,7 +1676,7 @@ window.addEventListener('beforeunload',e=>{
   // without warning.
   if(_pendingWeeksSave || window.__transportSavePending){
     e.preventDefault();
-    e.returnValue='Há alterações ainda a guardar. Tem a certeza?';
+    e.returnValue='Changes are still being saved. Leave anyway?';
   }
 });
 ensureRecurringDefaults();
