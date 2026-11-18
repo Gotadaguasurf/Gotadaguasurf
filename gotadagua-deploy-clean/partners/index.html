@@ -972,16 +972,22 @@ function openBalanceTotals(bookings){
 function receivedOnOpenMonths(bookings){
   const A = window.PartnerAlias;
   const key = (name, m) => A.key(name) + '||' + m;
-  const byMonth = {};
-  bookings.forEach(b => { const k = key(b.partner, getMonth(b)); (byMonth[k] = byMonth[k] || []).push(b); });
-  const open = new Set(Object.keys(byMonth).filter(k => {
-    const bs = byMonth[k];
-    return !monthIsPaid(bs[0].partner, getMonth(bs[0])) && monthSplit(bs).owedToUs > 0.004;
-  }));
-  let sum = 0;
+  const groups = {};   // company × month → worth on Paid records / on open records
+  bookings.forEach(b => { const m = getMonth(b), k = key(b.partner, m);
+    const g = groups[k] || (groups[k] = { m, recs: {} });
+    (g.recs[String(b.partner).trim().toLowerCase()] = g.recs[String(b.partner).trim().toLowerCase()] || { name: b.partner, bks: [] }).bks.push(b); });
+  const got = {};
   Object.values(partnerLedger).forEach(rows => {
     if(rows.some(r => r.kind !== 'received')) return;
-    rows.forEach(r => { if(open.has(key(r.partner_name, ledgerMonth(r)))) sum += +r.amount || 0; });
+    rows.forEach(r => { const k = key(r.partner_name, ledgerMonth(r)); got[k] = (got[k] || 0) + (+r.amount || 0); });
+  });
+  let sum = 0;
+  Object.keys(groups).forEach(k => {
+    if(!got[k]) return;
+    let paidWorth = 0, openWorth = 0;
+    Object.values(groups[k].recs).forEach(rec => { const w = monthSplit(rec.bks).owedToUs; if(monthIsPaid(rec.name, groups[k].m)) paidWorth += w; else openWorth += w; });
+    // what arrived first covers the records already marked Paid; never more than is open
+    sum += Math.min(openWorth, Math.max(0, got[k] - paidWorth));
   });
   return +sum.toFixed(2);
 }
@@ -1001,7 +1007,7 @@ function renderKPIs(id) {
   const totalRevenue = tN + directTotal; // net from partners + 100% from direct = your real take-home
   const commissionPaid = grossTotal - totalRevenue;
   document.getElementById(id).innerHTML=`
-    <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not${inBank > 0.004 ? ` · <b>${eur(inBank)}</b> of it already in the bank` : ''} · received ${eur(open.paidToUs)}</div></div>
+    <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not${inBank > 0.004 ? ` · <b>${eur(inBank)}</b> of it already in the bank` : ''} · months marked Paid ${eur(open.paidToUs)}</div></div>
     <div class="kpi"><div class="kpi-label">We still owe partners</div><div class="kpi-value kv-amber">${eur(open.toPartner)}</div><div class="kpi-sub">commission not marked Paid · paid ${eur(open.paidToPartner)}</div></div>
     <div class="kpi"><div class="kpi-label">Total gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · realized bookings, as in the HQ</div></div>
     <div class="kpi"><div class="kpi-label">Partner gross revenue</div><div class="kpi-value">${eur(tG)}</div><div class="kpi-sub">${activeMonth==='all'?'All months':monthLabel(activeMonth)}</div></div>

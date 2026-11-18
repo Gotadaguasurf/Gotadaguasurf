@@ -224,6 +224,24 @@ test('«Partners still owe us» says how much of it is already in the bank (repo
   await ctx.close();
 });
 
+test('«already in the bank»: a receipt first covers the records of the company already Paid, and never more than is open', async ({ browser }) => {
+  const tables = fixture();
+  const b0 = tables.bookings[0];
+  tables.partners.push({ ...tables.partners[0], id: 'p-sc1', name: 'SURFCAMP IT', contact_name: null }, { ...tables.partners[0], id: 'p-sc2', name: 'Surfcamp Italy', contact_name: null });
+  tables.bookings.push({ ...b0, id: 'b-sc1', booking_ref: '2026-2701', partner_name: 'SURFCAMP IT', check_in_on: '2026-08-03', month_key: '2026-08' },              // worth 800, Paid
+    { ...b0, id: 'b-sc2', booking_ref: '2026-2702', partner_name: 'Surfcamp Italy', check_in_on: '2026-08-17', month_key: '2026-08', total: 500, commission_amount: 100, net_amount: 400, raw_payload: { status: 'confirmed', due: '500', bookingSource: 'Partner' } });   // worth 400, open
+  tables.partner_month_status.push({ id: 's-sc', partner_id: 'p-sc1', month_key: '2026-08', status: 'Paid', notes: 'Paid: CGD', partners: { name: 'SURFCAMP IT' } });
+  tables.partner_ledger.push({ id: 'l-sc', partner_id: 'p-sc1', partner_name: 'SURFCAMP IT', entry_date: '2026-09-20', kind: 'received', amount: 1000, ref: 'TRF', applies_to: '2026-08', bank: 'cgd', bank_ref: 'TRF', notes: null, deleted_at: null });
+  const { ctx, page, errs } = await openPartners(browser, { tables });
+  const tile = page.locator('#kpiStrip .kpi').filter({ hasText: 'Partners still owe us' });
+  expect(await kpi(page, 'Partners still owe us')).toBe('€1,600.00');               // 1,200 Blue Wave + 400 Surfcamp Italy
+  await expect(tile.locator('.kpi-sub')).toContainText('€500.00 of it already in the bank');   // 300 + (1,000 − 800 Paid) = 200
+  await page.evaluate(() => setMonth('2026-08'));
+  await expect(tile.locator('.kpi-sub')).toContainText('€200.00 of it already in the bank');
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
+
 // ── UXC-21 (2): the money paths of the page ─────────────────────────────────
 test('statement and advance balance: who owes whom per month, and the advance credit after commission', async ({ browser }) => {
   const tables = fixture();
