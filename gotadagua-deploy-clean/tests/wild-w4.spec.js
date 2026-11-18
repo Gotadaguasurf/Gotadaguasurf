@@ -79,6 +79,8 @@ test('a commission line can be deleted (with a confirm), one row by id', async (
   await page.evaluate(() => showPage('night'));
   const del = page.locator('#commList button[title="Delete this commission line"]');
   await expect(del).toHaveCount(1);
+  // 390 px: the button sits inside the screen width without scrolling the table sideways
+  expect(await del.evaluate(b => b.getBoundingClientRect().right <= window.innerWidth && b.closest('.tbl-wrap').scrollWidth <= b.closest('.tbl-wrap').clientWidth + 1)).toBe(true);
   await del.click();
   await expect(page.locator('#toast')).toContainText('Commission deleted');
   expect(calls).toEqual([{ op: 'delete', url: expect.stringMatching(/ledger_entries\?id=eq\.c1$/) }]);

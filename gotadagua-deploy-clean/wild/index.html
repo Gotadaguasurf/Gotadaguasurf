@@ -23,6 +23,8 @@
 /* a night that lost money reads red, with a real minus (SA-23) */
 .sumbox .row.big b.neg{color:var(--red-border)}   /* light red: readable on the navy box */
 .wild-comm-del{width:auto}
+/* phones: the payment column goes so the delete button stays on screen */
+@media (max-width:700px){.wild-comm-pm{display:none}}
 </style>
 </head>
 <body>
@@ -349,7 +351,7 @@ async function saveCommission(){
 function renderCommissions(){
   const rows = ROWS.filter(r => r.category === CAT.commission).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
   const del = (r) => CAN_EDIT ? `<button class="btn btn-s btn-sm wild-comm-del" title="Delete this commission line" aria-label="Delete" onclick="deleteCommission('${esc(r.id)}')">✕</button>` : '';
-  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Paid by</th><th class="r">Amount</th>${CAN_EDIT ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td>${CAN_EDIT ? `<td class="r">${del(r)}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged yet.</div>';
+  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th class="wild-comm-pm">Paid by</th><th class="r">Amount</th>${CAN_EDIT ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td class="wild-comm-pm">${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td>${CAN_EDIT ? `<td class="r">${del(r)}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged yet.</div>';
 }
 // A mistyped commission can be taken out again (the Ledger tab that had this went on 22 Oct); the deleted row is kept in audit_log.
 async function deleteCommission(id){
