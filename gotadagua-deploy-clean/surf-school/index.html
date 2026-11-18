@@ -950,25 +950,33 @@ function updateReturnPreview(){
 }
 
 // ── Rentals ──────────────────────────────────────────────────────
-async function loadRentals(){
-  const { data, error } = await sb.from('surf_school_rentals')
-    .select('id, kind, student_name, student_email, id_card_number, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted, customer_type, rental_type, duration, items, start_time, expected_return_at')
-    .eq('location_id', LOCATION_ID)
-    .order('opened_at', { ascending:false })
-    .limit(500);
-  if (error) { toast('Rentals load failed: '+error.message, 'err'); return; }
-  ALL_RENTALS = data || [];
-  // Resolve staff names in the background so history/open show who
-  // opened/closed each row.
-  const uids = [...new Set(ALL_RENTALS.flatMap(r => [r.opened_by, r.closed_by]).filter(Boolean))];
+const RENTAL_COLS = 'id, kind, student_name, student_email, id_card_number, item_id, item_name, qty, price_local, currency, payment_method, opened_at, opened_by, closed_at, closed_by, is_returned, ledger_entry_id, terms_accepted, customer_type, rental_type, duration, items, start_time, expected_return_at';
+// Staff names for «By …» / «Returned by …» on any list of rentals.
+async function resolveProfileNames(rows){
+  const uids = [...new Set((rows || []).flatMap(r => [r.opened_by, r.closed_by]).filter(Boolean))];
   const missing = uids.filter(id => !PROFILE_NAMES.has(id));
-  if (missing.length) {
-    try {
-      const { data: profs } = await sb.from('platform_profiles').select('id, full_name, email').in('id', missing);
-      (profs||[]).forEach(p => { PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown'); if (p.email) PROFILE_EMAILS.set(p.id, p.email); });
-      missing.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
-    } catch { missing.forEach(id => PROFILE_NAMES.set(id, 'Unknown')); }
-  }
+  if (!missing.length) return;
+  try {
+    const { data: profs } = await sb.from('platform_profiles').select('id, full_name, email').in('id', missing);
+    (profs||[]).forEach(p => { PROFILE_NAMES.set(p.id, p.full_name || p.email || 'Unknown'); if (p.email) PROFILE_EMAILS.set(p.id, p.email); });
+    missing.forEach(id => { if (!PROFILE_NAMES.has(id)) PROFILE_NAMES.set(id, 'Unknown'); });
+  } catch { missing.forEach(id => PROFILE_NAMES.set(id, 'Unknown')); }
+}
+// What «Boards out» and «Camp» need: EVERYTHING still out, however old, plus what came back in the last 24 h
+// (the «Reopen» strips). It used to be «the latest 500 entries», so a board out for longer than that window
+// would have left the screen (audit 18 Nov 2026, UXC-05). History reads its own period from the server.
+async function loadRentals(){
+  const dayAgo = new Date(Date.now() - 24*60*60*1000).toISOString();
+  let rows;
+  try {
+    rows = await AppShell.fetchAll(() => sb.from('surf_school_rentals')
+      .select(RENTAL_COLS)
+      .eq('location_id', LOCATION_ID)
+      .or(`is_returned.eq.false,closed_at.gte.${dayAgo}`)
+      .order('opened_at', { ascending:false }).order('id', { ascending:true }));
+  } catch (error) { toast('Rentals load failed: '+(error?.message || 'no connection'), 'err'); return; }
+  ALL_RENTALS = rows;
+  await resolveProfileNames(ALL_RENTALS);
   const openCount = ALL_RENTALS.filter(r => r.kind === 'rental' && !r.is_returned).length;
   document.getElementById('openBadge').textContent = openCount;
   // Camp badge counts BOARDS (qty), not rows — that's the number staff
@@ -1346,7 +1354,15 @@ function exportClientsCsv(){
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-function renderHistory(){
+// History asks the server for the type and period picked, newest first, 300 at a time, with the real total.
+// It used to filter the latest 500 entries held in memory: «All time» stopped at 17 Sep 2026 and said
+// «300 of 500» with 1,854 in the database (audit 18 Nov 2026, UXC-05 / SA-21).
+const HISTORY_PAGE = 300;
+let HISTORY_ROWS = [];
+let HISTORY_TOTAL = 0;
+let HISTORY_SEQ = 0;
+let HISTORY_KEY = '';
+async function renderHistory(more){
   const kindF = document.getElementById('filt_kind')?.value || 'all';
   const periodF = document.getElementById('filt_period')?.value || 'week';
   const cutoff = (() => {
@@ -1357,19 +1373,39 @@ function renderHistory(){
     else return null;
     return d.toISOString();
   })();
-
-  const rows = ALL_RENTALS.filter(r => {
-    if (kindF !== 'all' && r.kind !== kindF) return false;
-    if (cutoff && String(r.opened_at) < cutoff) return false;
-    return true;
-  });
   const list = document.getElementById('historyList');
+  const seq = ++HISTORY_SEQ;
+  // «Show more» adds a page; a refresh (new rental, return, delete) keeps as many rows as were on screen;
+  // another type or period starts again at the newest 300.
+  const key = kindF + '|' + periodF;
+  const from = more === true ? HISTORY_ROWS.length : 0;
+  const size = more === true ? HISTORY_PAGE : (key === HISTORY_KEY ? Math.max(HISTORY_PAGE, HISTORY_ROWS.length) : HISTORY_PAGE);
+  if (key !== HISTORY_KEY) HISTORY_ROWS = [];
+  HISTORY_KEY = key;
+  if (!from && !HISTORY_ROWS.length) list.innerHTML = '<div class="card"><div class="loading">Loading…</div></div>';
+  let q = sb.from('surf_school_rentals').select(RENTAL_COLS, { count:'exact' }).eq('location_id', LOCATION_ID);
+  if (kindF !== 'all') q = q.eq('kind', kindF);
+  if (cutoff) q = q.gte('opened_at', cutoff);
+  let res;
+  try { res = await q.order('opened_at', { ascending:false }).order('id', { ascending:true }).range(from, from + size - 1); }
+  catch (e) { res = { error: e }; }
+  if (seq !== HISTORY_SEQ) return;                       // a newer choice of type / period is already loading
+  if (res.error) {
+    list.innerHTML = `<div class="status-msg status-err">Couldn't load the history: ${escapeHtml(res.error.message || 'no connection')}</div>`;
+    HISTORY_ROWS = [];
+    return;
+  }
+  HISTORY_ROWS = (from ? HISTORY_ROWS : []).concat(res.data || []);
+  HISTORY_TOTAL = Math.max(Number(res.count) || 0, HISTORY_ROWS.length);
+  await resolveProfileNames(HISTORY_ROWS);
+  if (seq !== HISTORY_SEQ) return;
+  const rows = HISTORY_ROWS;
   if (!rows.length) {
     list.innerHTML = emptyCard('Nothing in this period.', 'Change the type or the period above.');
     return;
   }
   const now = Date.now();
-  list.innerHTML = rows.slice(0, 300).map(r => {
+  list.innerHTML = rows.map(r => {
     const openedDate = new Date(r.opened_at);
     const dateLbl = openedDate.toLocaleDateString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
     const staff = PROFILE_NAMES.get(r.opened_by) || 'Unknown';
@@ -1405,12 +1441,21 @@ function renderHistory(){
       </div>
       ${delBtn}
     </div>`;
-  }).join('') + (rows.length > 300 ? `<div class="list-note">Showing 300 of ${rows.length}. Narrow the filters to see more.</div>` : '');
+  }).join('') + (HISTORY_TOTAL > rows.length
+    ? `<div class="list-note">Showing the latest ${rows.length} of ${HISTORY_TOTAL}. <button class="btn btn-s btn-sm" type="button" onclick="renderHistory(true)">Show ${Math.min(HISTORY_PAGE, HISTORY_TOTAL - rows.length)} more</button></div>`
+    : (rows.length > HISTORY_PAGE ? `<div class="list-note">All ${rows.length} shown.</div>` : ''));
 }
 
 // Hard-delete a rental + its ledger revenue line. Guarded by
 // CAN_EDIT_HISTORY on the client and by RLS on the server. Requires
 // the staff member to retype the student's first name to confirm.
+// The button used to throw before deleting anything: the page called .catch() on a Supabase query, which
+// does not exist (audit 18 Nov 2026, SA-02). Now, in the order the database is known to accept:
+//   1. the revenue line, when the entry has one — the database then removes the rental with it
+//      (tr_ledger_cascade_surf_rental; the same path as deleting the line in the camp hub Ledger);
+//      if the database removes no line (the account may not delete), stop there;
+//   2. the rental itself when it has no revenue line (boards still out, camp groups) or is still there;
+//   3. a look to confirm it is gone, so «Deleted» is only said when it is true.
 async function deleteRental(id, studentName){
   if (!CAN_EDIT_HISTORY) { toast('Not allowed', 'err'); return; }
   const first = String(studentName||'').trim().split(/\s+/)[0] || '';
@@ -1420,13 +1465,29 @@ async function deleteRental(id, studentName){
     toast('Name didn\'t match — delete cancelled', 'err');
     return;
   }
-  // Fetch the row so we can nuke the ledger_entry_id too.
-  const row = ALL_RENTALS.find(r => r.id === id);
-  if (row?.ledger_entry_id) {
-    await sb.from('ledger_entries').delete().eq('id', row.ledger_entry_id).catch(()=>{});
+  const NOT_ALLOWED = "Not deleted — this account can't delete entries. Ask Miguel.";
+  const stillThere = async () => {
+    const { data, error } = await sb.from('surf_school_rentals').select('id').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return !!data;
+  };
+  try {
+    const { data: row, error: readErr } = await sb.from('surf_school_rentals').select('id, ledger_entry_id').eq('id', id).maybeSingle();
+    if (readErr) throw readErr;
+    if (row?.ledger_entry_id) {
+      const { error, count } = await sb.from('ledger_entries').delete({ count:'exact' }).eq('id', row.ledger_entry_id);
+      if (error) throw error;
+      if (!count) { toast(NOT_ALLOWED, 'err'); return; }      // no error and nothing removed = the database refused
+    }
+    if (row && await stillThere()) {
+      const { error } = await sb.from('surf_school_rentals').delete().eq('id', id);
+      if (error) throw error;
+      if (await stillThere()) { toast(NOT_ALLOWED, 'err'); return; }
+    }
+  } catch (e) {
+    toast('Not deleted: ' + (e?.message || 'no connection'), 'err');
+    return;
   }
-  const { error } = await sb.from('surf_school_rentals').delete().eq('id', id);
-  if (error) { toast('Delete failed: '+error.message, 'err'); return; }
   toast('Deleted', 'ok');
   await loadRentals();
   renderHistory();
@@ -1541,9 +1602,19 @@ async function saveEntry(){
     is_returned: CURRENT_KIND !== 'rental',
     closed_at: CURRENT_KIND !== 'rental' ? nowIso : null
   };
-  const { error: rentalErr } = await sb.from('surf_school_rentals').insert(rentalPayload);
+  // One write: the rental. The revenue line is made by the database in the same step, so when the database
+  // refuses it NOTHING was saved — no rental and no payment (audit 18 Nov 2026, SA-01: the message used to say
+  // «Payment saved… don't enter it again»). The form stays filled so Save can be tapped again.
+  let rentalErr = null;
+  try { ({ error: rentalErr } = await sb.from('surf_school_rentals').insert(rentalPayload)); }
+  catch (e) { rentalErr = e; }
   if (rentalErr) {
-    toast("Payment saved, but the rental didn't. Don't enter it again — tell a manager. (" + rentalErr.message + ')', 'err');
+    // The database answered with an error (it has a code) → nothing was saved. No answer at all (connection
+    // dropped) → it may or may not have arrived, so look at the list before saving again.
+    const answered = !!(rentalErr.code && String(rentalErr.code).trim());
+    toast(answered
+      ? 'Not saved — nothing was recorded. Tap Save again. (' + rentalErr.message + ')'
+      : 'Not sure it saved — the connection dropped. Check Boards out / Camp before saving again. (' + (rentalErr.message || 'no connection') + ')', 'err');
     btn.disabled = false; btn.textContent = 'Save rental';
     return;
   }
@@ -1831,7 +1902,8 @@ function toast(msg, kind){
   const el = document.getElementById('toast');
   el.className = 'toast show ' + (kind||'');
   el.textContent = msg;
-  setTimeout(() => el.className = 'toast', 2500);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.className = 'toast', kind === 'err' ? 8000 : 2500);
 }
 
 // Realtime — new rentals / returns fire on any device using this page.
