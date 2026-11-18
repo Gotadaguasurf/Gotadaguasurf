@@ -2069,7 +2069,7 @@ function markCampcloseDeleted(id){
     if(!client||!locationId) return;
     client.from('location_state_store')
       .upsert({location_id:locationId,state_key:DELETED_CAMPCLOSE_KEY,state_json:[...deletedCampcloseIds],updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'})
-      .then(({error})=>{ if(error) console.warn('[Hub] failed to save deleted campclose ids',error); });
+      .then(({error})=>{ if(error) handleLedgerSupabaseError('deleted week rows list save failed',error); });
   }).catch(()=>{});
 }
 async function loadDeletedCampcloseIds(){
@@ -2077,7 +2077,7 @@ async function loadDeletedCampcloseIds(){
     const data=await loadStateStore(DELETED_CAMPCLOSE_KEY,{throwOnError:true});
     if(Array.isArray(data)) deletedCampcloseIds=new Set(data);
     DELETED_CAMPCLOSE_LOADED=true;
-  }catch(e){console.warn('[Hub] loadDeletedCampcloseIds failed',e);}
+  }catch(e){handleLedgerSupabaseError('deleted week rows list load failed',e,{action:'load',background:true});}
   // Also load from localStorage as fast fallback (survives page refresh before Supabase responds)
   try{
     const local=localStorage.getItem('hub_deleted_campclose_local'+__HUB_LOC_SUFFIX);
@@ -2107,7 +2107,7 @@ function notifyLedgerChanged(){
     if(!client||!locationId) return;
     client.from('location_state_store')
       .upsert({location_id:locationId,state_key:HUB_LEDGER_TS_KEY,state_json:{ts:Date.now()},updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'})
-      .then(({error})=>{ if(error) console.warn('[Hub] notifyLedgerChanged failed',error); });
+      .then(({error})=>{ if(error) handleLedgerSupabaseError('notifyLedgerChanged failed',error,{action:'notify',background:true}); });
   }).catch(()=>{});
 }
 let HUB_REALTIME_CHANNEL=null;
@@ -2147,7 +2147,7 @@ function subscribeHubRealtime(){
         if(snuckBack.length){
           S.ledger=S.ledger.filter(e=>!deletedCampcloseIds.has(String(e.id||'')));
           save_mem();
-          snuckBack.forEach(e=>deleteLedgerEntryFromSupabase(e.id).catch(()=>{}));
+          snuckBack.forEach(e=>deleteLedgerEntryFromSupabase(e.id).catch(err=>handleLedgerSupabaseError('deleted week row re-delete failed',err,{action:'delete',background:true})));
           renderExpenses();renderOverview();renderWeeklyPL();
         }
       } else if(key===HUB_LEDGER_TS_KEY){
@@ -2454,7 +2454,7 @@ function handleLedgerSupabaseError(context,error,{action='save',background=false
   // Every failure says why, in the database's own words (audit CH-03): until 18 Nov 2026
   // only the first error of a session reached the screen, so a background failure at boot
   // used up the one message and every later refused save was silent.
-  const lead=action==='delete'?'Not deleted':action==='load'?"Couldn't load the latest data":'Not saved';
+  const lead=action==='delete'?'Not deleted':action==='load'?"Couldn't load the latest data":action==='notify'?'Saved, but other devices were not told (they see it after a refresh)':'Not saved';
   const text=`${lead}: ${msg}`;
   HUB_LAST_ERROR_TEXT=text;
   // Something the page did on its own (boot, heal, realtime refresh): once per distinct message.
@@ -2691,7 +2691,7 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
       HUB_SUPPRESS_LEDGER_RT=true;
       for(const row of ghosts){
         try{ await deleteLedgerEntryFromSupabase(row.id); }
-        catch(err){ console.warn('[Hub] ghost re-delete failed',row.id,err); }
+        catch(err){ handleLedgerSupabaseError('ghost re-delete failed',err,{action:'delete',background:true}); }
       }
       setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
     }
@@ -4477,7 +4477,7 @@ async function reconcileClosedWeeksWithLedger(history){
     HUB_SUPPRESS_LEDGER_RT=true;
     for(const entry of toRemove){
       try{await deleteLedgerEntryFromSupabase(entry.id);}
-      catch(e){console.warn('[Hub] old-format duplicate delete failed',entry.id,e);}
+      catch(e){handleLedgerSupabaseError('old-format duplicate delete failed',e,{action:'delete',background:true});}
     }
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
@@ -4569,7 +4569,7 @@ async function removeOrphanedClosedWeekEntries(history){
   HUB_SUPPRESS_LEDGER_RT=true;
   for(const entry of orphaned){
     try{ await deleteLedgerEntryFromSupabase(entry.id); }
-    catch(e){ console.warn('[Hub] orphan ledger delete failed',entry.id,e); }
+    catch(e){ handleLedgerSupabaseError('orphan ledger delete failed',e,{action:'delete',background:true}); }
   }
   setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   renderExpenses();renderOverview();renderWeeklyPL();
@@ -5009,7 +5009,7 @@ function unmarkCampcloseDeleted(id){
     if(!client||!locationId) return;
     client.from('location_state_store')
       .upsert({location_id:locationId,state_key:DELETED_CAMPCLOSE_KEY,state_json:[...deletedCampcloseIds],updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'})
-      .then(({error})=>{ if(error) console.warn('[Hub] failed to save unmarked campclose ids',error); });
+      .then(({error})=>{ if(error) handleLedgerSupabaseError('deleted week rows list save failed',error); });
   }).catch(()=>{});
 }
 async function removeClosedWeekIncome(payload={}){

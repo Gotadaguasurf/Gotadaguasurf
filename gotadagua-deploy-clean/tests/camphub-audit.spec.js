@@ -1,4 +1,4 @@
-// Camp hub — audit of 18 Nov 2026 (findings CH-01, CH-02, CH-03, CH-09).
+// Camp hub — audit of 18 Nov 2026 (findings CH-01, CH-02, CH-03, CH-09; cash counts under CH-03).
 //
 //  · CH-03  every failed save says why (the database's own words), every time;
 //           the red «tap to retry» pill really sends the change again; a delete
@@ -51,7 +51,7 @@ async function fakeStaffSession(page, email) {
 //   db.failDeletes  → 'error' (403 + message) or 'silent' (200, nothing removed: what RLS does)
 //   db.failState    → every location_state_store write is refused
 //   db.failLedgerRead → the ledger cannot be read
-async function openHub(page, { rows = fixture(), query = '', staff = null, savedBookings = null } = {}) {
+async function openHub(page, { rows = fixture(), query = '', staff = null, savedBookings = null, countsError = null, countsOn = false } = {}) {
   const db = { rows: rows.map(r => ({ ...r })), failWrites: false, failDeletes: '', failState: false, failLedgerRead: false, requests: [] };
   await page.route(/api\.frankfurter\.dev/, route => route.abort());
   await page.route(/supabase\.co\/(auth|rest|realtime|functions|storage)\/v1\/.*/, async route => {
@@ -61,6 +61,7 @@ async function openHub(page, { rows = fixture(), query = '', staff = null, saved
     db.requests.push({ method, table, url, body: method === 'GET' ? null : req.postData() });
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: staff ? staff.email : 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (!table) return json({});
+    if (table === 'camp_cash_counts' && countsError) return json(countsError.body, countsError.status);
     if (table === 'ledger_entries') {
       const idEq = (url.match(/[?&]id=eq\.([^&]+)/) || [])[1];
       if (method === 'GET') {
@@ -97,6 +98,7 @@ async function openHub(page, { rows = fixture(), query = '', staff = null, saved
     return json([]);
   });
   page.on('dialog', d => d.accept());
+  if (countsOn) await page.addInitScript(() => { window.CAMP_CASH_COUNTS = true; });
   if (staff) await fakeStaffSession(page, staff.email); else await fakeOwnerSession(page);
   await page.goto('/camp-hub/?location=sri-lanka' + query, { waitUntil: 'domcontentloaded' });
   return db;
@@ -255,6 +257,45 @@ test('camp hub: a transport preset the database refuses is not applied and not s
   await expect(page.locator('#toast')).toContainText('Not saved');
   await expect(page.locator('#toast')).toContainText('permission denied');
   expect((await pill(page)).failed).toBe(true);
+});
+
+test('camp hub: background writes and deletes the page does on its own say why too (once per message)', async ({ page }) => {
+  const db = await openHub(page);
+  await hydrated(page);
+  const shown = [];
+  await page.exposeFunction('__toastSeen', t => { shown.push(t); });
+  await page.evaluate(() => { const orig = toast; toast = (msg, kind) => { window.__toastSeen(String(msg)); return orig(msg, kind); }; });
+  // «other devices were told» ping refused: the entry itself is saved, so it never says «Not saved»
+  db.failState = true;
+  await page.evaluate(() => { notifyLedgerChanged(); notifyLedgerChanged(); });
+  await expect.poll(() => shown.filter(t => t.startsWith('Saved, but other devices were not told')).length).toBe(1);
+  expect(shown.some(t => t.startsWith('Not saved'))).toBe(false);
+  // the list of deleted week rows, refused: said
+  await page.evaluate(() => markCampcloseDeleted('00000000-0000-4000-8000-0000000000ff'));
+  await expect.poll(() => shown.some(t => t.startsWith('Not saved') && t.includes('permission denied'))).toBe(true);
+});
+
+test('cash counts: a load the database refuses is said, in its own words', async ({ page }) => {
+  await openHub(page, { countsError: { status: 500, body: { message: 'JWT expired', code: 'PGRST301' } } });
+  await hydrated(page);
+  await expect(page.locator('#toast')).toContainText("Couldn't load the latest data: JWT expired");
+});
+
+test('cash counts: «table not created yet» is not an error; a validation message in the count sheet is a red toast', async ({ page }) => {
+  await openHub(page, { countsOn: true, countsError: { status: 404, body: { code: 'PGRST205', message: "Could not find the table 'public.camp_cash_counts' in the schema cache" } } });
+  await hydrated(page);
+  await page.waitForFunction(() => window.CampCash && CampCash.state.loaded === true);
+  expect(await toastText(page)).toBe('');
+  await page.evaluate(() => { CampCash.state.available = true; CampCash.openCount(); });
+  const ov = page.locator('#cashCountOv');
+  await ov.locator('#ccBar').fill('61600');
+  await ov.getByRole('button', { name: 'Next' }).click();
+  await ov.locator('#ccPocket').fill('300000');
+  await ov.getByRole('button', { name: 'Next' }).click();
+  await ov.getByRole('button', { name: 'I took cash' }).click();
+  await ov.getByRole('button', { name: 'Next' }).click();
+  await expect(page.locator('#toast')).toHaveText('Enter the amount you took');
+  await expect(page.locator('#toast')).toHaveClass(/err/);   // was a plain 2-second note
 });
 
 // ── CH-01 / CH-02 ────────────────────────────────────────────────────────────
