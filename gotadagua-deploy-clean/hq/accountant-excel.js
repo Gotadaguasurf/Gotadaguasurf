@@ -13,6 +13,7 @@
     'Não': 'FFFFC7CE', 'SEM DOCUMENTO': 'FFFFC7CE',
     'Não existe': 'FFE7E6E6', 'Não é despesa': 'FFE7E6E6',
     'A REVER': 'FFFFEB9C',
+    'Anulada': 'FFE7E6E6',          // folha «Vendas»: documento anulado
   };
   const fill = (argb) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
   const thin = { style: 'thin', color: { argb: LINE } };

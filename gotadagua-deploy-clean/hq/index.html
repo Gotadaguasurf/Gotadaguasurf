@@ -233,6 +233,22 @@ td.loc-name{font-weight:600;color:var(--navy)}
 .fecho-check input{width:18px;height:18px;margin:0;flex:0 0 auto;cursor:pointer;accent-color:var(--ocean)}
 .fecho-check span{flex:1;font-size:14px;cursor:pointer}
 .fecho-check.done span:first-of-type{color:var(--green)}
+/* month close · sales documents (read-only register from the InvoiceXpress SAF-T) */
+.sd-line{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.5}
+.sd-line b{color:var(--navy)}
+.sd-line .sd-part{white-space:nowrap}
+.sd-line .sd-warn{color:var(--amber);font-weight:700}
+.sd-more{margin-top:var(--sp-3)}
+.sd-more summary{cursor:pointer;color:var(--ocean);font-size:13px;font-weight:600;width:fit-content}
+.sd-group{margin-top:var(--sp-4)}
+.sd-group-title{font-size:13px;font-weight:700;color:var(--navy)}
+.sd-row{display:flex;flex-wrap:wrap;gap:2px var(--sp-3);align-items:baseline;padding:var(--sp-2) 0;border-bottom:1px solid var(--border);font-size:13px}
+.sd-row:last-child{border-bottom:none}
+.sd-row .mono{white-space:nowrap;color:var(--navy)}
+.sd-row .sd-who{flex:1;min-width:140px;overflow-wrap:anywhere}
+.sd-row .num{white-space:nowrap;margin-left:auto}
+#sd_msg:not(:empty){margin-bottom:var(--sp-3);overflow-wrap:anywhere}
+@media (max-width:640px){ .sd-row .sd-who{order:3;flex-basis:100%} }   /* phone: number · date · amount, then who */
 /* my tasks (owners): one card per source, phone first */
 .mt-block{margin-bottom:var(--sp-6)}
 .mt-block-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 var(--sp-2)}
@@ -358,6 +374,7 @@ AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tab
 <script src="/owner-config.js"></script>
 <script src="/lib/credit-notes.js"></script>
 <script src="/lib/expense-form.js"></script>
+<script src="/lib/saft.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script src="/hq/my-tasks.js"></script>
 <script src="/hq/cash-position.js"></script>
@@ -2582,8 +2599,11 @@ function parseSantanderRows(aoa, transferRefs){
 
 // Pure: data in, sheets out. Kept free of XLSX and of the DOM so the
 // smoke suite can check the numbers without downloading anything.
-function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices, folders, bankUnmatched, creditNotes }){
+function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices, folders, bankUnmatched, creditNotes, salesDocs }){
   const cn = creditNotes || CreditNotes.EMPTY();   // «Tipo» and «Anula doc.» — the last two columns of every expense sheet
+  // Sales documents register (InvoiceXpress SAF-T, lib/saft.js): its own sheet, only when the period has rows.
+  const sd = (typeof Saft !== 'undefined' && Array.isArray(salesDocs)) ? salesDocs : [];
+  const sdTot = sd.length ? Saft.vendasTotals(sd) : null;
   // Rows paid by another company (Wave Movements, MGPR) are not this
   // accountant's books: counted in the summary, left out of the sheets.
   const outras = (invoices||[]).filter(r => r.paying_company && r.paying_company !== 'water-movements');
@@ -2671,6 +2691,16 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['Faturas', pi.length],
       ['Total c/ IVA (EUR)', sum(pi, r => r.amount)],
       ['',''],
+      ...(sd.length ? [
+        ['VENDAS (documentos emitidos no InvoiceXpress)',''],
+        ['Faturas emitidas', sdTot.invoices],
+        ['Notas de crédito', sdTot.creditNotes],
+        ['Anuladas (não contam nos totais)', sdTot.cancelled],
+        ['Faturas menos notas de crédito, s/ IVA (EUR)', sdTot.net],
+        ['IVA liquidado (EUR)', sdTot.tax],
+        ['Faturas menos notas de crédito, c/ IVA (EUR)', sdTot.gross],
+        ['',''],
+      ] : []),
       ['TRANSFERÊNCIAS PARA OS CAMPS (não são despesa)',''],
       ['Transferências', tr.length],
       ['Total (EUR)', sum(tr, t => t.amount_eur ?? t.amount)],
@@ -2702,7 +2732,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   };
   return {
     fileName: `Contabilista_WaterMovements_${period.slug}.xlsx`,
-    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length, faturasParceiros: pi.length, bancoSem: bu.length },
+    stats: { linhas: inv.length, semDocumento: missing.length, aRever: review.length, totalEur: sum(inv, r => r.amount_eur), banco: bankList.length, transferencias: tr.length, faturasParceiros: pi.length, bancoSem: bu.length, vendas: sd.length },
     sheets: [
       resumo,
       checklist,
@@ -2722,6 +2752,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
         links: pi.map((r,i) => r.drive_link ? { r: i+1, c: 6, url: r.drive_link } : null).filter(Boolean),
         totalCol: 5,
       },
+      ...(sd.length ? [Saft.vendasSheet(sd)] : []),
       {
         name: 'Extrato Santander', header: ['Data','Descrição','Montante','Saldo','Tipo'],
         widths: [11,60,12,12,26],
@@ -2834,6 +2865,17 @@ function fechoTabHtml(){
     <div id="fecho_kpis" class="summary-grid"></div>
     <div id="fechoMail"></div>
     <div id="fechoBanks"><div class="card"><div class="card-body loading">Loading…</div></div></div>
+    <div class="card" id="fechoSales">
+      <div class="card-hdr">
+        <div>
+          <div class="card-title">Sales documents</div>
+          <div class="card-hint">Invoices and credit notes issued in InvoiceXpress. Read-only: nothing is created or changed here.</div>
+        </div>
+        <button class="btn btn-s" id="sd_btn" onclick="$('sd_file').click()">${ic('upload')} Import SAF-T (.xml)</button>
+        <input id="sd_file" type="file" accept=".xml,text/xml,application/xml" style="display:none" onchange="salesDocsFileChosen(this)">
+      </div>
+      <div class="card-body"><div id="sd_msg"></div><div id="sd_body" class="hint">Loading…</div></div>
+    </div>
     <div class="card" id="fechoSend">
       <div class="card-hdr">
         <div>
@@ -2850,6 +2892,89 @@ function fechoTabHtml(){
     </div>
     <div id="fechoNoInv" style="margin:var(--sp-2) 0 var(--sp-5)"></div>`;
 }
+// ── Sales documents (18 Nov 2026) — a read-only register of what InvoiceXpress issued,
+//    filled from its SAF-T file. Parser and month rules: lib/saft.js; table and the two
+//    functions: supabase/sales-documents.sql. The app never creates or edits an invoice.
+//    Until the SQL has run the card says so quietly and the rest of the tab is untouched.
+let SALES = { seq: 0, busy: false };
+function salesDocsNotSetUp(error){ return ['PGRST202','PGRST205','42883','42P01'].includes(error?.code) || /could not find|does not exist|schema cache/i.test(String(error?.message || '')); }
+function salesDocsSay(kind, text){ const el = $('sd_msg'); if (el) el.innerHTML = text ? `<div class="status-msg status-${kind}">${esc(text)}</div>` : ''; }
+function salesDocsBusy(on){ const b = $('sd_btn'); if (b) b.disabled = !!on; }
+async function renderSalesDocs(){
+  const box = $('sd_body'); if (!box) return;
+  const month = $('fecho_mes')?.value || fechoDefaultMonth();
+  const seq = ++SALES.seq;
+  let facts = null, error = null;
+  try { ({ data: facts, error } = await sb.rpc('sales_documents_month', { p_month: month })); } catch (e) { error = e; }
+  if (seq !== SALES.seq || !$('sd_body')) return;
+  if (error) {
+    box.className = 'hint';
+    box.textContent = salesDocsNotSetUp(error) ? 'Not switched on yet — run supabase/sales-documents.sql once, then import the SAF-T here.' : 'Could not read the sales documents: ' + (error.message || error.code || String(error));
+    return;
+  }
+  try { box.innerHTML = salesDocsHtml(Saft.monthSummary(facts, month)); box.className = ''; }
+  catch (e) { box.className = 'hint'; box.textContent = 'Could not show the sales documents: ' + (e.message || String(e)); }
+}
+function salesDocsHtml(s){
+  const label = fechoMonthLabel(s.month).split(' ')[0];
+  if (s.empty) return `<div class="hint">No sales file imported for ${esc(label)} — export the SAF-T in InvoiceXpress (Contabilidade → SAF-T) and import it here.</div>`;
+  const part = (text, n) => `<span class="sd-part${n ? ' sd-warn' : ''}">${text}</span>`;
+  const parts = Saft.summaryParts(s);
+  const tip = [s.coveredUntil ? `Register covers up to ${fmtDia(s.coveredUntil)}` : '', s.lastImport?.file ? `last file ${s.lastImport.file}` : ''].filter(Boolean).join(' · ');
+  const line = `<div class="sd-line" id="sd_line" title="${esc(tip)}"><b>${esc(label)}:</b> ${part(parts[0])} · ${part(parts[1])} · ${part(parts[2], s.gaps.length)} · ${part(parts[3], s.toCheck)}</div>`;
+  if (!s.gaps.length && !s.toCheck) return line;
+  const doc = (d, extra) => `<div class="sd-row"><span class="mono">${esc(d.doc_no)}</span><span>${fmtDia(d.doc_date)}</span><span class="sd-who">${esc(d.customer_name || '')}${extra ? ` <span class="hint">· ${esc(extra)}</span>` : ''}</span><span class="num">${eur(d.gross)}</span></div>`;
+  const group = (n, title, rows) => n ? `<div class="sd-group"><div class="sd-group-title">${n} ${esc(title)}</div>${rows.join('')}</div>` : '';
+  return line + `<details class="sd-more"${s.gaps.length + s.toCheck <= 6 ? ' open' : ''}><summary>What to check</summary>
+    ${group(s.gaps.length, s.gaps.length === 1 ? 'gap in the numbering' : 'gaps in the numbering', s.gaps.map(g => `<div class="sd-row"><span class="mono">${esc(Saft.gapLabel(g))}</span><span class="sd-who hint">not in the file, before ${esc(g.next)}</span></div>`))}
+    ${group(s.creditNoInvoice.length, s.creditNoInvoice.length === 1 ? 'credit note whose invoice is not in the register' : 'credit notes whose invoice is not in the register', s.creditNoInvoice.map(x => doc(x.doc, x.none ? 'credits no invoice' : 'credits ' + x.missing.join(', '))))}
+    ${group(s.cancelledNoReissue.length, `cancelled with no new invoice to the same customer within ${Saft.REISSUE_DAYS} days`, s.cancelledNoReissue.map(d => doc(d)))}
+    ${group(s.notOnPartners.length, s.notOnPartners.length === 1 ? 'partner invoice in the file not yet on Partners' : 'partner invoices in the file not yet on Partners', s.notOnPartners.map(d => doc(d)))}
+    ${group(s.notInFile.length, s.notInFile.length === 1 ? 'invoice on Partners to confirm' : 'invoices on Partners to confirm', s.notInFile.map(p => `<div class="sd-row"><span class="mono">${esc(p.invoice_number)}</span><span>${fmtDia(p.invoice_date)}</span><span class="sd-who">${esc(p.partner_name || '')} <span class="hint">· ${esc(p.why)}</span></span><span class="num">${eur(p.amount)}</span></div>`))}
+  </details>`;
+}
+async function salesDocsFileChosen(inp){
+  const file = inp.files && inp.files[0]; inp.value = '';
+  if (!file || SALES.busy) return;
+  SALES.busy = true; salesDocsBusy(true);
+  let saved = 0;
+  try {
+    if (file.size > 60 * 1024 * 1024) throw new Error('File is over 60 MB — export one month at a time.');
+    salesDocsSay('info', `Reading ${file.name}…`);
+    await new Promise(r => setTimeout(r, 30));          // let the message paint before the big parse
+    const out = await Saft.parseAsync(Saft.decode(await file.arrayBuffer()), { onProgress: (n, of) => salesDocsSay('info', `Reading ${file.name}… ${n} of ${of} documents`) });
+    const nif = Saft.COMPANY_NIF['water-movements'];
+    if (out.company.tax_id !== nif) throw new Error(`This file is from ${out.company.name || 'another company'} (NIF ${out.company.tax_id || 'unknown'}). Only Water Movements (${nif}) is imported here.`);
+    if (!out.documents.length) throw new Error('No sales documents in this file.');
+    const tot = { new: 0, changed: 0, unchanged: 0 };
+    for (const batch of Saft.batches(out.documents)) {
+      salesDocsSay('info', `Saving ${Math.min(saved + batch.length, out.documents.length)} of ${out.documents.length} documents…`);
+      const { data, error } = await sb.rpc('sales_documents_import', { p_rows: batch, p_file_name: file.name });
+      if (error) throw error;
+      saved += batch.length;
+      ['new','changed','unchanged'].forEach(k => { tot[k] += Number(data?.[k] || 0); });
+    }
+    const period = out.period.from && out.period.to ? `, ${fmtDia(out.period.from)} – ${fmtDia(out.period.to)} ${String(out.period.to).slice(0,4)}` : '';
+    // numbers first; a file of another month than the one on screen says which month to pick; the file name last
+    const shown = $('fecho_mes')?.value, months = Object.keys(out.months).sort();
+    const elsewhere = shown && !out.months[shown] ? ` — pick ${months.map(fechoMonthLabel).join(', ')} above to see them` : '';
+    salesDocsSay('ok', `${out.documents.length} documents: ${tot.new} new · ${tot.changed} changed · ${tot.unchanged} unchanged · ${out.payments} receipts${out.declared && out.declared !== out.documents.length ? ` · the file says ${out.declared} documents` : ''}${elsewhere}. File: ${file.name}${period}`);
+  } catch (e) {
+    const why = salesDocsNotSetUp(e) ? 'the sales register is not switched on yet (run supabase/sales-documents.sql once).' : (e.message || e.code || String(e));
+    salesDocsSay('err', `${saved ? `Stopped after ${saved} documents (safe to import the same file again): ` : 'Not imported: '}${why}`);
+  } finally { SALES.busy = false; salesDocsBusy(false); }
+  renderSalesDocs();
+}
+// The register's rows of a period, for the «Vendas» sheet. Never throws: no table yet = no sheet.
+async function fetchSalesDocs(period){
+  try {
+    return await fetchAllPaged(() => sb.from('sales_documents')
+      .select('doc_no, doc_type, series, number, doc_date, customer_name, customer_tax_id, net, tax, gross, status, credits_doc_no')
+      .eq('company', 'water-movements').gte('doc_date', period.from).lte('doc_date', period.to)
+      .order('doc_date', { ascending:true }).order('doc_no', { ascending:true }));
+  } catch (e) { if (!salesDocsNotSetUp(e)) console.warn('Sales documents not read for the Excel:', e); return []; }
+}
+
 // ── Invoices that arrived by email (supabase/functions/mail-ingest): what the
 //    harvester did and what it could not decide (buyer unknown). «Water» /
 //    «Manjar» / «Ignorar» resolve a review item through the function, which
@@ -2956,6 +3081,7 @@ function fechoNoInvoice(r){ const s = docStatus(r); return s === 'isento' || s =
 
 async function renderFecho(){
   renderFechoMail();
+  renderSalesDocs();
   const box = $('fechoBanks'); if (!box) return;
   const month = $('fecho_mes')?.value || fechoDefaultMonth();
   // Opening Expenses loads the default month; picking another one right away
@@ -3453,7 +3579,7 @@ async function refreshBankStatus(){
 
 async function fetchAccountantData(period){
   const monthKey = period.slug.length === 7 ? period.slug : null;
-  const [invoices, transfers, bank, partnerInvoices, folders, bankUnmatched] = await Promise.all([
+  const [invoices, transfers, bank, partnerInvoices, folders, bankUnmatched, salesDocs] = await Promise.all([
     fetchAllPaged(() => sb.from('hq_invoices')
       .select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason')
       .is('deleted_at', null)
@@ -3474,8 +3600,9 @@ async function fetchAccountantData(period){
       .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
     sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', monthKey ? [monthKey, '*'] : ['*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
     sb.rpc('hq_bank_unmatched', { p_from: period.from, p_to: period.to }).then(({ data, error }) => { if (error) throw error; return data || []; }),
+    fetchSalesDocs(period),
   ]);
-  return { invoices, transfers, bank, partnerInvoices, folders, bankUnmatched };
+  return { invoices, transfers, bank, partnerInvoices, folders, bankUnmatched, salesDocs };
 }
 
 // Página /contabilista/ (supabase/accountant-portal.sql). O HQ pede os

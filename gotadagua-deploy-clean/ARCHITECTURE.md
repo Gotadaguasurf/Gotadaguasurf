@@ -32,7 +32,7 @@ Gmail API (shared mailbox groups@gotadaguasurf.com)
 | `/camp-hub/camp-tab-inner.html` | The POS iframe inside camp-hub (charge guests, bar tab) | camp staff |
 | `/surf-school` | Mobile-first rentals: new rental, open boards, history | school staff |
 | `/contabilista` | Read-only page for the accountant (Goretti), opened with `?k=<token>` — no login. Per month: invoices with/without PDF, Santander debits with no expense row, Drive folder links, "visto" mark. Only `accountant_portal*` SECURITY DEFINER RPCs (`supabase/accountant-portal.sql`); tokens in `accountant_portal_tokens`; HQ 📦 panel gets links via `accountant_hq_links()` | Goretti + Miguel |
-| `/hq` | Consolidated finance: Overview (profit, needs attention, result by month × location + CSV, Import bookings), Expenses, Month close (incl. «Faturas do email»), Cash flow, Investments, **My tasks** (owners only, 18 Nov 2026: one card per statement / automatic import with OK·Due·Overdue·Automatic and the bank's website; facts from `hq_my_tasks()` in `supabase/hq-my-tasks.sql`, rule in `hq/my-tasks.js`; the Overview shows one «My tasks: N» chip instead of the per-bank statement chips); **Cash flow** opens, for owners only, with «Bank balances» + «Next 30 days» (see below) | Miguel |
+| `/hq` | Consolidated finance: Overview (profit, needs attention, result by month × location + CSV, Import bookings), Expenses, Month close (incl. «Faturas do email» and «Sales documents» — the read-only register from the InvoiceXpress SAF-T), Cash flow, Investments, **My tasks** (owners only, 18 Nov 2026: one card per statement / automatic import with OK·Due·Overdue·Automatic and the bank's website; facts from `hq_my_tasks()` in `supabase/hq-my-tasks.sql`, rule in `hq/my-tasks.js`; the Overview shows one «My tasks: N» chip instead of the per-bank statement chips); **Cash flow** opens, for owners only, with «Bank balances» + «Next 30 days» (see below) | Miguel |
 | `/crm` | B2B outreach: contacts, pipeline, templates, **drip campaigns**, shared Gmail | Miguel + sales |
 | `/partners` | Partner commissions: who owes whom, month status, invoices, advances, statements (one page since 22 Oct 2026) | Miguel |
 | `/prices` | Pricing catalog per location (tours, transfers, accommodation grid). Since 17 Nov 2026 the ONE source of transport vehicles, seats (`capacity`), people one paid transfer covers (`covers_pax`), Bookinglayer product (`bl_product`), driver cost and guest € price — `lib/transport-catalog.js` groups it, `GuestsTrips.pickVehicle` picks (bl_product row, then smallest capacity ≥ people, over → largest + «2nd vehicle?»), SQL `transport_vehicle_for` / `camp_trips_reprice` (`supabase/transport-catalog-one-source.sql`) do the same; no vehicle list or seed price anywhere else | Miguel + managers |
@@ -198,6 +198,22 @@ report emails — never one with a PDF. The reports come with no attachment: onl
 https://downloads.bookinglayer.io/reports/… is fetched (20 MB, 30 s, redirects to cloud storage only); each CSV is kept 30 days
 in the private bucket `bl-reports`. `bl_report_settings` holds dry run (default on) and archive (default off);
 every email and every manual import is a row of `bl_report_runs`; Week shows the last one under its Import button.
+
+**Sales documents register (18 Nov 2026, `supabase/sales-documents.sql`, `lib/saft.js`):** the app never creates or edits a
+fiscal document — invoices and credit notes are issued in InvoiceXpress. `sales_documents` is a read-only copy of every one of
+them (unique per company + «FT IN2/17655»), filled only from the billing SAF-T (PT) file that InvoiceXpress exports
+(Contabilidade → SAF-T): HQ → Month close → «Sales documents» → «Import SAF-T (.xml)» reads the file in the browser
+(`Saft.decode` handles Windows-1252, `Saft.parseAsync` joins each invoice to its customer; receipts are only counted), refuses a
+file whose NIF is not Water Movements', and sends it in batches of 500 to `sales_documents_import()` — the only way into the
+table (HQ members read, nobody writes directly) — which answers new / changed / unchanged. The card then shows one line
+(«October: 431 invoices · 6 credit notes · 0 gaps · 2 to check») and a list only when something is wrong: numbering gaps per
+type + series, credit notes whose invoice is not in the register, cancelled invoices with no new invoice to the same
+InvoiceXpress customer within 15 days, and Partners ↔ file both ways on the normalised number (nothing is created on
+Partners). `sales_documents_month()` returns the facts (the month, the month before, 15 days after, the last number before the month
+per series so a gap shows even in a quiet series, and the register documents matching the month's Partners invoices); the rules are
+`Saft.monthSummary`. The accountant Excel gets a «Vendas» sheet and the totals (invoices − credit notes, cancelled left out) in
+«Resumo» when the period has rows. Water Movements only; `company` is there for Manjar on `/suk/` later. Before the SQL has run
+the card says «Not switched on yet» and everything else works as before.
 
 The duplicate `gmail-sync-10min` job was removed on 22 Oct 2026.
 
