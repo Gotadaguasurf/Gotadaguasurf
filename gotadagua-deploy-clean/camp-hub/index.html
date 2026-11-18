@@ -368,6 +368,8 @@ body{min-height:100dvh}
   #savePill.failed{position:fixed;top:60px;left:0;right:0;width:auto;height:auto;min-height:44px;padding:10px 16px;border-radius:0;justify-content:center;gap:8px;background:var(--red);color:#fff;font-size:13px;z-index:99;box-shadow:var(--sh-lg)}
   #savePill.failed #savePillTxt{display:inline}
   body:has(#savePill.failed) .toast{top:116px}
+  /* an error now carries the database's own words: give it the phone's width so it reads in two lines, not five */
+  .toast.err{left:12px;right:12px;transform:none;text-align:center}
 }
 .icon-danger:hover{color:var(--red);border-color:var(--red);background:var(--red-bg)}
 .hub-embed-wrap{height:calc(100vh - 60px);padding:0}
@@ -1640,6 +1642,11 @@ let S=loadS();
 let HUB_SUPPRESS_WEEKS_RT=false;  // suppresses our own weeks/state write echoes only
 let HUB_SUPPRESS_LEDGER_RT=false; // suppresses our own ledger write echoes only
 let HUB_SUPPRESS_TRANSPORT_RT=false; // suppresses our own transport_presets write echoes only
+// Changes the server refused, kept so the red pill can send them again (audit CH-03, 18 Nov 2026).
+// key = the button it came from (pressing the same button again replaces it); run = send the same change again.
+const HUB_FAILED_OPS=new Map();
+const HUB_BG_ERRORS_SHOWN=new Set(); // failures nobody started by hand: one toast per distinct message
+let HUB_LAST_ERROR_TEXT='';
 // Transport quick-add presets. Declared early so that transportPresetNames(),
 // called from currentTransportItems() during any render, never trips TDZ. The
 // real load happens in loadTransportPresets() at bootstrap.
@@ -1861,10 +1868,9 @@ function scheduleHubLedgerRehydrate(){
     try{
       await hydrateLedgerFromSupabase({mergeLocal:false});
       renderExpenses();renderOverview();renderWeeklyPL();
-    }catch(e){console.warn('[Hub] RT ledger hydrate failed',e);}
+    }catch(e){handleLedgerSupabaseError('RT ledger hydrate failed',e,{action:'load',background:true});}
   },500);
 }
-let HUB_LEDGER_SYNC_ERROR_SHOWN=false;
 
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
@@ -1960,44 +1966,96 @@ async function loadStateStore(stateKey,{throwOnError=false}={}){
   }catch(e){console.warn('[Hub] loadStateStore failed',e);if(throwOnError) throw e;return null;}
 }
 let _pendingWeeksSave=false;
+const SAVE_FAILED_TXT='Save failed — tap to retry';
 function setSavePill(state,txt){
   const pill=document.getElementById('savePill');
   const label=document.getElementById('savePillTxt');
   if(!pill||!label) return;
+  // A change the server refused is still not saved: no later save turns the pill green over it.
+  if(state!=='failed'&&HUB_FAILED_OPS.size){ state='failed'; txt=[...HUB_FAILED_OPS.values()].pop().text; }
   pill.className='save-pill '+state;
   label.textContent=txt;
 }
-async function saveStateStore(stateKey,stateJson,{retries=3}={}){
+// A change was refused: keep how to send it again, and turn the pill red.
+function hubSaveFailed(key,run,text=SAVE_FAILED_TXT,extra={}){
+  HUB_FAILED_OPS.delete(key);
+  HUB_FAILED_OPS.set(key,{run,text,...extra});
+  setSavePill('failed',text);
+}
+function hubRefreshSavePill(){
+  if(HUB_FAILED_OPS.size||_pendingWeeksSave) setSavePill('failed',SAVE_FAILED_TXT);
+  else setSavePill('saved','Saved');
+}
+// The user changed (or closed) the form a failed save came from: what the pill
+// would send is no longer what is on screen, so it lets go of it. The form's own
+// Save button saves what is typed now.
+const HUB_FORM_SELECTORS={qe:'.exp-inline',em:'#expOv',tq:'#transportQuickOv'};
+function hubFormTouched(form){
+  let dropped=false;
+  for(const [key,op] of [...HUB_FAILED_OPS]) if(op.form===form){ HUB_FAILED_OPS.delete(key); dropped=true; }
+  if(dropped) hubRefreshSavePill();
+}
+['input','change'].forEach(evt=>document.addEventListener(evt,e=>{
+  if(!HUB_FAILED_OPS.size) return;
+  Object.entries(HUB_FORM_SELECTORS).forEach(([form,sel])=>{ if(e.target?.closest?.(sel)) hubFormTouched(form); });
+},true));
+function hubRetryDone(){
+  try{ renderExpenses();renderOverview();renderWeeklyPL(); }catch(_e){}
+  toast('Saved');
+}
+async function saveStateStore(stateKey,stateJson,{retries=3,keepRetry=true}={}){
   setSavePill('saving','Saving…');
   HUB_SUPPRESS_WEEKS_RT=true; // prevent our own weeks-state write from bouncing back
+  let lastError=null;
   try{
     for(let attempt=1;attempt<=retries;attempt++){
       try{
         const client=getHubSupabaseClient();
         const locationId=await ensureHubLocationId();
-        if(!client||!locationId) throw new Error('No client/location');
+        if(!client||!locationId) throw new Error('not connected to the database');
         const {error}=await client
           .from('location_state_store')
           .upsert({location_id:locationId,state_key:stateKey,state_json:stateJson,updated_at:new Date().toISOString()},{onConflict:'location_id,state_key'});
         if(error) throw error;
+        if(stateKey===SK) _pendingWeeksSave=false;
+        HUB_FAILED_OPS.delete('state:'+stateKey);
         setSavePill('saved','Saved');
-        _pendingWeeksSave=false;
         return true;
       }catch(e){
+        lastError=e;
         console.warn(`[Hub] saveStateStore attempt ${attempt} failed`,e);
         if(attempt<retries) await new Promise(r=>setTimeout(r,500*attempt));
       }
     }
-    setSavePill('failed','Save failed — tap to retry');
-    _pendingWeeksSave=true;
+    // Three tries and still not saved: say why, and keep it so the pill sends it again
+    // (the weeks as they are now; any other key exactly what was refused).
+    if(stateKey===SK) _pendingWeeksSave=true;
+    else if(keepRetry) hubSaveFailed('state:'+stateKey,()=>saveStateStore(stateKey,stateJson));
+    setSavePill('failed',SAVE_FAILED_TXT);
+    handleLedgerSupabaseError('state save '+stateKey,lastError);
     return false;
   }finally{
     setTimeout(()=>{ HUB_SUPPRESS_WEEKS_RT=false; },800);
   }
 }
-function retrySave(){
-  if(!_pendingWeeksSave) return;
-  saveStateStore(SK,{weeks:S.weeks,salaryMode:S.salaryMode}).catch(()=>{});
+// Tap on the red pill: send again everything that was refused, oldest first.
+let HUB_RETRY_BUSY=false;
+async function retrySave(){
+  if(HUB_RETRY_BUSY) return;
+  const ops=[...HUB_FAILED_OPS];
+  if(!ops.length&&!_pendingWeeksSave){
+    // Nothing left to send (the change was rolled back): say again what went wrong.
+    if(document.getElementById('savePill')?.classList.contains('failed')&&HUB_LAST_ERROR_TEXT) toast(HUB_LAST_ERROR_TEXT,'err');
+    return;
+  }
+  HUB_RETRY_BUSY=true;
+  try{
+    for(const [key,op] of ops){
+      if(HUB_FAILED_OPS.get(key)!==op) continue; // replaced or let go meanwhile
+      try{ await op.run(); }catch(_e){ /* the action said why and stays in the list */ }
+    }
+    if(_pendingWeeksSave) await saveStateStore(SK,{weeks:S.weeks,salaryMode:S.salaryMode});
+  }finally{ HUB_RETRY_BUSY=false; }
 }
 function markCampcloseDeleted(id){
   deletedCampcloseIds.add(id);
@@ -2384,16 +2442,30 @@ function mapLedgerTypeFromDb(type='expense'){
   if(type==='money_sent') return 'transfer';
   return 'expense';
 }
-function handleLedgerSupabaseError(context,error){
+function handleLedgerSupabaseError(context,error,{action='save',background=false}={}){
   // Stash the most recent error globally so it's easy to inspect from the console
   // (window.__hubLastSyncError) without having to hunt through warnings.
   try{ window.__hubLastSyncError={context,error,when:new Date().toISOString()}; }catch(_){}
-  const msg=error?.message||error?.error_description||(typeof error==='string'?error:'')||'unknown';
+  const msg=hubErrorText(error);
   console.warn(`[Camp Hub] ${context}:`,msg,error);
-  if(HUB_LEDGER_SYNC_ERROR_SHOWN) return;
-  HUB_LEDGER_SYNC_ERROR_SHOWN=true;
-  // Show the actual error so problems are diagnosable instead of silent.
-  toast("Couldn't save — check your connection and tap the Saved/Error pill to retry. ("+msg.slice(0,80)+')','err');
+  // Every failure says why, in the database's own words (audit CH-03): until 18 Nov 2026
+  // only the first error of a session reached the screen, so a background failure at boot
+  // used up the one message and every later refused save was silent.
+  const lead=action==='delete'?'Not deleted':action==='load'?"Couldn't load the latest data":'Not saved';
+  const text=`${lead}: ${msg}`;
+  HUB_LAST_ERROR_TEXT=text;
+  // Something the page did on its own (boot, heal, realtime refresh): once per distinct message.
+  if(background){ if(HUB_BG_ERRORS_SHOWN.has(text)) return text; HUB_BG_ERRORS_SHOWN.add(text); }
+  toast(text,'err');
+  return text;
+}
+function hubErrorText(error){
+  const raw=String(error?.message||error?.error_description||error?.details||(typeof error==='string'?error:'')||'unknown error');
+  // The browser's words for «no network» mean nothing on a phone at the camp.
+  if(/failed to fetch|networkerror|load failed|network request failed/i.test(raw)) return `no connection (${raw})`;
+  // 42501 = refused by the access rules: the database's sentence alone does not say that.
+  if(String(error?.code||'')==='42501') return `this account is not allowed to do this (${raw.slice(0,140)})`;
+  return raw.slice(0,180);
 }
 function ledgerEntryToDbRow(entry,locationId){
   const normalized=normalizeLedgerEntry(entry);
@@ -2518,12 +2590,22 @@ async function deleteLedgerEntryFromSupabase(id){
   // delete from ever reaching Supabase.
   const locationId=await ensureHubLocationId();
   if(!locationId) return false;
-  const { error } = await client
+  // ledger_entries.id is a uuid: an old text seed can never match a row.
+  if(!isUuid(String(id))) return false;
+  const { error,count } = await client
     .from('ledger_entries')
-    .delete()
+    .delete({count:'exact'})
     .eq('id',id)
     .eq('location_id',locationId);
   if(error) throw error;
+  if(count===0){
+    // Row-level security refuses a delete without an error: nothing is removed
+    // and nothing is said. If the line is still there, it was refused — say so.
+    // (A line that was never on the server, or is already gone, is fine.)
+    const { data:still } = await client.from('ledger_entries').select('id').eq('id',id).eq('location_id',locationId).limit(1);
+    if(Array.isArray(still)&&still.some(r=>String(r?.id||'').toLowerCase()===String(id).toLowerCase())) throw new Error('the database did not delete this line (this account may not delete it)');
+    return false;
+  }
   notifyLedgerChanged();
   return true;
 }
@@ -2581,7 +2663,7 @@ async function hydrateLedgerFromSupabase({mergeLocal=true}={}){
           await pushLedgerEntriesToSupabase(offlineOnly);
           data=await fetchAllLedgerRows();
         }catch(error){
-          handleLedgerSupabaseError('initial ledger push failed',error);
+          handleLedgerSupabaseError('initial ledger push failed',error,{background:true});
         }
       }
     }
@@ -2645,7 +2727,7 @@ async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
     await pushLedgerEntriesToSupabase(entries);
     notifyLedgerChanged();
   }catch(error){
-    handleLedgerSupabaseError(context,error);
+    handleLedgerSupabaseError(context,error,{background:true});
   }finally{
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
@@ -2666,47 +2748,52 @@ async function syncLedgerEntriesToSupabase(entries,context='ledger sync'){
 // add (transport, expense modal, quick expense, manual salary/rent).
 // Auto-applied / heal paths can keep the legacy local-first sync
 // because they re-run idempotently every load.
-async function commitLedgerEntry(payload,context='entry'){
+//
+// When the write is refused (audit CH-03, 18 Nov 2026): the toast says why, and
+// the same rows — same ids, so a write that did land is not doubled — are kept
+// for the red pill to send again. opts.key = the button (default: the context),
+// opts.form = the form it came from ('qe' / 'em' / 'tq'), opts.done = what the
+// caller does after a save, run too when the pill's retry gets through.
+const HUB_NOT_CONNECTED='not connected to the database — refresh the page';
+function hubPutInLedger(entries){
+  entries.forEach(entry=>{
+    const i=S.ledger.findIndex(x=>x.id===entry.id);
+    if(i>=0) S.ledger[i]=entry; else S.ledger.push(entry);
+  });
+}
+async function commitLedgerEntry(payload,context='entry',opts={}){
   if(!payload) throw new Error('commitLedgerEntry: empty payload');
+  await commitLedgerEntries([payload],context,opts);
+  return true;
+}
+async function commitLedgerEntries(entries,context='batch',opts={}){
+  if(!Array.isArray(entries)||!entries.length) return false;
+  const key=opts.key||context;
+  HUB_FAILED_OPS.delete(key);
   setSavePill('saving','Saving…');
   HUB_SUPPRESS_LEDGER_RT=true;
   try{
-    await pushLedgerEntriesToSupabase([payload]);
     // Only AFTER Supabase confirms, commit to local state and notify
     // the realtime channel — the order is what makes the two PCs
     // converge on the same set of entries.
-    S.ledger.push(payload);
+    if(!await pushLedgerEntriesToSupabase(entries)) throw new Error(HUB_NOT_CONNECTED);
+    hubPutInLedger(entries);
     save();
     notifyLedgerChanged();
     setSavePill('saved','Saved');
     return true;
   }catch(error){
-    setSavePill('failed','Save failed — tap to retry');
+    hubSaveFailed(key,()=>commitLedgerEntries(entries,context,opts).then(()=>(opts.done||hubRetryDone)()),SAVE_FAILED_TXT,{form:opts.form||'',ids:entries.map(e=>e.id)});
     handleLedgerSupabaseError(context,error);
     throw error; // re-throw so the caller skips its render/toast success path
   }finally{
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
 }
-async function commitLedgerEntries(entries,context='batch'){
-  if(!Array.isArray(entries)||!entries.length) return false;
-  setSavePill('saving','Saving…');
-  HUB_SUPPRESS_LEDGER_RT=true;
-  try{
-    await pushLedgerEntriesToSupabase(entries);
-    S.ledger.push(...entries);
-    save();
-    notifyLedgerChanged();
-    setSavePill('saved','Saved');
-    return true;
-  }catch(error){
-    setSavePill('failed','Save failed — tap to retry');
-    handleLedgerSupabaseError(context,error);
-    throw error;
-  }finally{
-    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
-  }
-}
+// The id of the entry this form failed to save, if it is still waiting: pressing
+// the form's own Save again re-uses it, so a write that reached the server
+// before the connection dropped is replaced, not doubled.
+function hubFailedEntryId(key){ return HUB_FAILED_OPS.get(key)?.ids?.[0]||''; }
 
 // Continuous auto-migration for Morocco entries stamped with the LKR fx
 // rate (~330–380). Runs on every page load now — was versioned, but new
@@ -2878,7 +2965,7 @@ async function processAiInvoiceFiles(files){
         sourceKind: 'invoice_ai',
       };
       state.textContent='Saving…';
-      await commitLedgerEntry(payload, 'ai-invoice');
+      await commitLedgerEntry(payload, 'ai-invoice', {key:'ai-invoice:'+payload.id});
       state.innerHTML=`<span style="color:var(--green)">Added · €${Math.round(amountEur).toLocaleString('en-GB')}</span>`;
     } catch (e) {
       state.innerHTML=`<span style="color:#c94e42">Error: ${escapeHtml(String(e?.message||e))}</span>`;
@@ -3188,7 +3275,7 @@ async function resolveMonthlyCostProfileId(id, profileType, profileName){
     }
     return null;
   }catch(error){
-    handleLedgerSupabaseError('monthly profile lookup failed', error);
+    handleLedgerSupabaseError('monthly profile lookup failed', error, {action:'load',background:true});
     return null;
   }
 }
@@ -4805,7 +4892,7 @@ async function flushCampTabCheckouts(){
     if(S.ledger.length!==before){ save(); notifyLedgerChanged(); }
     HUB_SUPPRESS_LEDGER_RT=true;
     for(const id of gone){
-      try{ await deleteLedgerEntryFromSupabase(id); }catch(err){ console.warn('[Hub] checkout row delete failed',id,err); }
+      try{ await deleteLedgerEntryFromSupabase(id); }catch(err){ handleLedgerSupabaseError('checkout row delete failed',err,{action:'delete'}); }
     }
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
@@ -4996,7 +5083,7 @@ async function removeClosedWeekIncome(payload={}){
     try{
       await deleteLedgerEntryFromSupabase(row.id);
     }catch(error){
-      handleLedgerSupabaseError('closed week ledger delete failed',error);
+      handleLedgerSupabaseError('closed week ledger delete failed',error,{action:'delete'});
     }
   }
   setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
@@ -6591,15 +6678,13 @@ async function saveTransportPresets({skipRender=false}={}){
   // freshly-added blank chip before the user finishes its name.
   HUB_SUPPRESS_TRANSPORT_RT=true;
   window.__transportSavePending=true;
-  try{
-    await saveStateStore(TRANSPORT_PRESETS_KEY,transportPresets);
+  // saveStateStore answers false (it never throws) after 3 tries, with the
+  // reason in a toast and the payload kept for the red pill. Until 18 Nov 2026
+  // this read a refused save as saved.
+  if(await saveStateStore(TRANSPORT_PRESETS_KEY,transportPresets)){
     window.__transportSavePending=false;
-  }catch(e){
-    console.warn('[Hub] saveTransportPresets failed',e);
-    toast('Transport presets save failed — see console');
-    // Keep the pending flag true so beforeunload still warns the user
-    // — saveStateStore itself does 3 retries; if all fail the user
-    // should know before closing.
+  }else{
+    // Keep the pending flag true so beforeunload still warns the user.
     setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },800);
     return;
   }
@@ -6856,17 +6941,18 @@ async function saveTransportStateOrRollback(candidatePresets){
   window.__transportSavePending=true;
   setSavePill('saving','Saving…');
   try{
-    await saveStateStore(TRANSPORT_PRESETS_KEY,candidatePresets);
+    // keepRetry:false — the change is rolled back here, so there is nothing for the pill to send again.
+    // (saveStateStore answers false, it never throws: until 18 Nov 2026 a refused save was applied and shown as «Saved».)
+    if(!await saveStateStore(TRANSPORT_PRESETS_KEY,candidatePresets,{keepRetry:false})){
+      window.__transportSavePending=false;
+      setSavePill('failed','Not saved — try again');
+      return false; // the toast already said why
+    }
     transportPresets=candidatePresets;
     window.__transportSavePending=false;
     setSavePill('saved','Saved');
     notifyLedgerChanged();
     return true;
-  }catch(e){
-    console.warn('[Hub] saveTransportStateOrRollback failed',e);
-    setSavePill('failed','Save failed — try again');
-    toast("Couldn't save the transport change — try again.",'err');
-    return false;
   }finally{
     setTimeout(()=>{ HUB_SUPPRESS_TRANSPORT_RT=false; },1000);
   }
@@ -7167,7 +7253,7 @@ async function submitTransportEntry(){
     ? `${TT_MARKER}${linkedTourOverride}] ${desc}`
     : desc;
   const payload=normalizeLedgerEntry({
-    id:'tq'+Date.now()+Math.random().toString(36).slice(2,6),
+    id:hubFailedEntryId('transport quick save')||('tq'+Date.now()+Math.random().toString(36).slice(2,6)),
     date,
     type:'expense',
     category:'Transport',
@@ -7187,14 +7273,17 @@ async function submitTransportEntry(){
   // Supabase-first: only show the entry locally after Supabase
   // confirms the write. If it fails we don't touch S.ledger so there's
   // no ghost row to confuse the user. Error already toasted by helper.
+  const done=()=>{
+    renderExpenses();renderOverview();renderWeeklyPL();
+    toast(`Added: ${desc}`);
+    cancelTqForm();
+  };
   try{
-    await commitLedgerEntry(payload,'transport quick save');
+    await commitLedgerEntry(payload,'transport quick save',{form:'tq',done});
   }catch(_e){
     return; // helper already toasted; abort the success path
   }
-  renderExpenses();renderOverview();renderWeeklyPL();
-  toast(`Added: ${desc}`);
-  cancelTqForm();
+  done();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8279,6 +8368,7 @@ function applyLinkedPrice(prefix){
   }
 }
 function startQuickExpense(type,preset=null){
+  hubFormTouched('qe'); // the form is being refilled: the pill no longer holds the old failed entry
   const typeEl=document.getElementById('qe_type');
   const dateEl=document.getElementById('qe_date');
   const amountEl=document.getElementById('qe_amount');
@@ -8524,22 +8614,25 @@ async function __saveQuickExpenseRun(){
     return;
   }
   await syncFxRateForPrefix('qe');
-  let payload=buildLedgerPayload('qe',type,'qe'+Date.now()+Math.random().toString(36).slice(2,5));
+  let payload=buildLedgerPayload('qe',type,hubFailedEntryId('quick ledger save')||('qe'+Date.now()+Math.random().toString(36).slice(2,5)));
   if(!payload){toast('Date and amount required');return;}
   if(!confirmNotRepeated(payload)) return;
   payload=await enrichLedgerEntryFx(payload);
+  const done=async()=>{
+    // camp-hub/paylink.js: nothing is linked from Quick add since 16 Nov 2026 (driver payments
+    // go through «Pay a driver»); afterSave() returns null and never fails the save.
+    let payLink=null;
+    try{ if(window.CampPayLink) payLink=await CampPayLink.afterSave(payload); }catch(_e){ payLink=null; }
+    resetQuickExpense();
+    renderExpenses();renderOverview();renderWeeklyPL();
+    if(payLink) CampPayLink.toast(payLink); else toast('Entry added');
+  };
   try{
-    await commitLedgerEntry(payload,'quick ledger save');
+    await commitLedgerEntry(payload,'quick ledger save',{form:'qe',done});
   }catch(_e){
-    return; // helper toasted the failure; keep the form open so user can retry
+    return; // the toast said why; the form stays filled and the red pill sends it again
   }
-  // camp-hub/paylink.js: nothing is linked from Quick add since 16 Nov 2026 (driver payments
-  // go through «Pay a driver»); afterSave() returns null and never fails the save.
-  let payLink=null;
-  try{ if(window.CampPayLink) payLink=await CampPayLink.afterSave(payload); }catch(_e){ payLink=null; }
-  resetQuickExpense();
-  renderExpenses();renderOverview();renderWeeklyPL();
-  if(payLink) CampPayLink.toast(payLink); else toast('Entry added');
+  await done();
 }
 
 function refreshRecurringButton(){}
@@ -9485,9 +9578,10 @@ function extractWeekRefFromCampcloseId(id){
   const i=rest.indexOf('_');
   return i>0?rest.slice(0,i):'';
 }
-async function delLedger(id){
+async function delLedger(id,{confirmed=false}={}){
   // Explicit confirmation — every delete is logged in audit_log on Supabase but
   // the user still gets a clear preview before any destructive action.
+  // (confirmed = the red pill sending again a delete the user already confirmed.)
   const entry = S.ledger.find(x=>x.id===id);
   if(!entry) return;
   if(['hq_invoice','hq_transfer'].includes(String(entry.sourceKind||'').toLowerCase())){ toast('This line comes from HQ. Delete it in HQ → Expenses.','err'); return; }
@@ -9496,7 +9590,9 @@ async function delLedger(id){
   const amount = entry.amountLocal && entry.currency && entry.currency!=='EUR' ? (`${entry.currency} `+Number(entry.amountLocal).toLocaleString('en-GB',{maximumFractionDigits:2})) : ('€'+Number(entry.amount||0).toFixed(2));
   const note = entry.description ? ` "${String(entry.description).slice(0,60)}"` : '';
   const date = entry.date || '';
-  if(!confirm(`Delete ${typeLbl} of ${amount}${note} on ${date}?\n\nThis is permanent and removes it from every other device in real-time.\n(All deletes are recorded in the audit log.)`)) return;
+  if(!confirmed&&!confirm(`Delete ${typeLbl} of ${amount}${note} on ${date}?\n\nThis is permanent and removes it from every other device in real-time.\n(All deletes are recorded in the audit log.)`)) return;
+  const failKey='delete:'+id;
+  HUB_FAILED_OPS.delete(failKey);
   HUB_SUPPRESS_LEDGER_RT=true; // set BEFORE any state_store writes so own echoes are reliably suppressed
   // Optimistic: remove locally immediately for snappy UI.
   // Granular delete: one click = one row gone. For campclose entries we
@@ -9540,7 +9636,10 @@ async function delLedger(id){
   }
   save();
   renderExpenses();renderOverview();renderWeeklyPL();
-  toast('Deleted.');
+  // «Deleted.» and the Camp Tab message wait for the server (audit CH-03): they
+  // used to go out first, so a delete the database refused still said «Deleted.»,
+  // the pill said «Saved», and the Camp Tab took «Paid» back on a line that was
+  // still in the ledger.
   // ── Notify Camp Tab when a per-item revenue row is deleted ──────────────
   // Closes the loop the user reported: deleting the revenue row from
   // Operations Ledger should mark the originating item as no-longer-paid
@@ -9552,7 +9651,7 @@ async function delLedger(id){
   // find the matching guest+item in its local state and clears item.paidAt.
   // This is purely cosmetic on the Camp Tab side — no ledger writes go
   // back the other direction (already deleted here), no infinite loop.
-  try{
+  const tellCampTab=()=>{ try{
     const isPerItem = String(entry?.sourceKind||'')==='camp_tab_per_item'
       || String(entry?.id||'').startsWith('campitem_');
     // Grouped checkout row: one legacy-shaped message per item it carried,
@@ -9576,20 +9675,25 @@ async function delLedger(id){
         },'*');
       }
     }
-  }catch(_e){}
+  }catch(_e){} };
   try{
     await deleteLedgerEntryFromSupabase(id);
+    toast('Deleted.');
+    tellCampTab();
   }catch(error){
-    if(backup) S.ledger=[...S.ledger,backup];
+    // Not deleted: the line comes back, the pill turns red and sends the delete again on tap.
+    if(backup&&!S.ledger.some(x=>x.id===id)) S.ledger=[...S.ledger,backup];
+    hubSaveFailed(failKey,()=>delLedger(id,{confirmed:true}),'Delete failed — tap to retry');
     save();
     renderExpenses();renderOverview();renderWeeklyPL();
-    handleLedgerSupabaseError('ledger delete failed',error);
+    handleLedgerSupabaseError('ledger delete failed',error,{action:'delete'});
   }finally{
     setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
   }
 }
 
 function openExpModal(type,id=null,preset=null){
+  hubFormTouched('em');
   editingLedgerId=id;
   expModalType=type;
   const titles={expense:'Expense',transfer:'Transfer',income:'Revenue'};
@@ -9656,7 +9760,7 @@ async function __saveExpenseRun(){
     return;
   }
   await syncFxRateForPrefix('em');
-  let payload=buildLedgerPayload('em',expModalType,editingLedgerId||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
+  let payload=buildLedgerPayload('em',expModalType,editingLedgerId||hubFailedEntryId('ledger modal save')||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
   if(!payload){toast('Date and amount required');return;}
   if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
   payload=await enrichLedgerEntryFx(payload);
@@ -9675,33 +9779,39 @@ async function __saveExpenseRun(){
   // edits, capture the old entry first so we can restore it if the
   // upsert fails (since "edit" replaces in-place we'd otherwise lose
   // the previous state on failure).
-  if(editingLedgerId){
-    // Direct upsert — same id, so Supabase replaces. On success,
-    // mutate local; on failure, leave local untouched.
-    setSavePill('saving','Saving…');
-    HUB_SUPPRESS_LEDGER_RT=true;
-    try{
-      await pushLedgerEntriesToSupabase([payload]);
-      if(pairTwin) await deleteLedgerEntryFromSupabase(pairTwin.id);
-      S.ledger=S.ledger.filter(x=>!pairTwin||x.id!==pairTwin.id).map(x=>x.id===editingLedgerId?payload:x);
-      save();
-      notifyLedgerChanged();
-      setSavePill('saved','Saved');
-    }catch(error){
-      setSavePill('failed','Save failed — tap to retry');
-      handleLedgerSupabaseError('ledger modal edit',error);
-      setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
-      return;
-    }
-    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
-  } else {
-    try{
-      await commitLedgerEntry(payload,'ledger modal save');
-    }catch(_e){
-      return; // keep modal open so user can retry / fix
-    }
+  const done=()=>{ editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved'); };
+  try{
+    // Same id, so Supabase replaces. On success, mutate local; on failure,
+    // leave local untouched and keep the modal open (the toast says why).
+    if(editingLedgerId) await commitLedgerEdit(editingLedgerId,payload,pairTwin,{form:'em',done});
+    else await commitLedgerEntry(payload,'ledger modal save',{form:'em',done});
+  }catch(_e){
+    return;
   }
-  editingLedgerId=null;closeOv('expOv');renderExpenses();renderOverview();renderWeeklyPL();toast('Saved');
+  done();
+}
+// An edit of an existing line: the upsert replaces it (and removes the old
+// second half of a two-line withdrawal). Refused → same rules as a new line.
+async function commitLedgerEdit(editId,payload,pairTwin,opts={}){
+  const key='ledger modal edit';
+  HUB_FAILED_OPS.delete(key);
+  setSavePill('saving','Saving…');
+  HUB_SUPPRESS_LEDGER_RT=true;
+  try{
+    if(!await pushLedgerEntriesToSupabase([payload])) throw new Error(HUB_NOT_CONNECTED);
+    if(pairTwin) await deleteLedgerEntryFromSupabase(pairTwin.id);
+    S.ledger=S.ledger.filter(x=>!pairTwin||x.id!==pairTwin.id).map(x=>x.id===editId?payload:x);
+    save();
+    notifyLedgerChanged();
+    setSavePill('saved','Saved');
+    return true;
+  }catch(error){
+    hubSaveFailed(key,()=>commitLedgerEdit(editId,payload,pairTwin,opts).then(()=>(opts.done||hubRetryDone)()),SAVE_FAILED_TXT,{form:opts.form||''});
+    handleLedgerSupabaseError(key,error);
+    throw error;
+  }finally{
+    setTimeout(()=>{ HUB_SUPPRESS_LEDGER_RT=false; },600);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -10347,7 +10457,7 @@ window.addEventListener('message',e=>{
       // row returns no error, no effect).
       new Set(matched.filter(Boolean)).forEach(id => {
         deleteLedgerEntryFromSupabase(id).catch(err =>
-          console.warn('[Hub] guest-deleted ledger delete failed',id,err)
+          handleLedgerSupabaseError('guest-deleted ledger delete failed',err,{action:'delete'})
         );
       });
     }catch(err){ console.warn('[Hub] guest-deleted handler failed',err); }
@@ -10414,7 +10524,7 @@ window.addEventListener('message',e=>{
         supabaseTargets.forEach(id => {
           if(!id) return;
           deleteLedgerEntryFromSupabase(id).catch(err =>
-            console.warn('[Hub] failed to delete unpaid item ledger row',id,err)
+            handleLedgerSupabaseError('unpaid item ledger delete failed',err,{action:'delete'})
           );
         });
         // Grouped checkout row: rebuilt without this line (deleted when it
@@ -10471,9 +10581,9 @@ mountCampTabFrame();
 //  UTILS
 // ═══════════════════════════════════════════════════════════
 function openOv(id){document.getElementById(id).classList.add('open');}
-function closeOv(id){document.getElementById(id).classList.remove('open');}
+function closeOv(id){document.getElementById(id).classList.remove('open');if(id==='expOv') hubFormTouched('em');if(id==='transportQuickOv') hubFormTouched('tq');}
 // toast(msg) 2.2s · toast(msg,'err') red and 4s — errors need time to be read.
-function toast(msg,kind){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.toggle('err',kind==='err');t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),kind==='err'?4000:2200);}
+function toast(msg,kind){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.toggle('err',kind==='err');t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),kind==='err'?6500:2200);}
 ['addWeekOv','addGuestOv','customOv','expOv','billOv','transportQuickOv'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
@@ -10887,7 +10997,7 @@ async function requirePlatformSession(){
     // stamped with the cached LKR rate before the per-location FX rollout.
     autoHealMadEntriesIfNeeded().catch(e=>console.warn('[Hub] autoHealMadEntries failed',e));
   }catch(error){
-    handleLedgerSupabaseError('session hydration failed',error);
+    handleLedgerSupabaseError('session hydration failed',error,{action:'load',background:true});
   }
 }
 requirePlatformSession();
