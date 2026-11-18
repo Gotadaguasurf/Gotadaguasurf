@@ -210,7 +210,7 @@ test('overview: tiles, guests per night, and arrivals / departures / transfers /
   await expect(day('2026-11-14').locator('.wk-bc.arr')).toContainText('Room move: João Lavado → Ahangama room');
   await expect(day('2026-11-14').locator('.wk-bc.dep')).toContainText('−1');          // nobody leaves the camp, one bed is freed
   await expect(day('2026-11-14').locator('.wk-bc.dep')).toContainText('MirissaJoão Lavado (stays 2 more nights, in Ahangama room)');
-  await expect(page.locator('#weekRoot .wk-people')).toHaveText(/People check: 22 guests in the Guests file for this week, all on the lists/);
+  await expect(page.locator('#weekRoot .wk-people')).toHaveText(/People check: 22 guests in the Bookinglayer report for this week, all on the lists/);
   await expect(day('2026-11-16').locator('.wk-bc.arr')).toContainText('+2');
   await expect(day('2026-11-16').locator('.wk-bc.dep')).toContainText('−1');
   await expect(day('2026-11-16').locator('.wk-bc.dep')).toContainText('João Lavado');
@@ -431,7 +431,7 @@ test('to check: a count on the tab it concerns, a compact list inside the tab, c
   await expect(page.locator('.wk-view-kitchen .wk-check')).toContainText("didn't answer diet – ask at the welcome dinner");
   await tab(page, 'guests');
   const list = page.locator('.wk-view-guests .wk-check');
-  await expect(list).toContainText('4 guests in camp are not in the latest Guests file – still here?');
+  await expect(list).toContainText('4 guests in camp are not in the latest Bookinglayer report – still here?');
   await expect(list).toContainText('5 phones had a wrong 0 after the country code – fixed, check before sending');   // +44 07…, +41 07…, +33 06… in the real file
   // «Not here» takes João out of every list (booking_status), «Still here» adopts Alexander into the latest import
   const joao = list.locator('.wk-ci-g', { hasText: 'João Lavado' });
@@ -440,11 +440,11 @@ test('to check: a count on the tab it concerns, a compact list inside the tab, c
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
   await list.locator('.wk-ci-g', { hasText: 'Alexander Straub' }).locator('button:has-text("Still here")').click();
   expect((await call(st, 'guest_update', 2)).body.raw).toEqual({ _kept: IMPORT_NEW });
-  await expect(list).toContainText('2 guests in camp are not in the latest Guests file');
+  await expect(list).toContainText('2 guests in camp are not in the latest Bookinglayer report');
   // after a reload the answers hold and the file's range is unchanged: 21 counted, 2 still to answer
   await page.evaluate(() => WeekUI.loadAll(true));
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
-  await expect(page.locator('.wk-view-guests .wk-check')).toContainText('2 guests in camp are not in the latest Guests file');
+  await expect(page.locator('.wk-view-guests .wk-check')).toContainText('2 guests in camp are not in the latest Bookinglayer report');
   await expect(page.locator('.wk-view-guests .wk-check')).not.toContainText('dropped');
 });
 
@@ -477,7 +477,7 @@ test('dropped from the latest file (cancelled?) is not counted and shows in To c
   await openWeek(page, { guests });
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('21 guests');
   await tab(page, 'guests');
-  await expect(page.locator('.wk-view-guests .wk-check')).toContainText('1 guest dropped out of the latest Guests file – cancelled? Not counted');
+  await expect(page.locator('.wk-view-guests .wk-check')).toContainText('1 guest dropped out of the latest Bookinglayer report – cancelled? Not counted');
 });
 
 // The Bookinglayer camp report holds check-outs −3..+32 days around its day (17 Nov 2026): a stored guest whose check-out is
@@ -489,7 +489,7 @@ test('window guard: a guest outside the last report\'s check-out window is not �
   await openWeek(page, { guests, last: { at: '2026-11-17T04:00:00Z', source: 'mail', import_id: IMPORT_NEW, window_from: '2026-11-14', window_to: to } });
   await expect(page.locator('#weekRoot .wk-count')).toHaveText('22 guests');
   await tab(page, 'guests');
-  await expect(page.locator('.wk-view-guests')).not.toContainText('dropped out of the latest Guests file');
+  await expect(page.locator('.wk-view-guests')).not.toContainText('dropped out of the latest Bookinglayer report');
   // 04:00Z = 09:30 Colombo, «now» is 10:00 Colombo: fresh, not amber
   await expect(page.locator('#weekRoot .wk-imp .wk-lastimp')).toHaveText('Last import: today 09:30 · Bookinglayer (automatic)');
   await expect(page.locator('#weekRoot .wk-lastimp.kv-amber')).toHaveCount(0);
@@ -560,7 +560,7 @@ test('changed since sent: a re-import that changes Tuesday dinner → chip, ambe
 test('no camp_week_messages yet (SQL not run): lists, Copy and Send still work, a soft line says it is not remembered', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openWeek(page, { noMessagesTable: true });
-  await expect(page.locator('.wk-soft')).toContainText('supabase/camp-week.sql');
+  await expect(page.locator('.wk-soft')).toContainText('Sent messages are not remembered yet — tell Miguel');
   await pick(page, 'Kitchen', '2026-11-17');
   await page.click('#wkSend');
   expect(await page.evaluate(() => window.__opened.length)).toBe(1);
@@ -779,9 +779,9 @@ test('import: Week shows the import (one copy of the inputs, one blue button); a
   const st = await openWeek(page);
   await tab(page, 'surf');
   await page.evaluate(() => { showPage('transport'); showPage('week'); });
-  await page.click('#weekRoot button:has-text("Import Guests file")');
-  await expect(page.locator('#weekRoot .wk-import')).toContainText('Choose Guests file');
-  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
+  await page.click('#weekRoot button:has-text("Import report by hand")');
+  await expect(page.locator('#weekRoot .wk-import')).toContainText('Choose report file');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Bookinglayer report');
   expect(await page.locator('#trGuestsFile').count()).toBe(1);
   expect(await visiblePrimary(page)).toBe(1);
   const before = st.calls.filter(c => c.t === 'guests_get').length;
@@ -815,7 +815,7 @@ test('import: Week shows the import (one copy of the inputs, one blue button); a
 test('import on a Friday: the file also holds the guests in camp, the week shown is the coming one (first check-in from today on)', async ({ page }) => {
   await openWeek(page, { now: '2026-11-13T18:00' });
   await expect(page.locator('#weekRoot .wk-week')).toHaveText('Week 13 · 7–13 Nov');     // the running week
-  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.click('#weekRoot button:has-text("Import report by hand")');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
   await page.click('#trImportSave');
   await page.click('#weekRoot button:has-text("See the week")');
@@ -825,7 +825,7 @@ test('import on a Friday: the file also holds the guests in camp, the week shown
 
 test('import: «Send transfers in Transport» after saving opens Transport → Trips on the week of the file (Friday: the coming week)', async ({ page }) => {
   await openWeek(page, { now: '2026-11-13T18:00' });
-  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.click('#weekRoot button:has-text("Import report by hand")');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
   await page.click('#trImportSave');
   await page.click('#weekRoot button:has-text("Send transfers in Transport")');
@@ -871,11 +871,11 @@ test('chips: «Guests file is N days old» after 3 days; yoga paid/unpaid from t
   const run = () => page.evaluate(() => { const ctx = { ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: '2026-11-17' };
     return { file: WeekUI.checks.file.run(ctx), yoga: WeekUI.checks.yoga.run(ctx) }; });
   let r = await run();
-  expect(r.file.text).toBe('Guests file is 4 days old – import again');
+  expect(r.file.text).toBe('Bookinglayer import stopped 4 days ago – tell Miguel');
   // last week (7–13 Nov) had Anja with Yoga Pack and no yoga payment
   expect(r.yoga.map(x => x.text)).toEqual(['Yoga students last week (1) but no Yoga payment']);
   await page.evaluate(() => showPage('overview'));
-  await expect(page.locator('#ovChecks')).toContainText('Guests file is 4 days old – import again');
+  await expect(page.locator('#ovChecks')).toContainText('Bookinglayer import stopped 4 days ago – tell Miguel');
   // a yoga payment in the ledger (Salary, «Yoga teacher») clears it
   await page.evaluate(() => { S.ledger.push({ id: 'y1', type: 'expense', category: 'Salary', description: 'Yoga teacher week 46', date: '2026-11-15', amountLocal: 30000, paymentMethod: 'Cash' }); });
   r = await run();
@@ -984,7 +984,7 @@ test('to check · nobody lost: two guests in a bed, a room over its beds, a priv
   has('1 guest with two bookings and nights with no booking in between', 'Jan Jost (out Sat 14 Nov, back Sat 21 Nov)');
   has('1 guest with arrival or departure dates that differ from the room dates', 'Kim Kahl (room from Sat 14, arrives Mon 16)');
   expect(checks.some(c => c[1].includes('people count'))).toBe(false);
-  await expect(page.locator('#weekRoot .wk-people')).toContainText('People check: 10 guests in the Guests file for this week, all on the lists');
+  await expect(page.locator('#weekRoot .wk-people')).toContainText('People check: 10 guests in the Bookinglayer report for this week, all on the lists');
   await tab(page, 'rooms');
   await expect(page.locator('.wk-view-rooms .wk-check .wk-ci')).toHaveCount(5);     // bed, private room, over, no bed, room move
   // Jan is not «staying on»: he leaves on Sat 14 (Departures) — the To check line asks which it is
@@ -1163,7 +1163,7 @@ test('import: the camp report is recognised, «what will change» is shown, and 
   const trips = TRIPS().map(t => ({ ...t, import_key: t.booking_ref === '2026-5074' ? 'bl:2026-5074:arr' : t.booking_ref === '2026-4070' ? 'bl:2026-4070:dep' : t.import_key, last_import_at: '2026-11-14T03:00:00Z' }));
   const errors = collectFatalErrors(page);
   const st = await openWeek(page, { trips });
-  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.click('#weekRoot button:has-text("Import report by hand")');
   await page.setInputFiles('#trGuestsFile', { name: '2026-11-16 2007 - teste sri lanka.csv', mimeType: 'text/csv', buffer: Buffer.from(text) });
   await expect(page.locator('#weekRoot .tr-plan-sum')).toBeVisible();
   await expect(page.locator('#weekRoot .tr-plan-sum')).toHaveAttribute('data-plan', '2|1|0|1');

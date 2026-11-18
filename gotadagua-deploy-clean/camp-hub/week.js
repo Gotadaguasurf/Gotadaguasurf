@@ -46,7 +46,7 @@
 
   // ── Settings ────────────────────────────────────────────────────────────
   const WEEK_ENABLED_LOCATIONS = new Set(['sri-lanka', 'morocco']);
-  const FILE_OLD_DAYS = 3;              // chip «Guests file is N days old» after this
+  const FILE_OLD_DAYS = 3;              // chip «Bookinglayer import stopped N days ago» after this
   const YOGA_TIME = '08:00';            // shown in the Surf message (B1 template)
   const YOGA_PAY_CATEGORIES = ['Salary', 'Tours & activities', 'Tours'];
   const YOGA_CHECK_FROM_WEEKDAY = 5;    // 0 = Sat … 6 = Fri: the «no Yoga payment» chip for the running week shows from Thu
@@ -577,18 +577,9 @@
   }
   const body = (team, day, ws, rows, lang) => toText(parts(team, day, ws, rows, lang));
   const bilingual = team => team === 'cleaning' && CLEAN_LANG === 'ar';   // Darija sent, English beside it
-  // UPDATE header + the lines that changed (a line diff of the sent text against today's).
-  function lineDiff(oldText, newText) {
-    const strip = t => t.split('\n').slice(1).map(s => s.trim()).filter(Boolean);
-    const a = strip(oldText), b = strip(newText);
-    const left = a.slice(); const added = [];
-    b.forEach(x => { const i = left.indexOf(x); if (i >= 0) left.splice(i, 1); else added.push(x); });
-    return [...left.map(x => '– ' + x), ...added.map(x => '+ ' + x)];
-  }
   // Miguel, 13 Nov: «não quero update — sempre que mando tem de ser o real». A resend is the
   // real, current message, never an UPDATE header or a diff. «Changed since sent» only tells
-  // Francisco that the team has an old version.
-  function updateText(oldText, newText) { return newText; }
+  // Francisco that the team has an old version. (The old lineDiff / updateText helpers are gone, audit WEEK-19.)
 
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -598,7 +589,7 @@
     const c = client(); const loc = await ensureHubLocationId().catch(() => '');
     if (!c || !loc) return;
     const { data, error } = await c.from('camp_week_guests').select('import_id,updated_at').eq('location_id', loc).order('updated_at', { ascending: false }).limit(1);
-    if (error) { W.error = error.message || String(error); W.metaLoaded = true; return; }
+    if (error) { W.error = error.message || String(error); W.errorMissing = missingTable(error); W.metaLoaded = true; return; }
     const top = (data || [])[0];
     if (!top) { W.meta = null; W.metaLoaded = true; W.error = ''; return; }
     let min = null, max = null;
@@ -627,8 +618,8 @@
       c.from('camp_week_guests').select('*').eq('location_id', loc).lte('check_in', add(ws, 7)).gte('check_out', ws).order('check_in'),
       c.from('camp_week_messages').select('*').eq('location_id', loc).eq('week_start', ws).order('sent_at', { ascending: false }),
     ]);
-    if (g.error) { W.error = g.error.message || String(g.error); return null; }
-    W.error = '';
+    if (g.error) { W.error = g.error.message || String(g.error); W.errorMissing = missingTable(g.error); return null; }
+    W.error = ''; W.errorMissing = false;
     const entry = { rows: g.data || [], msgs: m.error ? [] : (m.data || []), msgsOk: !m.error, msgsMissing: missingTable(m.error) };
     W.cache[ws] = entry;
     return entry;
@@ -695,9 +686,9 @@
     const dates = live.filter(dateDiff);
     if (dates.length) items.push({ tab: 'guests', short: `${plural(dates.length, 'guest')} with other arrival dates`, text: `${plural(dates.length, 'guest')} with arrival or departure dates that differ from the room dates – counted by the room dates`, who: dates.map(g => `${g.guest_name} (${dateDiff(g)})`).join(', ') });
     const carry = wk.filter(g => g._st === 'carry');
-    if (carry.length) items.push({ tab: 'guests', short: `${carry.length} still here?`, text: `${plural(carry.length, 'guest')} in camp ${carry.length === 1 ? 'is' : 'are'} not in the latest Guests file – still here?`, guests: carry, kind: 'carry' });
+    if (carry.length) items.push({ tab: 'guests', short: `${carry.length} still here?`, text: `${plural(carry.length, 'guest')} in camp ${carry.length === 1 ? 'is' : 'are'} not in the latest Bookinglayer report – still here?`, guests: carry, kind: 'carry' });
     const dropped = wk.filter(g => g._st === 'dropped');
-    if (dropped.length) items.push({ tab: 'guests', short: `${dropped.length} cancelled?`, text: `${plural(dropped.length, 'guest')} dropped out of the latest Guests file – cancelled? Not counted`, guests: dropped, kind: 'dropped' });
+    if (dropped.length) items.push({ tab: 'guests', short: `${dropped.length} cancelled?`, text: `${plural(dropped.length, 'guest')} dropped out of the latest Bookinglayer report – cancelled? Not counted`, guests: dropped, kind: 'dropped' });
     const zero = live.filter(g => { const raw = String((g.raw || {}).Phone || '').replace(/\s+/g, ''); return raw && g.phone && raw !== g.phone; });
     if (zero.length) items.push({ tab: 'guests', short: `${plural(zero.length, 'phone')} fixed`, text: `${plural(zero.length, 'phone')} had a wrong 0 after the country code – fixed, check before sending`, who: zero.map(g => `${g.guest_name} ${g.phone}`).join(', ') });
     const noPhone = groupPeople(ws, rows, true).filter(x => !x.phone);
@@ -917,15 +908,15 @@
     const ws = W.week;
     const head = `<div class="section-head page-head"><div><div class="section-title">Week</div><div class="section-sub">Arrivals, departures, rooms, meals and surf · messages for the camp teams</div></div>
       <div class="exp-top-actions wk-actions">
-        <div class="wk-imp"><button class="btn btn-s" onclick="WeekUI.setMode('${W.mode === 'import' ? 'lists' : 'import'}')">${ic(W.mode === 'import' ? 'arrow-left' : 'upload')} ${W.mode === 'import' ? 'Back to the week' : 'Import Guests file'}</button>${lastImportHtml()}</div>
+        <div class="wk-imp"><button class="btn btn-s" onclick="WeekUI.setMode('${W.mode === 'import' ? 'lists' : 'import'}')">${ic(W.mode === 'import' ? 'arrow-left' : 'upload')} ${W.mode === 'import' ? 'Back to the week' : 'Import report by hand'}</button>${lastImportHtml()}</div>
         <button class="btn btn-s" onclick="WeekUI.openContacts()">${ic('phone')} Contacts</button></div></div>`;
     if (W.mode === 'import') {
       const tr = $('transportRoot'); if (tr) tr.innerHTML = '';   // one copy of the import inputs in the DOM
       const S = TR();
       let inner = '';
       if (!window.TransportUI || !TransportUI.importHtml) inner = '<div class="status-msg status-warn">Import not available.</div>';
-      else if (!S.loaded) inner = S.error ? `<div class="status-msg status-warn">Transport is not set up yet (${h(S.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>` : '<div class="loading">Loading…</div>';
-      else inner = TransportUI.importHtml({ title: 'Guests file' });
+      else if (!S.loaded) inner = S.error ? TransportUI.loadErrorHtml('Transport', S.error, S.errorMissing, 'TransportUI.retry()') : '<div class="loading">Loading…</div>';
+      else inner = TransportUI.importHtml({ title: 'Bookinglayer report' });
       const done = S.imp && S.imp.stage === 'done';
       // After saving: the two next steps right under the «Saved» line, not under the long list of the file.
       const after = done ? `<div class="wk-after"><button class="btn btn-p" onclick="WeekUI.afterImport()">${ic('list')} See the week</button>
@@ -936,7 +927,12 @@
       if (!S.loaded && !S.error && window.TransportUI) TransportUI.load().then(render);
       return;
     }
-    if (W.error && !W.cache[ws]) { root.innerHTML = head + `<div class="status-msg status-warn">Week is not set up yet (${h(W.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>`; return; }
+    if (W.error && !W.cache[ws]) {
+      // UXC-09: a missing table is a set-up job; any other error is a failed load with Retry (the real error in small print)
+      root.innerHTML = head + (W.errorMissing ? `<div class="status-msg status-warn">Week is not set up yet — tell Miguel.<div class="hint">${h(W.error)}</div></div>`
+        : `<div class="status-msg status-warn">Couldn't load the week — check the connection and try again. <button class="btn btn-s btn-sm" onclick="WeekUI.retry()">Retry</button><div class="hint">${h(W.error)}</div></div>`);
+      return;
+    }
     if (!W.cache[ws]) { root.innerHTML = head + '<div class="loading">Loading the week…</div>'; return; }
     const rows = rowsOf(ws);
     const M = weekModel(ws, rows);
@@ -945,16 +941,17 @@
         <span class="period-picker-lbl wk-week">${h(weekLabel(ws))}</span>
         <button class="btn btn-s btn-sm btn-icon" title="Next week" onclick="WeekUI.shiftWeek(7)">${ic('chevron-right')}</button></div>
       <span class="wk-count">${plural(nGuests, 'guest')}</span>
-      <span class="hint wk-file">${W.meta ? `Guests file imported ${h(fileStamp(W.meta.at))}` : 'No Guests file imported yet'}</span></div>`;
+      <span class="hint wk-file">${W.meta ? `Bookinglayer report imported ${h(fileStamp(W.meta.at))}` : 'No Bookinglayer report imported yet'}</span></div>`;
     if (!nGuests && !rows.length) {
-      root.innerHTML = head + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Bookinglayer's camp report brings the guests every hour. To import by hand: the camp report, or the Guests export with the «${h(CC.preset || 'Semana Sri Lanka')}» preset.</p>
-        <button class="btn btn-p" onclick="WeekUI.setMode('import')">${ic('upload')} Import Guests file</button></div>`;
+      // The empty state has its own «Import report by hand»: the header copy goes, one button for one action (UXC-12).
+      root.innerHTML = head.replace(/<button class="btn btn-s" onclick="WeekUI\.setMode\('import'\)">[\s\S]*?<\/button>/, '') + filters + `<div class="empty-state">${ic('users')}<div class="empty-title">No guests this week</div><p>Bookinglayer's camp report brings the guests every hour. To import by hand: the camp report, or the Guests export with the «${h(CC.preset || 'Semana Sri Lanka')}» preset.</p>
+        <button class="btn btn-p" onclick="WeekUI.setMode('import')">${ic('upload')} Import report by hand</button></div>`;
       return;
     }
     const checks = toCheck(ws);
     const ch = changes(ws);
     const chHtml = ch.length ? `<div class="health-strip wk-changed"><span class="health-lbl">Changed since sent</span>${ch.map(c => `<button class="health-chip" onclick="WeekUI.go('${c.team}','${c.day}')">${h(changeLabel(c))}</button>`).join('')}</div>` : '';
-    const notSaved = (W.cache[ws].msgsMissing) ? `<div class="status-msg status-info wk-soft">Sent messages are not remembered yet — ask Miguel to run supabase/camp-week.sql.</div>` : '';
+    const notSaved = (W.cache[ws].msgsMissing) ? `<div class="status-msg status-info wk-soft">Sent messages are not remembered yet — tell Miguel.</div>` : '';
     const tabs = `<div class="pills wk-tabs" role="tablist">${TABS.map(t => {
       const n = checks.filter(c => c.tab === t.k).length;
       const dot = t.team && ch.some(c => c.team === t.team) ? '<span class="wk-dot" title="Changed since sent"></span>' : '';
@@ -1023,7 +1020,7 @@
     const text = body(team, day, ws, rows);
     const sent = sentOf(team, day, ws);
     const changed = sent && sent.hash !== hash(text);
-    const msg = dress(changed ? updateText(sent.text, text, day, ws) : text, cToday());
+    const msg = dress(text, cToday());
     if (bilingual(team)) {
       // Morocco Cleaning: the Darija that is sent, and beside each line its English twin — to check, never sent.
       const en = dress(body(team, day, ws, rows, 'en'), cToday());
@@ -1077,7 +1074,7 @@
     const teams = `<div class="card wk-card">${cardHead('Team messages', 'One WhatsApp text per team, for a day or the whole week')}<div class="wk-teamrows">${TEAMS.filter(t => t.contact).map(t => teamRow(t, ctx)).join('')}</div></div>`;
     // Nobody lost: the count of the file against every list (peopleCheck).
     const pc = peopleCheck(ws, ctx.rows);
-    const people = pc.ok ? `<div class="hint wk-people">${ic('check-circle')} People check: ${plural(pc.guests, 'guest')} in the Guests file for this week, all on the lists · every night, meal and room adds up</div>`
+    const people = pc.ok ? `<div class="hint wk-people">${ic('check-circle')} People check: ${plural(pc.guests, 'guest')} in the Bookinglayer report for this week, all on the lists · every night, meal and room adds up</div>`
       : `<div class="status-msg status-err wk-people bad">The people count does not add up — tell Miguel before sending any list. ${h(pc.problems.join(' · '))}</div>`;
     return tiles + checkChips + people + strip + board + teams;
   }
@@ -1370,7 +1367,7 @@
     const ws = W.week; const rows = rowsOf(ws);
     if (W.team === 'guests') return body('guests', W.day, ws, rows);
     const text = body(W.team, W.day, ws, rows); const sent = sentOf(W.team, W.day, ws);
-    return { text, out: dress(sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text, cToday()) };
+    return { text, out: dress(text, cToday()) };
   }
   async function clip(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
@@ -1489,7 +1486,7 @@
       const d = colomboStamp(new Date(W.meta.at)).slice(0, 10);
       const age = daysBetween(d, ctx.today || cToday());
       if (age <= FILE_OLD_DAYS) return null;
-      return { text: `Guests file is ${age} days old – import again`, level: 'warn', onClick: () => { W.mode = 'import'; showPage('week'); } };
+      return { text: `Bookinglayer import stopped ${age} days ago – tell Miguel`, level: 'warn', onClick: () => { W.mode = 'import'; showPage('week'); } };
     },
   };
   const yogaCheck = {
@@ -1526,6 +1523,7 @@
 
   window.renderWeekPage = renderWeekPage;
   window.WeekUI = {
+    retry() { W.error = ''; W.errorMissing = false; W.cache = {}; render(); loadAll(true).then(render); },
     render, closeModal, openContacts, saveContacts, copy, send, undo, keep, notHere, toTransport,
     setMode(m) { W.mode = m; if (m === 'import' && window.TransportUI && TR().imp && TR().imp.stage === 'done') TR().imp = null; render(); },
     // After an import: Overview of the week Francisco imported for — the first check-in from today on
@@ -1557,7 +1555,7 @@
     findGuest(name) { W.q = name; W.tab = 'guests'; W.team = 'guests'; W.day = 'week'; render(); },
     shiftWeek(n) { W.week = add(W.week, n); W.day = 'week'; W.undo = null; render(); loadWeek(W.week).then(render); },
     // for tests
-    _state: W, loadAll, classify, body, bodyOf: (team, day, lang) => body(team, day, W.week, rowsOf(W.week), lang), parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
+    _state: W, loadAll, classify, body, bodyOf: (team, day, lang) => body(team, day, W.week, rowsOf(W.week), lang), parts, toText, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
     checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf, dress, dayMoves: d => dayMoves(rowsOf(W.week), d), e164, groupName: () => groupName(W.week), weekNo, weekLabel, groupDescription: () => groupDescription(W.week),
     vcf: () => vcfText(groupPeople(W.week, rowsOf(W.week), W.groupOutside), W.week), groupPeople: () => groupPeople(W.week, rowsOf(W.week), W.groupOutside),
     model: () => weekModel(W.week, rowsOf(W.week)), roomPlan: () => roomPlan(W.week, rowsOf(W.week)),

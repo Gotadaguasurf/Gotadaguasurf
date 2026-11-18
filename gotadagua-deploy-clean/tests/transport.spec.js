@@ -184,11 +184,11 @@ test('transport: one view (no Reconcile pill since 16 Nov 2026), no «Next week�
   await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();
   await expect(page.locator('#transportRoot button.pill:has-text("Next week")')).toHaveCount(0);
   // The sheet (16 Nov 2026): an empty week still shows its seven days, each with «+ Add», and says where trips come from.
-  await expect(page.locator('#transportRoot .tr-sheet-empty')).toContainText('Airport transfers come from the Guests file (import it in Week)');
+  await expect(page.locator('#transportRoot .tr-sheet-empty')).toContainText("Airport transfers come from Bookinglayer's camp report every hour");
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await expect(page.locator('#transportRoot .tr-day [data-add]')).toHaveCount(7);
-  await page.click('#transportRoot .tr-sheet-empty button:has-text("Import Guests file")');
-  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
+  await page.click('#transportRoot .tr-sheet-empty button:has-text("Import report by hand")');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Bookinglayer report');
   expect(await page.evaluate(() => activePage)).toBe('week');
   expect(await page.locator('#trGuestsFile').count()).toBe(1);
   expect(errors).toEqual([]);
@@ -206,7 +206,7 @@ test('guests import (in Week): the Guests file stands alone — HQ bookings are 
     ],
   });
   await openImport(page);
-  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Bookinglayer report');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
   await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 6');
   await expect(page.locator('#weekRoot')).toContainText('Maximilian Ehrler');
@@ -553,7 +553,8 @@ test('transport: works with the tables missing (SQL not run yet) — a clear mes
   await open(page, { missingTables: true });
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.error, null, { timeout: 10000 });
   await page.evaluate(() => showPage('transport'));
-  await expect(page.locator('#transportRoot .status-warn')).toContainText('Ask Miguel to run supabase/camp-trips.sql');
+  await expect(page.locator('#transportRoot .status-warn')).toContainText('Transport is not set up yet — tell Miguel');
+  await expect(page.locator('#transportRoot .status-warn')).not.toContainText('supabase/');   // no file names for staff (UXC-09)
   expect(errors).toEqual([]);
 });
 
@@ -589,6 +590,8 @@ test('trips: a transfer without flight or time has «Ask guest» — WhatsApp to
   expect(text).toContain("I'm Francisco, the manager of *Gota Dagua Surf Camp Sri Lanka*.");
   expect(text).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);                                         // no emoji (wa.me shows «?» on desktop)
   await expect(page.locator('.tr-day').first().locator('.tr-row').filter({ hasText: 'Beliz Kuyumcuoglu' })).toContainText('asked');
+  // kept in the browser's real storage, so it survives a reload (the hub shadows `localStorage` with an in-memory map — CH-13)
+  expect(await page.evaluate(() => Object.keys(JSON.parse(window.localStorage.getItem('tr-asked-v1') || '{}')).length)).toBe(1);
   expect(errors).toEqual([]);
 });
 

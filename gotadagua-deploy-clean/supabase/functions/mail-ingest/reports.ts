@@ -334,7 +334,23 @@ async function handleRevenue(db: Any, runId: string, text: string, receivedAt: s
   const { data: partners, error: pe } = await db.from('partners').select('name')
   if (pe) throw new Error('reading partners: ' + pe.message)
   const plan = BRV().plan(parsed.rows, existing, (partners || []).map((p: Any) => p.name))
-  const changes = BRV().summarize(plan, parsed)
+  // A realized booking inside the file's check-in range that the file no longer has: listed «left the report — check»
+  // in the run log, never changed (audit 18 Nov 2026, PRT-19 / SEAM-18). A failed read only loses the list.
+  let left: Any[] = []
+  const cis = parsed.rows.map((r: Any) => r.checkinMs ? new Date(r.checkinMs).toISOString().slice(0, 10) : '').filter(Boolean).sort()
+  if (cis.length) {
+    const range = { from: cis[0], to: cis[cis.length - 1] }
+    const inRange: Any[] = []; let readErr = ''
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db.from('bookings').select('booking_ref,check_in_on,location,raw_payload').gte('check_in_on', range.from).lte('check_in_on', range.to).order('booking_ref').range(from, from + 999)
+      if (error) { readErr = error.message || String(error); break }
+      inRange.push(...(data || []))
+      if (!data || data.length < 1000) break
+    }
+    if (readErr) plan.notes.push(`could not check for bookings that left the report: ${readErr}`)
+    else left = BRV().leftReport(inRange, refs, range)
+  }
+  const changes = BRV().summarize(plan, parsed, left)
   await db.from('bl_report_runs').update({ rows: parsed.rows.length, changes }).eq('id', runId)
   if (dry) return finish(db, runId, 'dry_run')
   if (!plan.upserts.length) return finish(db, runId, 'imported', { result: { upserted: 0, snapshots: 0, partners_created: 0 } })

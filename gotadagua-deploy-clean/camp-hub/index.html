@@ -537,7 +537,7 @@ body{min-height:100dvh}
         <a href="/camp-hub/?location=portugal"    data-loc="portugal"><span>Portugal</span><small>Costa da Caparica</small></a>
         <a href="/camp-hub/?location=morocco"     data-loc="morocco"><span>Morocco</span><small>Tamraght</small></a>
         <a href="/camp-hub/?location=sri-lanka"   data-loc="sri-lanka"><span>Sri Lanka</span><small>Ahangama</small></a>
-        <a href="/camp-hub/?location=junior-camp" data-loc="junior-camp"><span>Junior Camp</span><small>Summer junior camp</small></a>
+        <a href="/camp-hub/?location=junior-camp" data-loc="junior-camp"><span>Junior Camp</span><small>Junior + Kids camps</small></a>
         <a href="/camp-hub/?location=surf-school" data-loc="surf-school"><span>Surf School</span><small>Caparica rentals</small></a>
       </nav>
     </details>
@@ -1164,7 +1164,9 @@ const TOUR_MENU_BY_LOCATION={
   // Portugal & Junior Camp don't have a fixed tour list yet — start with an
   // empty array so the Tours UI exists but the menu is editable in-app.
   portugal:[],
-  'junior-camp':[]
+  'junior-camp':[],
+  // The surf school sells no camp tours: an empty list, not Sri Lanka's (audit CH-08).
+  'surf-school':[]
 };
 const TOUR_MENU_ITEMS = (TOUR_MENU_BY_LOCATION[__HUB_LOCATION_SLUG] || TOUR_MENU_BY_LOCATION['sri-lanka']).map(t=>({...t}));
 const DRINK_MENU_ITEMS=[
@@ -1357,30 +1359,14 @@ const FX_FALLBACK_PER_EUR = {
   'portugal':    1,
   // Both forms — see LOCAL_CURRENCY_PINNED note.
   'junior-camp': 1,
-  'junior':      1
+  'junior':      1,
+  'surf-school': 1    // a euro location: never the 330 LKR fallback (CH-08)
 };
 const FX_FALLBACK_THIS_LOC = FX_FALLBACK_PER_EUR[__HUB_LOCATION_SLUG] ?? 330;
 let LOCAL_PER_EUR = (parseFloat(localStorage.getItem(FX_KEY)||'') || FX_FALLBACK_THIS_LOC);
 let DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
-const FIXED_MONTHLY_DEFAULTS=[
-  {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
-  {name:'Surf Camp Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:500000,description:'Surf camp rent',enabled:true},
-  {name:'Pool Maintenance',type:'expense',category:'Services',businessArea:'Utilities',paymentMethod:'Cash',amountLocal:10000,description:'Pool maintenance',enabled:true}
-];
-const SALARY_PROFILE_DEFAULTS=[
-  {name:'Ashan Dilruk',type:'seasonal',seasonAmount:120000,offSeasonAmount:30000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Dilshan de Silva',type:'seasonal',seasonAmount:120000,offSeasonAmount:30000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Vihamga Sandeepa',type:'seasonal',seasonAmount:30000,offSeasonAmount:10000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Michael Sampath',type:'seasonal',seasonAmount:110000,offSeasonAmount:75000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Anushka Botheju',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Chinthaka Ramanayaka',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Bar - Jude Rohan',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Nadith',type:'seasonal',seasonAmount:100000,offSeasonAmount:75000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Dilip Kumara',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Sahan Wellage',type:'seasonal',seasonAmount:50000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Shenal de Almeida',type:'fixed',fixedAmount:35000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Francisco Guimarães',type:'fixed',fixedAmount:155000,paymentMethod:'Bank Transfer',enabled:true}
-];
+// The old monthly defaults (rents, and staff names with salaries) are gone from the page source: the monthly
+// automation was removed on 28 Oct 2026 and they were sent to every browser (audit CH-10).
 function defS(){return{weeks:[],ledger:[],recurring:[],salaryProfiles:[],salaryMode:'season'};}
 function inferArea(type,category,linkedItem=''){
   if(type==='transfer') return 'General';
@@ -1676,27 +1662,13 @@ window.addEventListener('beforeunload',e=>{
   // without warning.
   if(_pendingWeeksSave || window.__transportSavePending){
     e.preventDefault();
-    e.returnValue='Há alterações ainda a guardar. Tem a certeza?';
+    e.returnValue='Changes are still being saved. Leave anyway?';
   }
 });
 ensureRecurringDefaults();
 function refreshStateFromStorage(){S=loadS();}
 function ensureRecurringDefaults(){
-  return; // monthly automation removed 28 Oct 2026
-  // Sri Lanka is the only location these defaults belong to (the rents and
-  // staff names are Sri-Lanka-specific). Skip seeding entirely on every
-  // other location so Morocco / Portugal / Junior Camp start clean and
-  // pull their real data from Supabase only.
-  if(__HUB_LOCATION_SLUG !== 'sri-lanka') return;
-  if(localStorage.getItem(RECURRING_DEFAULTS_VERSION_KEY)==='2026-04-sri-lanka-recurring-v1') return;
-  const existingRecurringNames=new Set((S.recurring||[]).map(rule=>String(rule.name||'').trim().toLowerCase()));
-  FIXED_MONTHLY_DEFAULTS.forEach(rule=>{
-    if(existingRecurringNames.has(rule.name.toLowerCase())) return;
-    S.recurring.push(normalizeRecurringRule(rule));
-  });
-  if(!S.salaryMode) S.salaryMode='season';
-  save();
-  localStorage.setItem(RECURRING_DEFAULTS_VERSION_KEY,'2026-04-sri-lanka-recurring-v1');
+  // monthly automation removed 28 Oct 2026 (nothing is seeded)
 }
 function migrateCampTabToursMenu(){
   const existingMenu=readJsonStorage(CAMPTAB_MENU_KEY,{})||{};
@@ -1873,7 +1845,8 @@ function scheduleHubLedgerRehydrate(){
     HUB_LEDGER_HYDRATE_PROMISE=null;
     try{
       await hydrateLedgerFromSupabase({mergeLocal:false});
-      renderExpenses();renderOverview();renderWeeklyPL();
+      // Only the page on screen is redrawn; showPage draws the others when they are opened (audit CH-11).
+      rerenderActivePageData();
     }catch(e){handleLedgerSupabaseError('RT ledger hydrate failed',e,{action:'load',background:true});}
   },500);
 }
@@ -2799,7 +2772,7 @@ async function commitLedgerEntries(entries,context='batch',opts={}){
     // converge on the same set of entries.
     if(!await pushLedgerEntriesToSupabase(entries)) throw new Error(HUB_NOT_CONNECTED);
     hubPutInLedger(entries);
-    save();
+    save_mem();   // a ledger save no longer re-sends the (always empty) weeks blob to location_state_store (CH-12)
     notifyLedgerChanged();
     setSavePill('saved','Saved');
     return true;
@@ -3123,83 +3096,13 @@ async function fetchMonthlyProfilesFromSupabase(){
 // flag) so a future delete by the user doesn't get undone.
 const MONTHLY_PROFILES_PUSH_VERSION_KEY='camphub_monthly_profiles_push_v1'+__HUB_LOC_SUFFIX;
 async function backfillLocalMonthlyProfilesToSupabase(){
-  return; // monthly automation removed 28 Oct 2026
-  if(localStorage.getItem(MONTHLY_PROFILES_PUSH_VERSION_KEY)==='done') return;
-  const client=getHubSupabaseClient();
-  const locationId=await ensureHubLocationId();
-  if(!client||!locationId){
-    // Try again next bootstrap; don't burn the version flag.
-    return;
-  }
-  try{
-    const existing=await fetchMonthlyProfilesFromSupabase();
-    const existingKeys=new Set(existing.map(row=>monthlyProfileKey(row.profile_type,row.name)));
-    const inserts=[];
-    (S.salaryProfiles||[]).forEach(profile=>{
-      if(!profile?.name) return;
-      const key=monthlyProfileKey('salary',profile.name);
-      if(existingKeys.has(key)) return;
-      inserts.push(salaryProfileToMonthlyCostRow(profile,locationId));
-    });
-    (S.recurring||[]).forEach(rule=>{
-      if(!rule?.name) return;
-      const key=monthlyProfileKey('fixed_cost',rule.name);
-      if(existingKeys.has(key)) return;
-      inserts.push(recurringRuleToMonthlyCostRow(rule,locationId));
-    });
-    if(inserts.length){
-      console.log('[Hub] backfilling',inserts.length,'monthly profiles that exist locally but not in Supabase');
-      const { error } = await client.from('monthly_cost_profiles').insert(inserts);
-      if(error) throw error;
-      window.__hubMonthlyBackfill={count:inserts.length,names:inserts.map(r=>r.name),at:new Date().toISOString()};
-      toast('Saved.');
-    }
-    localStorage.setItem(MONTHLY_PROFILES_PUSH_VERSION_KEY,'done');
-  }catch(e){
-    console.warn('[Hub] backfillLocalMonthlyProfilesToSupabase failed',e);
-    // Don't set the flag — let the next bootstrap retry.
-  }
+  // monthly automation removed 28 Oct 2026 (nothing is pushed)
 }
 
 async function hydrateMonthlyProfilesFromSupabase({mergeLocal=true}={}){
   // Monthly automation removed 28 Oct 2026: salaries and fixed costs are
   // added by hand, so nothing is loaded and nothing is applied at month end.
   S.salaryProfiles=[];S.recurring=[];
-  return true;
-  const client=getHubSupabaseClient();
-  const locationId=await ensureHubLocationId();
-  if(!client||!locationId) return false;
-  let existing=await fetchMonthlyProfilesFromSupabase();
-  if(mergeLocal){
-    const existingKeys=new Set(existing.map(row=>monthlyProfileKey(row.profile_type,row.name)));
-    const inserts=[];
-    (S.salaryProfiles||[]).forEach(profile=>{
-      const key=monthlyProfileKey('salary',profile.name);
-      if(existingKeys.has(key)||!profile?.name) return;
-      inserts.push(salaryProfileToMonthlyCostRow(profile,locationId));
-    });
-    (S.recurring||[]).forEach(rule=>{
-      const key=monthlyProfileKey('fixed_cost',rule.name);
-      if(existingKeys.has(key)||!rule?.name) return;
-      inserts.push(recurringRuleToMonthlyCostRow(rule,locationId));
-    });
-    if(inserts.length){
-      const { error } = await client.from('monthly_cost_profiles').insert(inserts);
-      if(error) throw error;
-      existing=await fetchMonthlyProfilesFromSupabase();
-    }
-  }
-  const salaries=[];
-  const recurring=[];
-  existing.forEach(row=>{
-    const mapped=monthlyCostRowToLocal(row);
-    if(!mapped?.profile) return;
-    if(mapped.kind==='salary') return;
-    recurring.push(mapped.profile);
-  });
-  S.salaryProfiles=salaries;
-  S.recurring=recurring;
-  save();
   return true;
 }
 async function upsertMonthlyCostRow(row,context='monthly profile save failed'){
@@ -4890,7 +4793,7 @@ async function flushCampTabCheckouts(){
   CT_CHECKOUT_PENDING.clear();
   if(!batch.length) return;
   const triggers=batch.flatMap(p=>p.triggers);
-  const failAll=()=>triggers.forEach(t=>{ try{ t.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:t.guestId,itemId:t.itemId},'*'); }catch(_){} });
+  const failAll=()=>triggers.forEach(t=>{ try{ t.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:t.guestId,itemId:t.itemId},location.origin); }catch(_){} });
   try{
   const upserts=[]; const deletes=[];
   const serverByGuest=new Map();
@@ -5158,7 +5061,7 @@ let ovBookings=[];
 const OV_BL_LOCATION_LABELS={
   'sri-lanka':['Surf Camp Ahangama'],
   'morocco':['Tamraght Camp'],
-  'portugal':['Surf Camp Portugal'],
+  'portugal':['Surf Camp Portugal','Coliving Portugal Caparica'],   // = hq_booking_location_slug in SQL (SEAM-08)
   'junior-camp':['Junior Camp Caparica','Kids Camp Caparica'],
   'surf-school':['Surf School Caparica'],
 };
@@ -5366,7 +5269,7 @@ function syncSelectedBookingsToCampTab(){
       ci:booking.ci,
       co:booking.co
     }))
-  },'*');
+  },location.origin);
   toast('Sending bookings to Camp Tab...');
 }
 function buildFoodControlCardHtml(weeks,allLedger,span){
@@ -7958,12 +7861,19 @@ function ledgerDrawerDelta(r){
   }
   return none;
 }
+// The local amount a row moves in a drawer. A euro row in a camp that counts in LKR / MAD carries the rate it was
+// paid at: amount × that rate, as camp_cash_balance() does in SQL (audit CH-18); a euro row without a real rate
+// (fx 1) keeps today's rate, as before. The table's own display (entryLocalDisplayAmount) is unchanged.
+function drawerLocalAmount(r){
+  if(r && r.currency==='EUR' && (LOCAL_CURRENCY||'EUR')!=='EUR' && Number(r.fxRate)>1) return Number(r.amount||0)*Number(r.fxRate);
+  return entryLocalDisplayAmount(r);
+}
 function ledgerDrawerBalances(rows){
   const out={bankLocal:0,bankEur:0,cashLocal:0,cashEur:0};
   (rows||[]).forEach(r=>{
     const d=ledgerDrawerDelta(r);
     if(!d.bank&&!d.cash) return;
-    const l=entryLocalDisplayAmount(r), e=entryEurAmount(r);
+    const l=drawerLocalAmount(r), e=entryEurAmount(r);
     out.bankLocal+=d.bank*l; out.bankEur+=d.bank*e;
     out.cashLocal+=d.cash*l; out.cashEur+=d.cash*e;
   });
@@ -9593,7 +9503,7 @@ function notifyCampTabRemoveHistoryWeek(weekRef){
   // This cascades: deleting a campclose entry in Operations Ledger removes the week from camp tab history.
   if(!weekRef) return;
   const frame=document.getElementById('campTabFrame');
-  try{ frame?.contentWindow?.postMessage({type:'hub-campclose-week-delete',weekRef},'*'); }catch(e){}
+  try{ frame?.contentWindow?.postMessage({type:'hub-campclose-week-delete',weekRef},location.origin); }catch(e){}
 }
 function extractWeekRefFromCampcloseId(id){
   const s=String(id||'');
@@ -9660,7 +9570,7 @@ async function delLedger(id,{confirmed=false}={}){
       }
     }catch(_e){}
   }
-  save();
+  save_mem();   // CH-12: no weeks-blob write on a ledger delete
   renderExpenses();renderOverview();renderWeeklyPL();
   // «Deleted.» and the Camp Tab message wait for the server (audit CH-03): they
   // used to go out first, so a delete the database refused still said «Deleted.»,
@@ -9686,7 +9596,7 @@ async function delLedger(id,{confirmed=false}={}){
     if(grouped){
       const frame=document.getElementById('campTabFrame');
       grouped.items.forEach(it=>{
-        try{ frame?.contentWindow?.postMessage({type:'camp-tab-ledger-deleted',description:`Camp Tab · ${String(grouped.guest.name||'').trim()} · ${String(it.n||'').trim()}`,date:entry?.date||'',amountLocal:Number(it.p||0)},'*'); }catch(_e){}
+        try{ frame?.contentWindow?.postMessage({type:'camp-tab-ledger-deleted',description:`Camp Tab · ${String(grouped.guest.name||'').trim()} · ${String(it.n||'').trim()}`,date:entry?.date||'',amountLocal:Number(it.p||0)},location.origin); }catch(_e){}
       });
     }else if(isPerItem){
       const frame=document.getElementById('campTabFrame');
@@ -9698,19 +9608,20 @@ async function delLedger(id,{confirmed=false}={}){
           description: entry?.description||'',
           date:        entry?.date||'',
           amountLocal: Number(entry?.amountLocal||0)
-        },'*');
+        },location.origin);
       }
     }
   }catch(_e){} };
   try{
     await deleteLedgerEntryFromSupabase(id);
+    setSavePill('saved','Saved');
     toast('Deleted.');
     tellCampTab();
   }catch(error){
     // Not deleted: the line comes back, the pill turns red and sends the delete again on tap.
     if(backup&&!S.ledger.some(x=>x.id===id)) S.ledger=[...S.ledger,backup];
     hubSaveFailed(failKey,()=>delLedger(id,{confirmed:true}),'Delete failed — tap to retry');
-    save();
+    save_mem();
     renderExpenses();renderOverview();renderWeeklyPL();
     handleLedgerSupabaseError('ledger delete failed',error,{action:'delete'});
   }finally{
@@ -9758,7 +9669,8 @@ function openExpModal(type,id=null,preset=null){
     document.getElementById('em_amount').value = entry.amountLocal || entry.amount || '';
   }
   updateCurrencyUi('em',type);
-  syncFxRateForPrefix('em');
+  // A new line takes the day rate; an existing one shows the rate it was saved with (a date change re-stamps it, CH-06).
+  if(!entry) syncFxRateForPrefix('em');
   document.getElementById('expDeleteBtn').style.display=id?'inline-flex':'none';
   document.getElementById('expSaveBtn').textContent=id?'Save changes':'Save';
   openOv('expOv');
@@ -9785,11 +9697,21 @@ async function __saveExpenseRun(){
     toast(`Choose which ${category==='Tours'?'tour':'transport item'} this is for`);
     return;
   }
-  await syncFxRateForPrefix('em');
-  let payload=buildLedgerPayload('em',expModalType,editingLedgerId||hubFailedEntryId('ledger modal save')||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
-  if(!payload){toast('Date and amount required');return;}
-  if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
-  payload=await enrichLedgerEntryFx(payload);
+  // Editing a line without touching its date, amount or currency keeps its FX rate and its euro value: a text edit
+  // used to fetch the day rate again and rewrite the EUR of hand-typed «received ÷ sent» rows (audit CH-06).
+  const _prevEntry=editingLedgerId?(S.ledger||[]).find(x=>x&&x.id===editingLedgerId):null;
+  const _sameMoney=p=>!!(_prevEntry&&p&&p.date===_prevEntry.date&&String(p.currency||'')===String(_prevEntry.currency||'')
+    &&Number(p.amountLocal||0)===Number(_prevEntry.amountLocal||0)&&Number(_prevEntry.fxRate)>0);
+  let payload=_prevEntry?buildLedgerPayload('em',expModalType,editingLedgerId):null;
+  if(_sameMoney(payload)){
+    payload=normalizeLedgerEntry({...payload,fxRate:Number(_prevEntry.fxRate),amount:Number(_prevEntry.amount)});
+  }else{
+    await syncFxRateForPrefix('em');
+    payload=buildLedgerPayload('em',expModalType,editingLedgerId||hubFailedEntryId('ledger modal save')||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
+    if(!payload){toast('Date and amount required');return;}
+    if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
+    payload=await enrichLedgerEntryFx(payload);
+  }
   // A cash withdrawal is ONE row ('ATM Withdrawal': bank −, cash +) — it is
   // saved like any other entry (Miguel, 11 Nov 2026). Old data may still
   // hold a withdrawal as a pair («Out of bank» + «Into cash», same day and
@@ -9827,7 +9749,7 @@ async function commitLedgerEdit(editId,payload,pairTwin,opts={}){
     if(!await pushLedgerEntriesToSupabase([payload])) throw new Error(HUB_NOT_CONNECTED);
     if(pairTwin) await deleteLedgerEntryFromSupabase(pairTwin.id);
     S.ledger=S.ledger.filter(x=>!pairTwin||x.id!==pairTwin.id).map(x=>x.id===editId?payload:x);
-    save();
+    save_mem();   // CH-12: no weeks-blob write on a ledger save
     notifyLedgerChanged();
     setSavePill('saved','Saved');
     return true;
@@ -9998,7 +9920,7 @@ function wplWeekCardHtml(M,byWs,sel){
   const pGuests=sum(prev,x=>x.guestCount||0)/(nPrev||1);
   const inProgress=sel===M.cur;
   const inc=!!r.incomplete;
-  const fileNote=r.guestSrc==='file'?'from the camp\u2019s Guests file':'';
+  const fileNote=r.guestSrc==='file'?'from the camp\u2019s Bookinglayer report':'';
   const cut=wplBookingsCutoff();
   const dayNo=inProgress?Math.round((new Date(today()+'T00:00:00')-new Date(sel+'T00:00:00'))/86400000)+1:0;
   const older=M.rows.filter(x=>x.ws<sel).map(x=>x.ws)[0]||addDays(sel,-7);
@@ -10034,7 +9956,7 @@ function wplWeekCardHtml(M,byWs,sel){
         ${inProgress?'':`<button class="btn btn-s btn-sm" onclick="wplSelect('${M.cur}')">This week</button>`}
       </div>
     </div>
-    ${inc?`<div class="wpl-warn" id="wplIncomplete"><b>Bookings not imported for this week yet — revenue and guests are incomplete.</b> Import bookings in HQ.${cut?` Bookings imported up to ${fmtd(cut)}.`:''}${r.guestSrc==='file'&&r.guestCount>r.bookingGuestsHq?` The bookings cover ${r.bookingGuestsHq} of the ${r.guestCount} guests in the camp\u2019s Guests file.`:''}</div>`:''}
+    ${inc?`<div class="wpl-warn" id="wplIncomplete"><b>Bookings not imported for this week yet — revenue and guests are incomplete.</b> Import bookings in HQ.${cut?` Bookings imported up to ${fmtd(cut)}.`:''}${r.guestSrc==='file'&&r.guestCount>r.bookingGuestsHq?` The bookings cover ${r.bookingGuestsHq} of the ${r.guestCount} guests in the camp\u2019s Bookinglayer report.`:''}</div>`:''}
     <div class="wpl-kpis${inc?' wpl-inc':''}">
       ${kpi('Revenue',wplEuro(r.revenue),inc?'wpl-dim':'',M.hasMoney?`Bookings ${wplEuro(r.bookRev)} · on-site ${wplEuro(r.onsite)}`:`On-site sales only — booking amounts not loaded`,cmp?`${avgLbl} ${wplEuro(avg('revenue'))}`:'')}
       ${kpi('Costs',wplEuro(r.cost),'',`Camp ${wplEuro(r.costCamp)} · paid by HQ ${wplEuro(r.costHq)}`,cmp?`${avgLbl} ${wplEuro(avg('cost'))}`:'')}
@@ -10091,7 +10013,7 @@ function wplPLTableHtml(M,sel){
   const res=(v,inc)=>inc?`<td class="r wpl-dim" title="Bookings not imported for this week yet">${wplEuro(v)}<span class="cell-sub">incomplete</span></td>`:`<td class="r wpl-strong ${v>=0?'pos':'neg'}">${wplEuro(v)}</td>`;
   // One list of columns; on a phone Result, Revenue and Costs come right after the week.
   const cols=[
-    {k:'guests',h:'Guests',cell:r=>`<td class="r"${r.guestSrc==='file'?' title="From the camp\u2019s Guests file"':''}>${r.guestCount||'—'}</td>`,foot:()=>'<td class="r">—</td>'},
+    {k:'guests',h:'Guests',cell:r=>`<td class="r"${r.guestSrc==='file'?' title="From the camp\u2019s Bookinglayer report"':''}>${r.guestCount||'—'}</td>`,foot:()=>'<td class="r">—</td>'},
     {k:'nights',h:'Guest-nights',cell:r=>`<td class="r">${r.guestDays||'—'}</td>`,foot:()=>`<td class="r">${T.guestDays}</td>`},
     {k:'book',h:'Bookings',cell:r=>c(r.bookRev),foot:()=>f(T.bookRev)},
     {k:'onsite',h:'On-site sales',cell:r=>c(r.onsite),foot:()=>f(T.onsite)},
@@ -10126,7 +10048,7 @@ function wplCashTableHtml(M,sel){
       ${wk(r.cash,r.cash>=0?'var(--green)':'var(--red)',true)}`;
   const row=r=>`<tr class="click${r.ws===sel?' wpl-sel':''}" onclick="wplSelect('${r.ws}',true)">
       <td class="wpl-wk">${fmtd(r.ws)} → ${fmtd(addDays(r.ws,6))}</td>
-      <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.guestSrc==='file'?`<span title="Guests from the camp\u2019s Guests file">${r.guestCount}</span>`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—'))}</td>
+      <td class="r">${r.guests?`${r.paidGuests} / ${r.guests}`:(r.guestSrc==='file'?`<span title="Guests from the camp\u2019s Bookinglayer report">${r.guestCount}</span>`:(r.bookingGuests?`<span title="Guests from Bookinglayer">${r.bookingGuests}</span>`:'—'))}</td>
       ${cells(r)}
       <td class="r" style="color:var(--red)">${r.guestDays?perGuestDayMetric(r.foodExp,r.guestDays):'—'}</td></tr>`;
   const futureRow=M.future.length?`<tr class="click wpl-future" id="wplFutureRow" onclick="wplToggleFuture()">
@@ -10236,7 +10158,7 @@ function sendCampTabBootstrap(){
       state:currentCampTabState(),
       menu:currentCampTabMenu(),
       staff:readJsonStorage(CAMPTAB_STAFF_KEY,[])
-    },'*');
+    },location.origin);
   }catch(_error){}
   // Phase 5: also push a dedicated tours-update so the iframe adopts the
   // catalog-sourced Tours even on subsequent bootstraps (the bootstrap
@@ -10270,7 +10192,7 @@ function sendCampTabToursUpdate(){
   const menu=currentCampTabMenu();
   const tours=Array.isArray(menu?.Tours)?menu.Tours:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},location.origin);
   }catch(_error){}
 }
 // Mirror of sendCampTabToursUpdate for Merch. Posts the full Merch array
@@ -10283,7 +10205,7 @@ function sendCampTabMerchUpdate(){
   const menu=currentCampTabMenu();
   const merch=Array.isArray(menu?.Merch)?menu.Merch:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-merch-update',merch},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-merch-update',merch},location.origin);
   }catch(_error){}
 }
 // Same shape for Drinks. Inner page sets __drinksCatalogManaged=true on
@@ -10294,7 +10216,7 @@ function sendCampTabDrinksUpdate(){
   const menu=currentCampTabMenu();
   const drinks=Array.isArray(menu?.Drinks)?menu.Drinks:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-drinks-update',drinks},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-drinks-update',drinks},location.origin);
   }catch(_error){}
 }
 // Same shape for Extras. Inner page sets __extrasCatalogManaged=true on
@@ -10306,7 +10228,7 @@ function sendCampTabExtrasUpdate(){
   const menu=currentCampTabMenu();
   const extras=Array.isArray(menu?.Extras)?menu.Extras:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-extras-update',extras},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-extras-update',extras},location.origin);
   }catch(_error){}
 }
 // Sends the "any category" bucket (Add-ons + custom tabs from
@@ -10318,7 +10240,7 @@ function sendCampTabAnyUpdate(){
   const buckets = __catalogCampTabAny && typeof __catalogCampTabAny === 'object'
     ? __catalogCampTabAny : {};
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-any-update',buckets},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-any-update',buckets},location.origin);
   }catch(_error){}
 }
 async function mountCampTabFrame(){
@@ -10374,6 +10296,8 @@ function reloadCampTabFrame(){
 }
 
 window.addEventListener('message',e=>{
+  // Only the Camp Tab frame of this site talks to the hub (audit CT-08): a message from another site is ignored.
+  if(e.origin!==location.origin) return;
   if(e.data?.type==='camp-tab-week-closed'){
     if(e.data.entry) upsertClosedWeekIncome(e.data.entry);
     rerenderActivePageData();
@@ -10414,7 +10338,7 @@ window.addEventListener('message',e=>{
         // Tab must take the «Paid» back, or the money never reaches the books.
         if(entry) upsertClosedWeekIncome([entry]).then(ok=>{
           if(ok) return;
-          try{ e.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:guest.id,itemId:item.id},'*'); }catch(_){}
+          try{ e.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:guest.id,itemId:item.id},location.origin); }catch(_){}
         });
       }
     }catch(err){ console.warn('[Hub] item-paid handler failed',err); }
@@ -10591,7 +10515,7 @@ window.addEventListener('message',e=>{
   if(e.data?.type==='camp-tab-bookings-synced'){
     rerenderActivePageData();
     if(e.data.ok&&e.data.added){
-      toast(e.data.perGuest?`${e.data.added} guest${e.data.added===1?'':'s'} from the Guests file added to Camp Tab`:(e.data.added===1?'1 booking synced to Camp Tab':`${e.data.added} bookings synced to Camp Tab`));
+      toast(e.data.perGuest?`${e.data.added} guest${e.data.added===1?'':'s'} from the Bookinglayer report added to Camp Tab`:(e.data.added===1?'1 booking synced to Camp Tab':`${e.data.added} bookings synced to Camp Tab`));
     }else if(e.data.reason==='different-active-week'){
       toast('Camp Tab already has another active week open');
     }else if(e.data.reason==='error'){
@@ -10871,10 +10795,12 @@ async function enforceLocationAccess(client, session){
   }
 }
 function renderAccessBlockScreen(result){
-  const wanted = result.wanted || __HUB_LOCATION_SLUG;
-  const accessible = Array.isArray(result.accessible) ? result.accessible : [];
+  // The slug comes from the link and names from the database: written as text, never as HTML.
+  const wanted = escapeHtml(result.wanted || __HUB_LOCATION_SLUG);
+  const unknown = result.reason === 'unknown-camp';
+  const accessible = (Array.isArray(result.accessible) ? result.accessible : []).map(a => ({ ...a, name: escapeHtml(a.name || ''), slug: String(a.slug || '') }));
   const links = accessible.length ? `
-    <div style="opacity:.7;margin-bottom:10px;font-size:14px">Camps you can open:</div>
+    <div style="opacity:.7;margin-bottom:10px;font-size:14px">${unknown ? 'Camps:' : 'Camps you can open:'}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
       ${accessible.map(a => `
         <a href="/camp-hub/?location=${encodeURIComponent(a.slug)}${a.campTabOnly ? '&view=camp-tab-only' : ''}"
@@ -10884,16 +10810,16 @@ function renderAccessBlockScreen(result){
     </div>` : `
     <div style="opacity:.6;margin-bottom:24px;font-size:14px">You don't have access to any camp yet. Ask the owner to give you access.</div>`;
   const errNote = (result.reason === 'query-error' || result.reason === 'threw') && result.message ?
-    `<div style="opacity:.5;font-size:12px;margin-top:16px">${result.message}</div>` : '';
+    `<div style="opacity:.5;font-size:12px;margin-top:16px">${escapeHtml(result.message)}</div>` : '';
   document.body.innerHTML = `
     <div style="position:fixed;inset:0;background:var(--navy-deep);color:#e8ecf5;display:flex;align-items:center;justify-content:center;font-family:'Outfit',system-ui,sans-serif;padding:24px;z-index:99999">
       <div style="max-width:520px;width:100%;text-align:center">
-        <div style="font-weight:700;letter-spacing:-.02em;font-size:28px;margin-bottom:10px">No access to this camp</div>
-        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">You don't have permission to open <strong>${wanted}</strong>. Ask the owner to give you access in Settings → Team Access.</div>
+        <div style="font-weight:700;letter-spacing:-.02em;font-size:28px;margin-bottom:10px">${unknown ? 'Unknown camp' : 'No access to this camp'}</div>
+        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">${unknown ? `There is no camp «<strong>${wanted}</strong>». Pick one below.` : `You don't have permission to open <strong>${wanted}</strong>. Ask the owner to give you access in Settings → Team Access.`}</div>
         ${links}
         <div style="display:flex;gap:10px;justify-content:center">
           <a href="/" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;text-decoration:none;font-size:14px">Back</a>
-          <button id="hubAccessSignOut" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;font-family:inherit;font-size:14px;cursor:pointer">Sign out</button>
+          <button id="hubAccessSignOut" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;font-family:inherit;font-size:14px;cursor:pointer">Log out</button>
         </div>
         ${errNote}
       </div>
@@ -10924,6 +10850,17 @@ async function requirePlatformSession(){
   if(!access.ok){
     renderAccessBlockScreen(access);
     return;
+  }
+  // A link with a camp that does not exist (a typo, «marocco») used to open an empty hub in LKR with zeros and no word
+  // (audit CH-17). Now: «Unknown camp» and the camps to pick. A failed read (no network) is not judged here.
+  if(HUB_QUERY.get('location')){
+    let known=true;
+    try{ known=!!(await ensureHubLocationId()); }catch(_e){ known=true; }
+    if(!known){
+      const camps=[...document.querySelectorAll('#hubLocSwitch a[data-loc]')].map(a=>({slug:a.dataset.loc,name:(a.querySelector('span')?.textContent||a.dataset.loc).trim()}));
+      renderAccessBlockScreen({ reason:'unknown-camp', wanted:__HUB_LOCATION_SLUG, accessible:camps });
+      return;
+    }
   }
   if(access.localManager && !LOCAL_MANAGER_MODE){
     // Local manager → Camp Tab + Ledger view (the HQ lines are already filtered out by the database)

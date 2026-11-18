@@ -78,8 +78,6 @@
   const goLive = () => window.TRIPS_GO_LIVE_OVERRIDE || TRIPS_GO_LIVE;   // tests move it into the past
   const TRIPS_LOAD_FROM = '2026-10-01';
   const TRIPS_BL_LOCATION_LABELS = IS_SL ? ['Surf Camp Ahangama'] : (CC.blLocations || []);
-  const HQ_LIVE_STATUSES = new Set(['confirmed', 'paid', 'deposit paid', 'deposit_paid']);
-  const HQ_DEAD_STATUSES = new Set(['cancelled', 'canceled', 'expired']);   // only these cancel a trip; any other HQ status counts as there
   // Vehicles, seats, driver cost and guest price: /prices only (lib/transport-catalog.js, 17 Nov 2026) — no list here.
   // Sri Lanka's camp runs: the purposes only. The price is the /prices row of the same name (picker «tuktuk») — no
   // price written here (17 Nov 2026: the old 500 LKR fallback is gone). No row → the run is saved at 0, flagged
@@ -310,7 +308,6 @@
   // Who gets the tuk-tuk order: the «Tuk-tuk orders to» person, else the default tuk-tuk driver (Sampath).
   const tukContact = () => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(TUKTUK_CONTACT)) || defaultDriver(RUN.drv);
   const driverById = id => TR.drivers.find(d => d.id === id);
-  const HQ_CROSSCHECK = false; // see buildImport()
   const defaultDriver = kind => TR.drivers.find(d => d.active !== false && (d.default_for || []).includes(kind));
   const driversFor = kind => TR.drivers.filter(d => d.active !== false && ((d.kinds || []).includes(kind) || (kind === 'airport' && (d.kinds || []).includes('other'))));
   const ledgerById = id => (typeof S !== 'undefined' && S.ledger || []).find(e => e.id === id);
@@ -337,6 +334,14 @@
 
   // ── Data ───────────────────────────────────────────────────────────────
   const client = () => (typeof getHubSupabaseClient === 'function') ? getHubSupabaseClient() : null;
+  // A table that does not exist yet is a set-up job for Miguel; anything else (a dropped connection, a timeout) is a
+  // load that failed: say so, offer Retry, and keep the real error visible in small print (audit UXC-09).
+  const missingTable = e => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
+  function loadErrorHtml(what, err, missing, retry) {
+    if (missing) return `<div class="status-msg status-warn">${h(what)} is not set up yet — tell Miguel.<div class="hint">${h(err)}</div></div>`;
+    return `<div class="status-msg status-warn">Couldn't load ${h(what)} — check the connection and try again. <button class="btn btn-s btn-sm" onclick="${retry}">Retry</button><div class="hint">${h(err)}</div></div>`;
+  }
+  function retry() { TR.error = ''; TR.errorMissing = false; TR.loading = null; render(); load(true).then(render); }
   async function load(force) {
     if (!enabled()) return;
     if (TR.loading && !force) return TR.loading;
@@ -361,10 +366,10 @@
         LOCAL ? Promise.resolve({ data: [] }) : all(() => c.from('camp_transport_payments').select('*').eq('location_id', loc).order('entry_id')),
       ]);
       const err = d.error || t.error || l.error;
-      if (err) { TR.error = err.message || String(err); TR.loaded = false; return; }
+      if (err) { TR.error = err.message || String(err); TR.errorMissing = missingTable(err); TR.loaded = false; return; }
       TR.drivers = d.data || []; TR.trips = t.data || []; TR.links = l.data || [];
       try { const { data: ss } = await c.auth.getSession(); TR.me = String((ss && ss.session && ss.session.user && ss.session.user.email) || '').toLowerCase(); } catch (_) { TR.me = ''; }
-      TR.error = ''; TR.loaded = true;
+      TR.error = ''; TR.errorMissing = false; TR.loaded = true;
     })();
     try { await TR.loading; } finally { TR.loading = null; }
     try { window.dispatchEvent(new CustomEvent('camp-checks-changed')); } catch (_) {}
@@ -466,10 +471,7 @@
     // One page head, no button row (16 Nov 2026 UX pass, Miguel: «van runs???? depois pay driver e depois add transfer???»):
     // what to add lives in the pill you are on, paying lives in «Owed to drivers», Drivers and Export month at the foot.
     const head = `<div class="section-head page-head"><div><div class="section-title">${LOCAL ? 'Drivers' : 'Transport'}</div><div class="section-sub tr-how">${h(LOCAL ? (CC.localDriversHow || '') : (CC.transportHow || ''))}</div></div></div>`;
-    if (TR.error) {
-      root.innerHTML = head + `<div class="status-msg status-warn">Transport is not set up yet (${h(TR.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>`;
-      return;
-    }
+    if (TR.error) { root.innerHTML = head + loadErrorHtml('Transport', TR.error, TR.errorMissing, 'TransportUI.retry()'); return; }
     if (!TR.loaded) { root.innerHTML = head + '<div class="loading">Loading trips…</div>'; return; }
     // One view (16 Nov 2026): Reconcile is gone — «Owed to drivers» opens Pay, two chips cover the rest.
     // Order on screen: what it is (the pills) → what needs doing (To do) → what is owed → the week, day by day.
@@ -602,7 +604,7 @@
     // The closing Saturday's departures belong to this week (inWeek): that day is added after Friday.
     const days = special ? [...new Set(list.map(t => t.trip_date))].sort() : [...new Set([...weekDays(ws), ...list.map(t => t.trip_date)])].sort();
     const empty = !special && !list.length && !TR.trips.some(t => inWeek(t, ws))
-      ? `<div class="hint tr-sheet-empty">No trips this week yet. Airport transfers come from the Guests file (import it in Week); add runs with «+ Add» on the day.${LOCAL ? '' : ` <button class="btn-link" onclick="TransportUI.toImport()">Import Guests file in Week</button>`}</div>` : '';
+      ? `<div class="hint tr-sheet-empty">No trips this week yet. Airport transfers come from Bookinglayer's camp report every hour; add runs with «+ Add» on the day.${LOCAL ? '' : ` <button class="btn-link" onclick="TransportUI.toImport()">Import report by hand in Week</button>`}</div>` : '';
     const cols = `<div class="tr-srow tr-scols" aria-hidden="true"><span>Time</span><span>What</span><span>People</span><span>Driver</span><span class="tr-c-r">Price</span><span>Status</span></div>`;
     const c = contact();
     TR.runGroups = {};
@@ -1099,7 +1101,9 @@
   // Opens WhatsApp to the GUEST (not the driver) with a short question. The app
   // cannot see the reply: Francisco types the answer into the trip.
   const ASK_KEY = 'tr-asked-v1';
-  function askedMap() { try { return JSON.parse(localStorage.getItem(ASK_KEY) || '{}') || {}; } catch (_) { return {}; } }
+  // The browser's real storage (window.localStorage), as cash-count.js does: the hub page shadows the global
+  // `localStorage` with an in-memory map, so the «asked <day>» mark was lost on every reload (audit CH-13).
+  function askedMap() { try { return JSON.parse(window.localStorage.getItem(ASK_KEY) || '{}') || {}; } catch (_) { return {}; } }
   function askedOn(id) { return askedMap()[id] || ''; }
   // Who signs the question to the guest (Miguel, 13 Nov). No emoji: WhatsApp's wa.me link shows
   // some of them as «?» on desktop.
@@ -1115,7 +1119,7 @@
   function ask(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
     window.open(GT.whatsappUrl(t.guest_phone || '', askText(t)), '_blank', 'noopener');
-    try { const m = askedMap(); m[id] = cToday(); localStorage.setItem(ASK_KEY, JSON.stringify(m)); } catch (_) {}
+    try { const m = askedMap(); m[id] = cToday(); window.localStorage.setItem(ASK_KEY, JSON.stringify(m)); } catch (_) {}
     say(t.guest_phone ? `WhatsApp opened for ${t.guest_names || 'the guest'} — type the answer into the transfer` : 'No phone for this guest — pick the chat in WhatsApp');
     render();
     try { if (window.WeekUI && typeof window.WeekUI.render === 'function') window.WeekUI.render(); } catch (_) {}
@@ -1700,7 +1704,7 @@
   function openAddTransfer(opts) {
     const d = defaultDriver('airport');      // Morocco: Let Us Tours (default_for 'airport'); Sri Lanka: Dilan
     const onDay = opts && opts.date && /^\d{4}-\d\d-\d\d$/.test(opts.date) ? opts.date : cToday();
-    const body = `<div class="status-msg status-info tr-free-rule">Guests' airport transfers come from Bookinglayer (the Guests file) — never add them here. Add only a transfer nobody pays us for.</div>
+    const body = `<div class="status-msg status-info tr-free-rule">Guests' airport transfers come from Bookinglayer (the camp report) — never add them here. Add only a transfer nobody pays us for.</div>
       <div class="mfield"><label>Why is it free?</label><div class="pills tr-seg" id="at_fr">${FREE_REASONS.map(([v, l]) => `<button type="button" class="pill" data-v="${v}">${l}</button>`).join('')}</div></div>
       <div class="pills tr-seg" id="at_kind"><button class="pill active" data-v="airport_arrival">Airport to Camp</button><button class="pill" data-v="airport_departure">Camp to Airport</button></div>
       <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="at_d" value="${onDay}"></div><div class="mfield"><label>Time</label><input type="time" id="at_t"></div></div>
@@ -2347,7 +2351,7 @@
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
       <div class="card-hint">Bookinglayer's camp report is imported automatically every hour. To import by hand, drop the camp report here (the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset still works, but it cannot tell one transfer leg from two). Importing again updates the trips — nothing is duplicated.</div></div></div>
-      <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
+      <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose report file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
     if (!I || I.needDate) return out;
@@ -2363,17 +2367,12 @@
     if (groups.plan) out += reportPlanHtml(groups.plan, groups.guestPlan, groups.holds);
     // Morocco: what changed on the Bookinglayer side (missing column, unknown room, product or package) — one line each.
     if ((groups.warnings || []).length) out += `<div class="status-msg status-warn tr-impwarn"><b>Check before using the lists:</b>${groups.warnings.map(w => `<div class="tr-impwarn-l" data-kind="${w.kind}">${h(w.text)}</div>`).join('')}</div>`;
-    if (groups.missingRefs) out += `<div class="status-msg status-info tr-soft">${groups.missingRefs} booking${groups.missingRefs === 1 ? '' : 's'} not yet in HQ — import bookings</div>`;
-    out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Airport trips from this file · ${groups.trips.length}</div><div class="card-hint">From the Guests export (the source for upcoming weeks), checked against HQ bookings when the booking is there.</div></div></div>
+    out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Airport trips from this file · ${groups.trips.length}</div><div class="card-hint">From the Bookinglayer file (the source for upcoming weeks).</div></div></div>
       <div class="tr-rows">${groups.trips.length ? groups.trips.map(t => impRow(t)).join('') : '<div class="card-body hint">No transfer booked in this file.</div>'}</div>
       ${I.stage === 'preview' && noPrice(groups.trips).length ? `<div class="status-msg status-warn tr-noprice">${noPrice(groups.trips).length} transfer${noPrice(groups.trips).length === 1 ? ' has' : 's have'} no price yet (the prices are still loading, or /prices has no price for that car). Saving will try again and refuses if a price is still missing.</div>` : ''}
       ${noAirportPrice(groups.trips).length ? `<div class="status-msg status-warn tr-noairprice">${noAirportPrice(groups.trips).map(t => `${h(t.guests.join(', '))} (${h(CC.airportCity[t.place] || t.place)})`).join(', ')}: no price for this airport in /prices — saved at 0, type the price in the trip.</div>` : ''}
       ${I.stage === 'preview' ? `<div class="card-body"><button class="btn btn-p" id="trImportSave" onclick="TransportUI.saveImport()" ${groups.trips.length || groups.guests.length ? '' : 'disabled'}>Save ${groups.trips.length} trip${groups.trips.length === 1 ? '' : 's'} and ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'}</button></div>` : ''}</div>`;
-    if (groups.hqCancelled.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Cancelled in HQ · ${groups.hqCancelled.length}</div><div class="card-hint">Live in Bookinglayer's Guests list but cancelled in HQ bookings: no trip, and a planned trip is cancelled.</div></div></div>
-      <div class="tr-rows">${groups.hqCancelled.map(x => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(x.guest)}</b><div class="cell-sub">${h(x.ref)} · ${h(x.status)} in HQ${x.transfer ? ' · had a transfer' : ''}</div></div></div>`).join('')}</div></div>`;
-    if (groups.hqMissing.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Transfer booked in HQ, not in this file · ${groups.hqMissing.length}</div></div></div>
-      <div class="tr-rows">${groups.hqMissing.map(b => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(b.booker || '')}</b><div class="cell-sub">${h(b.booking_ref)} · check-in ${fmtShort(String(b.check_in_on))}</div></div></div>`).join('')}</div></div>`;
-    const dirty = P.dirty_no_transfer.filter(d => !groups.cancelledRefs.has(d[2]));
+    const dirty = P.dirty_no_transfer;
     if (dirty.length) out += `<div class="card"><div class="card-hdr"><div><div class="card-title">To check (no trip made)</div></div></div><div class="tr-rows">${dirty.map(d => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(d[1])}</b><div class="cell-sub">${h(d[3].join(' · '))}</div></div></div>`).join('')}</div></div>`;
     return out;
   }
@@ -2412,7 +2411,7 @@
     const dep = t.kind === 'airport_departure';
     return `<div class="tr-row tr-static"><div class="tr-time">${t.time ? `<b class="num">${h(t.time)}</b>` : '<span class="badge badge-amber">time?</span>'}</div>
       <div class="tr-main"><div class="tr-line1"><span class="badge ${dep ? 'badge-navy' : 'badge-blue'}">${dep ? 'Departure' : 'Arrival'}</span> <b>${h(t.guests.join(', '))}</b> <span class="hint">· ${fmtDay(t.date)} · ${t.pax} ${t.pax === 1 ? 'person' : 'persons'}</span></div>
-      <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle || 'no vehicle in /prices')} · ${money(t.expected_price)} · ${t.booking_ref}${t.hq_match === 'ok' ? ' · in HQ' : t.hq_match === 'missing' ? ' · not yet in HQ' : ''}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
+      <div class="cell-sub">${h(t.flight || 'flight?')} · ${h(t.vehicle || 'no vehicle in /prices')} · ${money(t.expected_price)} · ${t.booking_ref}${t.partner ? ' · partner: ' + h(t.partner) + ', don\'t charge' : ''}</div>
       ${t.flags.filter(f => !/^no time yet/.test(f)).map(f => `<div class="cell-sub tr-amber">${h(f)}</div>`).join('')}</div></div>`;
   }
   // Bookinglayer's Guests export comes as .xlsx (13 Nov 2026) as well as .csv. The Excel file is
@@ -2462,8 +2461,7 @@
   // a repeated row is worth a look, so the block turns amber.
   function auditHtml(groups) {
     const A = groups.audit; if (!A) return '';
-    const hq = groups.hqCancelled.length;
-    const leftN = A.left.length + hq;
+    const leftN = A.left.length;
     const unit = A.unit === 'guests' ? 'guest' : 'row';
     const sum = `${A.rows} ${unit}${A.rows === 1 ? '' : 's'} in the file = ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} imported + ${leftN} left out`;
     const adds = A.rows === groups.guests.length + leftN;
@@ -2475,31 +2473,15 @@
     return out;
   }
   async function buildImport(parsed) {
-    const c = client();
-    const refs = [...new Set(parsed.trips.map(t => t.booking_ref).concat(parsed.refs_active).concat(parsed.cancel_refs))].filter(Boolean);
-    let hq = [];
-    // Miguel, 13 Nov: the camp's Guests file and HQ's bookings import are kept apart on purpose
-    // (managers import guests for operations; Miguel imports bookings for partners/income), so
-    // nothing in one can change the other. Flip to true to bring the HQ cross-check back.
-    if (HQ_CROSSCHECK && refs.length) {
-      const { data, error } = await c.from('bookings').select('booking_ref,booker,check_in_on,location,package,partner_name,raw_payload').in('booking_ref', refs);
-      if (error) { TR.imp = { error: "Couldn't read HQ bookings — " + (error.message || 'error') }; render(); return; }
-      hq = data || [];
-    }
-    const byRef = new Map(hq.map(b => [String(b.booking_ref), b]));
-    const hqStatus = r => { const b = byRef.get(r); return b ? String((b.raw_payload || {}).status || '').trim().toLowerCase() : ''; };
-    // The Guests file is the source for upcoming weeks (HQ bookings only hold past and current
-    // stays). HQ is a cross-check when it has the ref: cancelled there → no trip; live → hq_match ok;
-    // absent → hq_match missing (kept, one soft line).
-    const cancelledRefs = new Set(refs.filter(r => byRef.has(r) && HQ_DEAD_STATUSES.has(hqStatus(r))));
-    const matchOf = r => !HQ_CROSSCHECK ? null : (byRef.has(r) ? 'ok' : 'missing');
+    // Miguel, 13 Nov: the camp's file and HQ's bookings import are kept apart on purpose (managers import guests for
+    // operations; Miguel imports bookings for partners/income), so nothing in one can change the other. The HQ
+    // cross-check that was switched off since then is gone (audit WEEK-19).
     const allGuests = IMP().guestRows(TR.imp.text, parsed.file, GTC);
     const okGuests = allGuests.filter(g => GT.OK_STATUS.has(g.booking_status) && g.check_in && g.check_out);   // no dates = on no list: shown under «Left out»
-    const partnerOf = r => { const b = byRef.get(r); if (b) { const p = String(b.partner_name || ''); return p && !/^direct/i.test(p) ? p : ''; } const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
+    const partnerOf = r => { const g = okGuests.find(x => x.booking_ref === r && x.partner); return g ? g.partner : ''; };
     // Prices come from /prices and may still be loading on a slow phone: wait for them, never save a trip at 0.
     if (parsed.trips.length && !pricesReady()) { try { if (typeof loadTransportPresets === 'function') await loadTransportPresets(); } catch (_) {} }
-    let trips = parsed.trips.filter(t => !cancelledRefs.has(t.booking_ref))
-      .map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle, t.place), hq_match: matchOf(t.booking_ref), partner: partnerOf(t.booking_ref) || null }));
+    let trips = parsed.trips.map(t => ({ ...t, expected_price: presetPrice(t.kind, t.vehicle, t.place), hq_match: null, partner: partnerOf(t.booking_ref) || null }));
     // The camp report goes back weeks (check-out window): only what may change is sent — legs from the camp's today on,
     // and past legs the app already has under the same key (the import leaves those untouched). A past leg the app does not
     // have, or a leg it has under another key (Morocco's «hist2026» trips), is never sent: it would be a second, owed trip.
@@ -2509,39 +2491,21 @@
       plan = BlReport.planTrips(trips, TR.trips, { today: cToday(), now: colomboNow(), exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null,
         mergePast: !IS_SL });   // Sri Lanka: «só para os novos» — a trip of an earlier day is never changed
       trips = plan.send;
-      // A trip whose vehicle was changed by hand keeps it: its price is that vehicle's /prices price, not the report trip's.
-      const app = new Map(TR.trips.filter(a => a.import_key).map(a => [a.import_key, a]));
-      // A trip split with «Separate» keeps the camp's decision: the report's «N people, 1 transfer paid» (it still counts
-      // everyone of the booking) is not brought back onto it.
-      trips = trips.map(t => { const a = app.get(t.key); const ed = (a && a.edited_fields) || [];
-        let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: presetPrice(t.kind, a.vehicle, t.place) || t.expected_price } : t;
-        if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
-        if (ed.includes('money_charge:no transfer paid') && (x.flags || []).includes('no transfer paid')) x = { ...x, charge: 'camp_tab' };   // «Charge guest» stands
-        return x; });
+      // The camp's own decisions on a trip stand (vehicle changed by hand, «Separate», «Charge guest»): one shared rule
+      // with the hourly import (lib/bl-report.js keepCampEdits, audit WEEK-09).
+      trips = BlReport.keepCampEdits(trips, TR.trips, presetPrice);
     }
-    const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
-    const hqCancelled = okGuests.filter(g => cancelledRefs.has(g.booking_ref)).map(g => ({ guest: g.guest_name, ref: g.booking_ref, transfer: g.has_transfer, status: hqStatus(g.booking_ref) || 'not live' }));
-    const missingRefs = new Set(guests.filter(g => g.hq_match === 'missing').map(g => g.booking_ref)).size;
-    // HQ bookings of that week with a transfer product but no row in the file. The bookings
-    // export carries no product list today (13 Nov 2026: 0 of 273 Sri Lanka bookings), so this
-    // group stays empty until the bookings import stores the products.
-    let hqMissing = [];
-    if (HQ_CROSSCHECK) try {
-      const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
-      const { data } = await c.from('bookings').select('booking_ref,booker,check_in_on,package,raw_payload').in('location', TRIPS_BL_LOCATION_LABELS).gte('check_in_on', ws).lte('check_in_on', we);
-      const inFile = new Set(allGuests.map(g => g.booking_ref));
-      hqMissing = (data || []).filter(b => HQ_LIVE_STATUSES.has(String((b.raw_payload || {}).status || '').toLowerCase()) && !inFile.has(String(b.booking_ref)) && /airport transfer/i.test(String(b.package || '') + ' ' + JSON.stringify(b.raw_payload || {})));
-    } catch (_) {}
+    const guests = okGuests.map(g => ({ ...g, hq_match: null, partner: partnerOf(g.booking_ref) || null }));
     let guestPlan = null;
     if (plan) try {
       const loc = await ensureHubLocationId();
-      const { data, error } = await c.from('camp_week_guests').select('*').eq('location_id', loc);
+      const { data, error } = await client().from('camp_week_guests').select('*').eq('location_id', loc);
       if (error) throw error;
       guestPlan = BlReport.planGuests(guests, data || []);
     } catch (_) { guestPlan = null; }
     TR.imp = { ...TR.imp, parsed, stage: 'preview',
       // merge, never blank: the guests sent are the report's values with the stored ones kept where the report is empty
-      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests: guestPlan ? guestPlan.rows : guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan,
+      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests: guestPlan ? guestPlan.rows : guests, cancelRefs: [...new Set(parsed.cancel_refs)], plan, guestPlan,
         holds: plan ? reportHolds(parsed) : [] } };
     render();
   }
@@ -3011,7 +2975,7 @@
 
   window.renderTransportPage = renderTransportPage;
   window.TransportUI = {
-    render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; TR.view = 'trips'; render(); },
+    render, closeModal, retry, loadErrorHtml, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; TR.view = 'trips'; render(); },
     toImport, setWeek,
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = SPECIAL_FILTERS.includes(TR.filter) ? 'all' : TR.filter; render(); },
     ovMode, ovShift, ovMonth, ovMeasure, ovExport, ovData,

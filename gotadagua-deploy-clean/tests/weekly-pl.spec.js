@@ -447,8 +447,8 @@ test('weekly P&L: guests and guest-nights come from the camp\u2019s Guests file 
   expect(by['17–23 Oct 2026'].Bookings).toBe(whole(900 + 350));
   await page.evaluate(() => wplSelect('2026-10-17'));
   const card = page.locator('#wplWeek');
-  await expect(card.locator('.wpl-kpi').nth(3)).toContainText('32 guest-nights · from the camp\u2019s Guests file');
-  await expect(card.locator('#wplIncomplete')).toContainText('The bookings cover 3 of the 5 guests in the camp\u2019s Guests file.');
+  await expect(card.locator('.wpl-kpi').nth(3)).toContainText('32 guest-nights · from the camp\u2019s Bookinglayer report');
+  await expect(card.locator('#wplIncomplete')).toContainText('The bookings cover 3 of the 5 guests in the camp\u2019s Bookinglayer report.');
   // Cash control: same guests, and food per guest-day on the file\u2019s nights.
   const c = await weeklyTable(page);
   const r = c.body.find(x => /17 Oct 2026/.test(x.Week));
