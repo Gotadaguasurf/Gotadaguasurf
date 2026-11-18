@@ -222,6 +222,13 @@ function serve_handler() {
     if (!SYNC_SECRET || req.headers.get('x-drive-sync-secret') !== SYNC_SECRET) {
       return json({ error: 'unauthorized' }, 401)
     }
+    // Switched off (audit 18 Nov 2026, AUT-08 / SEAM-19): mail-ingest + Month close do this job now. With a
+    // working secret this would read every PDF already filed by mail-ingest (same root folder, no baseline:
+    // hq_drive_ingest is empty) and add each one again as a new line with the July category names. It only
+    // runs again when the project secret DRIVE_SYNC_ENABLED = 'true' — after it is rebuilt.
+    if (Deno.env.get('DRIVE_SYNC_ENABLED') !== 'true') {
+      return json({ ok: false, disabled: true, reason: 'drive-sync is switched off (DRIVE_SYNC_ENABLED is not true); mail-ingest files the invoices' }, 200)
+    }
     if (!CLIENT_ID || !CLIENT_SECRET) return json({ error: 'GOOGLE_OAUTH_CLIENT_ID/SECRET missing' }, 500)
     if (!ANTHROPIC_KEY) return json({ error: 'ANTHROPIC_API_KEY missing' }, 500)
     const summary = { scanned: 0, new: 0, inserted: 0, errors: 0, skipped_dup_invoice: 0, details: [] as string[] }
