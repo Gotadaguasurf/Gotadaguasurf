@@ -2454,8 +2454,11 @@ function handleLedgerSupabaseError(context,error,{action='save',background=false
   // Every failure says why, in the database's own words (audit CH-03): until 18 Nov 2026
   // only the first error of a session reached the screen, so a background failure at boot
   // used up the one message and every later refused save was silent.
-  const lead=action==='delete'?'Not deleted':action==='load'?"Couldn't load the latest data":action==='notify'?'Saved, but other devices were not told (they see it after a refresh)':'Not saved';
-  const text=`${lead}: ${msg}`;
+  const lead=action==='delete'?'Not deleted':action==='load'?"Couldn't load the latest data":'Not saved';
+  // The «other devices» ping: the change itself IS saved, so only the database's words, no «not allowed».
+  const text=action==='notify'
+    ? `Saved. Other devices see it after a refresh (${String(error?.message||error||'').slice(0,120)})`
+    : `${lead}: ${msg}`;
   HUB_LAST_ERROR_TEXT=text;
   // Something the page did on its own (boot, heal, realtime refresh): once per distinct message.
   if(background){ if(HUB_BG_ERRORS_SHOWN.has(text)) return text; HUB_BG_ERRORS_SHOWN.add(text); }

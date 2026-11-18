@@ -268,7 +268,7 @@ test('camp hub: background writes and deletes the page does on its own say why t
   // «other devices were told» ping refused: the entry itself is saved, so it never says «Not saved»
   db.failState = true;
   await page.evaluate(() => { notifyLedgerChanged(); notifyLedgerChanged(); });
-  await expect.poll(() => shown.filter(t => t.startsWith('Saved, but other devices were not told')).length).toBe(1);
+  await expect.poll(() => shown.filter(t => t.startsWith('Saved. Other devices see it after a refresh (permission denied')).length).toBe(1);
   expect(shown.some(t => t.startsWith('Not saved'))).toBe(false);
   // the list of deleted week rows, refused: said
   await page.evaluate(() => markCampcloseDeleted('00000000-0000-4000-8000-0000000000ff'));
