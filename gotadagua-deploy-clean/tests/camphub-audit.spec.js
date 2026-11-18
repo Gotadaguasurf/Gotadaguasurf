@@ -277,6 +277,64 @@ test('camp hub: a transport preset the database refuses is not applied and not s
   expect((await pill(page)).failed).toBe(true);
 });
 
+test('camp hub: a refused transport preset save sent again by the pill also clears the leave-page warning', async ({ page }) => {
+  const db = await openHub(page);
+  await hydrated(page);
+  await page.evaluate(() => { __transportFromCatalog = false; });   // the old state-store path (the stub's empty catalog counts as «from /prices»)
+  db.failState = true;
+  await page.evaluate(async () => { transportPresets = { airport: [{ id: 'x1', name: 'Test run', unitPrice: 1, vehicles: [] }], tuktuk: [] }; await saveTransportPresets({ skipRender: true }); });
+  expect(await page.evaluate(() => window.__transportSavePending)).toBe(true);
+  await expect.poll(() => pill(page)).toEqual({ failed: true, text: 'Save failed — tap to retry' });
+  db.failState = false;
+  await page.locator('#savePill').click();
+  await expect.poll(() => pill(page)).toEqual({ failed: false, text: 'Saved' });
+  expect(await page.evaluate(() => window.__transportSavePending)).toBe(false);
+  expect(db.requests.some(r => r.table === 'location_state_store' && r.method === 'POST' && (r.body || '').includes('Test run'))).toBe(true);
+});
+
+test('camp hub: a refused edit of an existing line, sent again by the pill, replaces that line (no second row)', async ({ page }) => {
+  const db = await openHub(page);
+  await hydrated(page);
+  await page.evaluate(() => showPage('expenses'));
+  const id = fixture()[0].id;
+  await page.evaluate(i => openExpModal('expense', i), id);
+  await page.locator('#em_amount').fill('7500');
+  db.failWrites = true;
+  await page.evaluate(() => saveExpense());
+  await expect(page.locator('#toast')).toContainText('Not saved');
+  await expect.poll(() => pill(page)).toEqual({ failed: true, text: 'Save failed — tap to retry' });
+  expect(await page.evaluate(() => document.getElementById('expOv').classList.contains('open'))).toBe(true);   // the modal stays open
+  expect(db.rows.find(r => r.id === id).amount_local).toBe(7000);
+  db.failWrites = false;
+  // The open modal covers the pill on screen (there the modal's own Save sends it again); the pill's retry path itself:
+  await page.evaluate(() => retrySave());
+  await expect.poll(() => pill(page)).toEqual({ failed: false, text: 'Saved' });
+  expect(db.rows.filter(r => r.id === id).map(r => r.amount_local)).toEqual([7500]);
+  expect(db.rows.length).toBe(fixture().length);
+  expect(await page.evaluate(i => S.ledger.filter(x => x.id === i).map(x => x.amountLocal), id)).toEqual([7500]);
+  expect(await page.evaluate(() => document.getElementById('expOv').classList.contains('open'))).toBe(false);
+});
+
+test('camp hub: an AI invoice refused, then dropped again, is never added twice by the pill', async ({ page }) => {
+  const db = await openHub(page);
+  await hydrated(page);
+  await page.evaluate(() => showPage('expenses'));
+  const drop = () => page.evaluate(() => processAiInvoiceFiles([new File(['%PDF-1.4 test'], 'invoice-test.pdf', { type: 'application/pdf', lastModified: 1763400000000 })]));
+  const aiRows = () => db.rows.filter(r => r.source_kind === 'invoice_ai').length;
+  db.failWrites = true;
+  await drop();
+  await expect.poll(() => pill(page)).toEqual({ failed: true, text: 'Save failed — tap to retry' });
+  // The manager drops the same PDF again once the connection is back: it is added once …
+  db.failWrites = false;
+  await drop();
+  expect(aiRows()).toBe(1);
+  // … and the pill no longer holds the first attempt, so a tap adds nothing.
+  await expect.poll(() => pill(page)).toEqual({ failed: false, text: 'Saved' });
+  await page.locator('#savePill').click();
+  await page.waitForTimeout(300);
+  expect(aiRows()).toBe(1);
+});
+
 test('camp hub: background writes and deletes the page does on its own say why too (once per message)', async ({ page }) => {
   const db = await openHub(page);
   await hydrated(page);
@@ -359,6 +417,15 @@ test('camp hub: a Camp-Tab-only account neither downloads nor keeps the saved bo
   // 3. the POS is what the account sees.
   expect(await page.evaluate(() => activePage)).toBe('pos');
   expect(errors).toEqual([]);
+});
+
+test('camp hub: the local manager view does not download or keep the saved bookings copy either', async ({ page }) => {
+  const db = await openHub(page, { savedBookings: SAVED_BOOKINGS, query: '&view=local' });
+  await hydrated(page);
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => LOCAL_MANAGER_MODE)).toBe(true);
+  expect(db.requests.filter(r => r.table === 'location_state_store' && r.method === 'GET' && r.url.includes('camphub_ov_bookings_v3'))).toEqual([]);
+  expect(await page.evaluate(realtimeBookingsCopy, SAVED_BOOKINGS)).toEqual({ handlers: 1, changed: false, gross: false });
 });
 
 test('camp hub: a full account is unchanged — whole ledger, and the saved bookings copy fills a camp with no bookings table rows', async ({ page }) => {

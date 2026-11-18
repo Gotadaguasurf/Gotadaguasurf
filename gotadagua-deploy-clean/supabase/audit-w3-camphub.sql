@@ -32,6 +32,9 @@
 -- tem o botão HQ não pode ver os números».
 --
 -- Option A1 (smallest, nothing deleted): only full members and HQ read that key.
+-- NOTE: the Sri Lanka local manager has full access to his camp, so A1 still
+-- lets him read the copy through the API (the hub page no longer downloads it
+-- in ?view=local since the 18 Nov review); only A2 removes it for him too.
 --
 -- drop policy if exists location_state_store_bookings_copy_full_only on public.location_state_store;
 -- create policy location_state_store_bookings_copy_full_only

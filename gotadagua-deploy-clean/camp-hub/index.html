@@ -1846,6 +1846,10 @@ const LOCAL_MANAGER_MODE=HUB_QUERY.get('view')==='local';
 const LEDGER_LOCATION_SLUG=(HUB_QUERY.get('location')||'sri-lanka').trim().toLowerCase();
 // Every ledger line the Camp Tab writes carries one of these (checked on the live data, 18 Nov 2026).
 const CAMPTAB_LEDGER_KINDS=['camp_tab','camp_tab_per_guest','camp_tab_per_item'];
+// Devices whose screens never show the Overview / Weekly P&L: they do not download or keep the
+// saved bookings copy (guest names, gross, partner, commission) — audit CH-01. The local manager
+// reads the `bookings` table under its own access rule (decision C in supabase/audit-w3-camphub.sql).
+const HUB_NO_BOOKINGS_COPY=CAMP_TAB_ONLY_MODE||LOCAL_MANAGER_MODE;
 const LEDGER_DB_SELECT='id,location_id,week_id,type,category,linked_item,description,payment_method,qty,amount_local,currency,entry_date,business_area,fx_rate,amount_eur,recurring_source_id,recurring_month,source_kind,is_comp,zone_id,paid_from,attributed_location,created_at';
 let HUB_SB=null;
 let HUB_SB_LOCATION_ID=null;
@@ -2032,7 +2036,12 @@ async function saveStateStore(stateKey,stateJson,{retries=3,keepRetry=true}={}){
     // Three tries and still not saved: say why, and keep it so the pill sends it again
     // (the weeks as they are now; any other key exactly what was refused).
     if(stateKey===SK) _pendingWeeksSave=true;
-    else if(keepRetry) hubSaveFailed('state:'+stateKey,()=>saveStateStore(stateKey,stateJson));
+    else if(keepRetry) hubSaveFailed('state:'+stateKey,async()=>{
+      const ok=await saveStateStore(stateKey,stateJson);
+      // The transport presets keep an «unsaved» flag for the leave-page warning; a pill retry that gets through clears it too.
+      if(ok&&stateKey===TRANSPORT_PRESETS_KEY) window.__transportSavePending=false;
+      return ok;
+    });
     setSavePill('failed',SAVE_FAILED_TXT);
     handleLedgerSupabaseError('state save '+stateKey,lastError);
     return false;
@@ -2137,7 +2146,7 @@ function subscribeHubRealtime(){
         // The bookings table wins once it has loaded (it also carries the
         // amounts of the Weekly P&L); a pasted CSV only fills an empty camp.
         // A Camp-Tab-only device never keeps that copy (audit CH-01).
-        if(__ovBookingsFromDb||CAMP_TAB_ONLY_MODE) return;
+        if(__ovBookingsFromDb||HUB_NO_BOOKINGS_COPY) return;
         ovBookings=json;
         rerenderActivePageData();
       } else if(key===DELETED_CAMPCLOSE_KEY&&Array.isArray(json)){
@@ -2977,8 +2986,11 @@ async function processAiInvoiceFiles(files){
         sourceKind: 'invoice_ai',
       };
       state.textContent='Saving…';
-      await commitLedgerEntry(payload, 'ai-invoice', {key:'ai-invoice:'+payload.id});
-      state.innerHTML=`<span style="color:var(--green)">Added · €${Math.round(amountEur).toLocaleString('en-GB')}</span>`;
+      // The pill keeps a refused invoice under its FILE, not its random id: dropping the same
+      // PDF again replaces the old retry, so a tap on the pill can never add it a second time.
+      const added=()=>{ state.innerHTML=`<span style="color:var(--green)">Added · €${Math.round(amountEur).toLocaleString('en-GB')}</span>`; };
+      await commitLedgerEntry(payload, 'ai-invoice', {key:'ai-invoice:'+[f.name,f.size,f.lastModified].join('|'), done:()=>{ added(); hubRetryDone(); }});
+      added();
     } catch (e) {
       state.innerHTML=`<span style="color:#c94e42">Error: ${escapeHtml(String(e?.message||e))}</span>`;
     }
@@ -10994,7 +11006,7 @@ async function requirePlatformSession(){
       loadStateStore(SK),
       // The saved bookings copy holds guest names with gross amounts, partner and
       // commission: a Camp-Tab-only device does not download it (audit CH-01).
-      CAMP_TAB_ONLY_MODE?null:loadStateStore(OV_CSV_REMOTE_KEY),
+      HUB_NO_BOOKINGS_COPY?null:loadStateStore(OV_CSV_REMOTE_KEY),
       hydrateLedgerFromSupabase({mergeLocal:true}),
       // mergeLocal=false here: trust Supabase as the single source of truth
       // for monthly cost profiles. With mergeLocal=true, deleting a salary
