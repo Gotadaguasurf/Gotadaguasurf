@@ -1,0 +1,24 @@
+# What Vercel must NOT publish (audit 18 Nov 2026, SA-12 / AUT-12).
+# The site is static: every file left in the deploy is served to anyone who types its address.
+# Pages only load /index.html, the app folders, /lib, /assets, /signatures and the three root scripts
+# (supabase-config.js, owner-config.js, error-monitor.js) — tests/vercelignore.spec.js proves it on every run.
+# Same syntax as .gitignore. A leading "/" means "only at the top of the site".
+
+/supabase/
+/docs/
+/tests/
+/scripts/
+/.claude/
+/.github/
+/test-results/
+/playwright-report/
+/node_modules/
+
+/package.json
+/package-lock.json
+/playwright.config.js
+/.gitignore
+
+*.md
+*.py
+.DS_Store

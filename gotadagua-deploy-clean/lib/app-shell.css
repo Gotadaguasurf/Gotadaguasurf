@@ -88,6 +88,7 @@ th .ic,.kpi-label .ic,.summary-lbl .ic{width:12px;height:12px;vertical-align:-2p
 .app-switch-menu a.is-current{background:var(--ocean-soft);color:var(--ocean)}
 .app-switch-menu a.is-current small{color:var(--ocean);opacity:.75}
 .app-switch-group{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-2);padding:10px 10px 4px;border-top:1px solid var(--border);margin-top:4px}
+.app-switch-empty{padding:8px 10px;font-size:12px;line-height:1.4;color:var(--muted);font-weight:400}
 .loc-switch>summary{background:rgba(255,203,120,.12);border-color:rgba(255,203,120,.26)}
 .loc-switch>summary:hover{background:rgba(255,203,120,.2);border-color:rgba(255,203,120,.4)}
 .loc-switch[open]>summary{background:rgba(255,203,120,.26);border-color:rgba(255,203,120,.48)}
