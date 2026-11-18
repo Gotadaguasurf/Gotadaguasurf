@@ -553,9 +553,9 @@
     return gs;
   }
   function guestLine(g, ws, day) {
-    const rt = roomText(g, day, ws, ' '); const c = course(g); const d = dietOf(g);
+    const rt = roomText(g, day, ws, ' '); const c = course(g); const d = dietOf(g); const way = wayText(g, '');
     return [g.guest_name, rt.label ? rt.label + (rt.sub ? ` (${rt.sub})` : '') : 'no room', stayText(g, ws), g.phone || 'no phone',
-      c ? `${c} · ${levelOf(g)}` : 'no lessons', d === 'none' ? 'no special diet' : d || 'diet ?', g.has_transfer ? 'transfer' : 'own way',
+      c ? `${c} · ${levelOf(g)}` : 'no lessons', d === 'none' ? 'no special diet' : d || 'diet ?', way.arrive, way.leave,
       g.partner ? `partner (${g.partner}) – don't charge` : ''].filter(Boolean).join(' · ');
   }
 
@@ -781,6 +781,38 @@
   // When a guest coming on their own arrives: the Arrival time, or a time typed in the flight field («13:00», «02h50»).
   const arriveAt = g => g.arrival_time || ((String(g.arrival_flight || '').trim().match(/^(\d{1,2})[:h](\d{2})$/i) || []).slice(1).map(x => x.padStart(2, '0')).join(':')) || '';
   const airportTrip = t => (t.kind === 'airport_arrival' || t.kind === 'airport_departure') && !['cancelled', 'merged'].includes(t.status);
+  // How a guest comes and how they leave: one answer per direction (18 Nov 2026 — a guest with only the departure
+  // transfer was shown as «transfer» on arrival and was missing from «On their own»).
+  // The camp report stores every airport leg with its date (raw.transfers): on the check-in day = arrival, on the
+  // check-out day = departure, another date = the nearer one (the rule of lib/bl-report.js bookingTrips). A leg without a
+  // date counts both ways (never «own way» on a guess). A row of the old Guests export has no legs: «Has transfer» answers
+  // for both ways, exactly as before.
+  function transferLegs(g) {
+    const legs = g.raw && g.raw.source === 'bl-report' && Array.isArray(g.raw.transfers) ? g.raw.transfers : null;
+    if (!legs) return { report: false, arr: !!g.has_transfer, dep: !!g.has_transfer, depDate: '' };
+    const out = { report: true, arr: false, dep: false, depDate: '' };
+    legs.forEach(l => {
+      const d = l && l.date ? String(l.date).slice(0, 10) : '';
+      if (!d || !g.check_in || !g.check_out) { out.arr = out.dep = true; return; }
+      if (d === g.check_in || (d !== g.check_out && Math.abs(daysBetween(g.check_in, d)) <= Math.abs(daysBetween(d, g.check_out)))) out.arr = true;
+      else { out.dep = true; out.depDate = d; }
+    });
+    return out;
+  }
+  // A live trip of the booking that day in Transport also counts (somebody on the booking has the transfer: the guard
+  // «On their own» always had). Report rows only — the old rows keep «Has transfer».
+  const bookingTrip = (g, kind, day) => !!g.booking_ref && (TR().trips || []).some(t => t.kind === kind && airportTrip(t) && t.booking_ref === g.booking_ref && t.trip_date === day);
+  function wayOf(g) {
+    const L = transferLegs(g); if (!L.report) return L;
+    return { report: true, arr: L.arr || bookingTrip(g, 'airport_arrival', g.check_in), dep: L.dep || bookingTrip(g, 'airport_departure', g.check_out), depDate: L.depDate || g.check_out };
+  }
+  // The Arrival column: «transfer» or «own way» for the way in; a guest who comes on their own but has the transfer out
+  // also reads «transfer out Sat 28», so the booked transfer is not lost from the list.
+  // `at` = the arrival time to print after the first half (the Guests tab), or ''.
+  function wayText(g, at) {
+    const w = wayOf(g); const t = at ? ' ' + at : '';
+    return { arrive: (w.arr ? 'transfer' : 'own way') + t, leave: !w.arr && w.dep ? `transfer out ${fd(w.depDate)}` : '' };
+  }
   function weekModel(ws, rows) {
     const live = rows.filter(counted);
     const trips = (TR().trips || []).filter(airportTrip);
@@ -803,7 +835,7 @@
         roomOuts: [...mv.outs, ...mv.bedChanges, ...mv.outsideOuts],   // outsideOuts = no room in the file: «Outside of camp»
         breakfast: live.filter(g => inCamp(g, add(d, -1))).length, dinner: night.length,
         students, courses: courseCounts(students), yoga: night.filter(isYoga).length,
-        trips: dayTrips, own: i === 7 ? [] : arrivals.filter(g => !g.has_transfer && !refs.has(g.booking_ref)),
+        trips: dayTrips, own: i === 7 ? [] : arrivals.filter(g => !transferLegs(g).arr && !refs.has(g.booking_ref)),
       });
     }
     const wk = days.slice(0, 7);
@@ -1200,7 +1232,7 @@
     const room = r ? rt.label : OUTSIDE;
     const nights = (g.check_in && g.check_out) ? daysBetween(g.check_in, g.check_out) : 0;
     const pack = String(g.packages || '').trim();
-    const arrive = (g.has_transfer ? 'transfer' : 'own way') + (arriveAt(g) ? ' ' + arriveAt(g) : '');
+    const way = wayText(g, arriveAt(g));
     const q = [g.guest_name, room, g.phone, c, levelOf(g), d, al, g.partner, pack, g.booking_ref].join(' ').toLowerCase();
     return `<div class="wk-g wk-grow" data-q="${h(q)}"><span class="wk-gc name"><span class="wk-g1"><b>${h(g.guest_name)}</b>${g.partner ? ` <span class="badge badge-amber">partner – don't charge</span>` : ''}${g._st === 'carry' ? ' <span class="badge badge-grey">still here?</span>' : ''}${g._prev ? ' <span class="badge badge-blue">stays on</span>' : ''}</span>${pack || g.partner ? `<span class="cell-sub">${h([pack, g.partner && g.partner !== 'partner' ? 'via ' + g.partner : ''].filter(Boolean).join(' · '))}</span>` : ''}</span>
       <span class="wk-gc" data-l="Stay">${h(stayText(g, ws))}${nights ? `<span class="cell-sub">${plural(nights, 'night')}</span>` : ''}</span>
@@ -1208,7 +1240,7 @@
       <span class="wk-gc" data-l="Surf">${h(c ? c : 'no lessons')}${c ? `<span class="cell-sub">${h(levelOf(g))}${isYoga(g) ? ' · Yoga' : ''}</span>` : isYoga(g) ? '<span class="cell-sub">Yoga</span>' : ''}</span>
       <span class="wk-gc" data-l="Diet">${h(d === 'none' ? 'no special diet' : d || 'diet ?')}${al ? ` <span class="badge badge-red">allergies: ${h(al)}</span>` : ''}</span>
       <span class="wk-gc" data-l="Phone">${(g.phone || phoneOf(g)) ? `<a href="tel:${h(g.phone || phoneOf(g))}">${h(g.phone || phoneOf(g))}</a>` : '<span class="wk-nil">no phone</span>'}</span>
-      <span class="wk-gc" data-l="Arrival">${h(arrive)}</span><span class="wk-gc wk-ginv">${inviteCell(g, ws)}</span></div>`;
+      <span class="wk-gc" data-l="Arrival">${h(way.arrive)}${way.leave ? `<span class="cell-sub" data-leave>${h(way.leave)}</span>` : ''}</span><span class="wk-gc wk-ginv">${inviteCell(g, ws)}</span></div>`;
   }
   // ── Week group (WhatsApp) ───────────────────────────────────────────────
   // WhatsApp has no link or API to create a group, so the app prepares everything around it:
