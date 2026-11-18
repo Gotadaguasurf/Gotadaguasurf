@@ -268,3 +268,25 @@ test('CT-05: without access to removed lines (or on an error) Activity still sho
   await expect(frame.locator('#acBody .ac-what')).toHaveText(['Unknown added Lion Lager to Guest 1']);
   await expect(frame.locator('#acRemovedSum')).toHaveCount(0);
 });
+
+// ── CT-07 — a revenue row that cannot be saved takes the «Paid» back ─────────────────────
+// The hub writes the ledger row; when that fails it tells the Camp Tab, which puts the line back
+// to unpaid — also when the guest was closed right after paying, and for a staff line.
+// (What is still missing — a retry or a check when the page was closed in between — is in the hub.)
+test('CT-07: ledger save fails → the line is unpaid again (guest closed right after Pay, and a staff line)', async ({ page }) => {
+  const g1 = uuid('9e57', 1); const s1 = uuid('9e57', 2);
+  const { ctl, frame } = await openCampTab(page, {
+    camp_guests: [guestRow(1, 'Guest 1'), guestRow(2, 'Staff 1', { is_staff: true })],
+    camp_tab_items: [itemRow(1, g1, 'Lion Lager', 'Drinks', 600), itemRow(2, s1, 'Cocktail', 'Drinks', 1000, { price_type: 'staff' })],
+  });
+  ctl.fail = (t, m) => t === 'ledger_entries' && m !== 'GET';
+  await frame.evaluate((id) => { selGuest(id); payAllForGuestId(id); closeActiveGuest(); }, g1);
+  await frame.evaluate((id) => payItemOnGuest(findConsumer(id, 'staff'), 0), s1);
+  const state = () => frame.evaluate(([a, b]) => {
+    const g = findConsumer(a, 'guests'); const s = findConsumer(b, 'staff');
+    return { guestLinePaid: !!g.items[0].paidAt, guestPaid: !!g.paid, guestClosed: !!g.closedAt, staffLinePaid: !!s.items[0].paidAt };
+  }, [g1, s1]);
+  await expect.poll(state, { timeout: 10000 }).toEqual({ guestLinePaid: false, guestPaid: false, guestClosed: true, staffLinePaid: false });
+  await expect.poll(() => ctl.T.camp_tab_items.filter(r => r.paid_at).length).toBe(0);
+  expect(revenue(ctl)).toHaveLength(0);
+});
