@@ -141,3 +141,33 @@ test('HQ-07 / PRT-12 Cash flow: a cancelled booking is not money in; duplicates 
   expect(urls.some(u => /\/bookings\?select=.*status:raw_payload->>status.*order=check_in_on\.asc,id\.asc/.test(u))).toBe(true);
   expect(errs).toEqual([]);
 });
+
+// ── HQ-09 / HQ-18 ────────────────────────────────────────────────────────
+test('HQ-09 every paged HQ read has id as the last sort key; HQ-18 «saved up to» is the Santander statement only', async ({ page }) => {
+  const urls = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = decodeURIComponent(route.request().url()); urls.push(url);
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_bank_movements') && url.includes('limit=1')) return json([{ movement_date: '2026-11-17' }]);
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderInvoiceList === 'function' && document.querySelector('#tab-invoices'));
+  await page.evaluate(async () => { switchTab('invoices'); await renderInvoiceList(); await openLocDrilldown('portugal', '__all__', 'Portugal', 0); openAccountantPanel(); await refreshBankStatus(); });
+  await page.waitForFunction(() => /Santander statement saved up to/.test(document.querySelector('#acc_bank_status')?.textContent || ''), null, { timeout: 10000 });
+  const list = urls.filter(u => /\/rest\/v1\/hq_invoices\?select=id,location_slug/.test(u));
+  expect(list.length).toBeGreaterThan(0);
+  list.forEach(u => expect(u).toMatch(/order=invoice_date\.desc,id\.desc/));
+  const links = urls.filter(u => /hq_bank_movements\?select=hq_invoice_id,movement_date,bank/.test(u));
+  links.forEach(u => { expect(u).toMatch(/order=id\.asc/); expect(u).toContain('paying_company=neq.manjar'); });
+  const drill = urls.filter(u => /\/(ledger_entries|hq_invoices)\?.*order=amount_eur/.test(u));
+  expect(drill.length).toBe(2);
+  drill.forEach(u => expect(u).toMatch(/order=amount_eur\.desc,id\.asc/));
+  expect(links.length).toBeGreaterThan(0);
+  const status = urls.find(u => /hq_bank_movements\?select=movement_date.*limit=1/.test(u));
+  expect(status).toContain('bank=eq.santander');
+  expect(status).toContain('paying_company=eq.water-movements');
+});

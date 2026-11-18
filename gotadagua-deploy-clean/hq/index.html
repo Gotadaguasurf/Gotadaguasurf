@@ -1099,7 +1099,7 @@ async function openLocDrilldown(slug, period, label, profit) {
           .eq('attributed_location', slug)
           .eq('type', 'expense');
         if (start) q = q.gte('entry_date', start).lt('entry_date', end);
-        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
+        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }).order('id'));
       })(),
       (async () => {
         let q = sb.from('hq_invoices')
@@ -1108,7 +1108,7 @@ async function openLocDrilldown(slug, period, label, profit) {
           .eq('is_duplicate', false)
           .is('deleted_at', null);
         if (start) q = q.gte('invoice_date', start).lt('invoice_date', end);
-        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }));
+        return await fetchAllPaged(() => q.order('amount_eur', { ascending:false }).order('id'));
       })()
     ]);
     // Same books as the Overview row (hq_overview_rollup): the ledger mirror of an HQ invoice is listed under
@@ -3609,9 +3609,10 @@ async function refreshBankStatus(){
   const el = $('acc_bank_status');
   if (!el) return;
   try {
-    const { data, error } = await sb.from('hq_bank_movements').select('movement_date').order('movement_date', { ascending:false }).limit(1);
+    // The importer above is the Santander one: say how far Santander goes, not the newest movement of any bank (audit HQ-18).
+    const { data, error } = await sb.from('hq_bank_movements').select('movement_date').eq('bank', 'santander').eq('paying_company', 'water-movements').order('movement_date', { ascending:false }).limit(1);
     if (error) throw error;
-    el.textContent = (data && data[0]) ? `Statement saved up to ${fmtDia(data[0].movement_date)} ${String(data[0].movement_date).slice(0,4)}.` : 'No statement saved yet.';
+    el.textContent = (data && data[0]) ? `Santander statement saved up to ${fmtDia(data[0].movement_date)} ${String(data[0].movement_date).slice(0,4)}.` : 'No statement saved yet.';
   } catch (e) {
     el.textContent = 'Could not read the saved statement: ' + (e.message || e.code || 'error');
   }
@@ -4620,7 +4621,7 @@ async function renderInvoiceList(){
       let q = sb.from('hq_invoices')
         .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, bank_movement_id, commission_in_booking, deleted_at, deleted_by')
         .neq('paying_company', NOT_HQ_COMPANY)
-        .order('invoice_date', { ascending:false });
+        .order('invoice_date', { ascending:false }).order('id', { ascending:false });
       q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
       if (loc !== '__all__') q = q.eq('location_slug', loc);
       // Um intervalo explicito manda sobre o mes — permite ver um trimestre
@@ -4647,7 +4648,7 @@ async function renderInvoiceList(){
   // Bank link per expense (hq_bank_movements.hq_invoice_id) — same «Matched to bank» column as /suk/.
   let bankByInv = new Map();
   try {
-    const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date, bank').not('hq_invoice_id', 'is', null));
+    const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date, bank').not('hq_invoice_id', 'is', null).neq('paying_company', NOT_HQ_COMPANY).order('id'));
     links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, { date: b.movement_date, bank: b.bank }); });
     // Lines paid together with others (salary / meal-card lots, two invoices in one transfer, split receipts)
     // point to the shared debit through hq_invoices.bank_movement_id.
@@ -5177,9 +5178,9 @@ async function renderCashflow(){
   const perSel = $('cf_period');
   if (perSel && perSel.options.length <= 1) {
     const [bkMonths, invMonths, trMonths] = await Promise.all([
-      fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on',{ascending:false})),
-      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').is('deleted_at', null).order('invoice_date',{ascending:false})),
-      fetchAllPaged(() => sb.from('internal_transfers').select('transfer_date').order('transfer_date',{ascending:false}))
+      fetchAllPaged(() => sb.from('bookings').select('month_key').order('check_in_on',{ascending:false}).order('id')),
+      fetchAllPaged(() => sb.from('hq_invoices').select('invoice_date').is('deleted_at', null).order('invoice_date',{ascending:false}).order('id')),
+      fetchAllPaged(() => sb.from('internal_transfers').select('transfer_date').order('transfer_date',{ascending:false}).order('id'))
     ]);
     const set = new Set();
     bkMonths.forEach(r  => r.month_key && set.add(r.month_key));
