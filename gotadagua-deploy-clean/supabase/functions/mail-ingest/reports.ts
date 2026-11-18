@@ -303,7 +303,18 @@ async function handleCamp(db: Any, runId: string, slug: string, text: string, fi
     p_export_date: plan.rpc.p_export_date, p_refs_present: plan.rpc.p_refs_present, p_trips: plan.rpc.p_trips, p_guests: plan.rpc.p_guests,
   })
   if (error) return finish(db, runId, 'error', { error: 'import failed (nothing saved): ' + (error.message || String(error)) })
-  return data && data.superseded ? 'superseded' : 'imported'   // the function wrote the run row
+  if (data && data.superseded) return 'superseded'   // the function wrote the run row
+  // Bookings that left the report (check-out inside the window): their future trips go on hold with a question for the
+  // camp, never an automatic cancel (audit 18 Nov 2026, WEEK-03). Only a live, unpaid trip is touched; the import above
+  // never changes these trips (their booking is not in the file). A failure is logged on the run, the import stands.
+  const failed: string[] = []
+  for (const x of (plan.hold || [])) {
+    const { error: he } = await db.from('camp_trips').update(x.patch).eq('id', x.id).eq('location_id', loc.id)
+      .in('status', ['planned', 'sent', 'confirmed']).is('payment_entry_id', null)
+    if (he) failed.push(`${x.trip.booking_ref}: ${he.message || String(he)}`)
+  }
+  if (failed.length) await db.from('bl_report_runs').update({ error: `imported, but ${failed.length} trip${failed.length === 1 ? '' : 's'} not put on hold — ${failed.join('; ')}` }).eq('id', runId)
+  return 'imported'
 }
 
 // ── Revenue & Partners ───────────────────────────────────────────────────────

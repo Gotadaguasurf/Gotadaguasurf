@@ -169,7 +169,11 @@
     'bookerEmail', 'country', 'paidAmount', 'due', 'createdOn', 'locationTags', 'currency', 'via', 'channel', 'commissionTotal', 'products', 'payments', 'url'];
   // Changes that matter to the money (listed first in the run log); the others are «extra information added».
   const MATERIAL = ['total', 'net_amount', 'commission_amount', 'partner_name', 'partner_commission_pct', 'location', 'check_in_on', 'raw.status', 'raw.due', 'raw.paidAmount', 'raw.currency'];
-  const same = (a, b) => JSON.stringify(a == null ? null : a) === JSON.stringify(b == null ? null : b);
+  // Equal whatever the order of an object's keys: Postgres jsonb gives raw_payload.payments back as {dates, amounts,
+  // methods}, parse() builds {methods, dates, amounts} — compared as plain text they never matched, and every booking was
+  // rewritten and snapshotted every morning (18 Nov 2026: 305 «changed», 0 material).
+  const sorted = v => Array.isArray(v) ? v.map(sorted) : v && typeof v === 'object' ? Object.keys(v).sort().reduce((o, k) => { o[k] = sorted(v[k]); return o; }, {}) : v;
+  const same = (a, b) => JSON.stringify(sorted(a == null ? null : a)) === JSON.stringify(sorted(b == null ? null : b));
 
   // rows (parse().rows) · existing = [bookings rows] · partners = [names] → the rows to upsert and what changes.
   function plan(rows, existing, partners) {

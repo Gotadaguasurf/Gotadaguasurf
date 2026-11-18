@@ -176,6 +176,10 @@
   }
   // The flags worth one amber line on the day list (the full list stays inside the trip).
   const REMOVED_FLAG = /^transfer removed in Bookinglayer/;
+  // The whole booking left the Bookinglayer report (cancelled there?): its trips are held with this question (lib/bl-ingest.js
+  // GONE_FLAG, audit 18 Nov 2026 WEEK-03). «Still needed» answers it for good (GONE_KEPT in edited_fields).
+  const GONE_FLAG = /^booking no longer in the Bookinglayer report/;
+  const GONE_KEPT = 'kept:booking not in the report';
   // lib/bl-report.js moneyCheck + GuestsTrips.pickVehicle: «4 people, 1 transfer paid — one covers 3», «no transfer paid»,
   // «paid €70, /prices €80 (Ann A)», «9 people over capacity — 2nd vehicle?».
   const MONEY_FLAG = /^\d+ people, \d+ transfers? paid — one covers \d+$|^no transfer paid$|^paid €[\d.,]+, \/prices €|people over capacity — 2nd vehicle\?$/;
@@ -184,6 +188,7 @@
     const says = F.find(f => /^guest says:/.test(f));
     if (blFlagged(t)) return questionFlag(t).replace(/:\s*/, ' — ');
     if (F.some(f => REMOVED_FLAG.test(f))) return 'Transfer removed in Bookinglayer — cancel it, or keep it if it is still needed';
+    if (t.missing_since && F.some(f => GONE_FLAG.test(f))) return 'Booking no longer in the Bookinglayer report — cancel this trip, or keep it if it is still needed';
     if (t.missing_since) return 'Not in the latest Bookinglayer file';
     if (says) { const m = says.match(/«([^»]*)»/); const q = m ? m[1].trim() : ''; return `Guest says: «${q.length > 60 ? q.slice(0, 57) + '…' : q}» — still needed?`; }
     if (F.some(f => /^night arrival/.test(f))) return `Night arrival — the driver leaves the evening before (${fmtDay(GT.addDaysIso(t.trip_date, -1))})`;
@@ -1586,7 +1591,8 @@
   // «Still needed»: Francisco checked — the flag goes and the trip is back in the day message.
   async function keepTrip(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
-    if (await updateTrip(id, { missing_since: null, import_flags: (t.import_flags || []).filter(f => !REMOVED_FLAG.test(f)) })) { closeModal(); render(); say('Kept — it will go out with the day again'); }
+    const gone = (t.import_flags || []).some(f => GONE_FLAG.test(f));
+    if (await updateTrip(id, { missing_since: null, import_flags: (t.import_flags || []).filter(f => !REMOVED_FLAG.test(f) && !GONE_FLAG.test(f)) }, gone ? [GONE_KEPT] : undefined)) { closeModal(); render(); say('Kept — it will go out with the day again'); }
   }
   async function removeTrip(id) {
     const t = TR.trips.find(x => x.id === id); if (!t || t.payment_entry_id || t.source !== 'manual') return;
@@ -2316,11 +2322,31 @@
 
   // ── The Monday Guests import (shown in Week: TransportUI.importHtml) ───
   function nextWeekStart() { return GT.addDaysIso(GT.weekStart(cToday()), 7); }
+  // The camp report's window (check-out −3..+32 around the day it was downloaded, never before the file's first check-out).
+  function reportFileWindow(parsed) {
+    if (!parsed || !parsed.report || !window.BlIngest) return null;
+    const w = BlIngest.reportWindow(parsed.export_date || cToday());
+    const minCo = (parsed.bookings || []).reduce((m, b) => b.co && (!m || b.co < m) ? b.co : m, '');
+    if (minCo > w.from) w.from = minCo;
+    return w;
+  }
+  // Bookings that left the report: their future trips are put on hold with a question when the report is saved — never
+  // cancelled (the rule of the hourly import, lib/bl-ingest.js). Only a report downloaded today: an older file does not
+  // have the bookings made since. Many at once = a broken file: nothing held.
+  // A trip an import already saw today (last_import_at today) is left to the next hourly import: a file downloaded this
+  // morning does not have a booking made since, and «cancel this trip?» on a real booking would be a wrong question.
+  function reportHolds(parsed) {
+    const w = reportFileWindow(parsed); if (!w || !BlIngest.vanished || (parsed.export_date || '') < cToday()) return [];
+    const seenToday = a => !!a.last_import_at && BlIngest.localNow(CC.tz || 'Asia/Colombo', a.last_import_at).slice(0, 10) >= cToday();
+    const v = BlIngest.vanished(TR.trips, parsed.refs_active, BlIngest.judgeWindow ? BlIngest.judgeWindow(w) : w, colomboNow()).inside.filter(a => !seenToday(a));
+    if (new Set(v.map(a => a.booking_ref)).size > BlIngest.vanishCap((parsed.refs_active || []).length)) return [];
+    return BlIngest.vanishHolds(v, cToday());
+  }
   function renderNext(opts) {
     const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
-      <div class="card-hint">Download the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
+      <div class="card-hint">Bookinglayer's camp report is imported automatically every hour. To import by hand, drop the camp report here (the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset still works, but it cannot tell one transfer leg from two). Importing again updates the trips — nothing is duplicated.</div></div></div>
       <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
@@ -2328,13 +2354,13 @@
     if (I.error) return out + `<div class="status-msg status-err">${h(I.error)}</div>`;
     if (I.stage === 'done') {
       const r = I.result || {};
-      out += `<div class="status-msg status-ok">${ic('check-circle')} Saved: ${r.inserted || 0} new · ${r.updated || 0} updated${r.resend ? ` · ${r.resend} time changed, resend` : ''}${r.cancelled ? ` · ${r.cancelled} cancelled` : ''}${r.missing ? ` · ${r.missing} not in this file — check them` : ''}${r.replaced ? ` · ${r.replaced} regrouped` : ''} · ${r.guests || 0} guests stored for the weekly lists.</div>`;
+      out += `<div class="status-msg status-ok">${ic('check-circle')} Saved: ${r.inserted || 0} new · ${r.updated || 0} updated${r.resend ? ` · ${r.resend} time changed, resend` : ''}${r.cancelled ? ` · ${r.cancelled} cancelled` : ''}${r.missing ? ` · ${r.missing} not in this file — check them` : ''}${r.replaced ? ` · ${r.replaced} regrouped` : ''}${r.held ? ` · ${r.held} on hold (booking no longer in the report)` : ''} · ${r.guests || 0} guests stored for the weekly lists.</div>`;
     }
     const P = I.parsed;
     const groups = I.groups;
     out += `<div class="hint tr-file">${h(P.file)} · exported ${fmtShort(P.export_date)} · ${groups.guests.length} guest${groups.guests.length === 1 ? '' : 's'} confirmed, deposit paid or paid${P.counts['other location'] ? ` · ${P.counts['other location']} from other camps left out` : ''}</div>`;
     out += auditHtml(groups);
-    if (groups.plan) out += reportPlanHtml(groups.plan, groups.guestPlan);
+    if (groups.plan) out += reportPlanHtml(groups.plan, groups.guestPlan, groups.holds);
     // Morocco: what changed on the Bookinglayer side (missing column, unknown room, product or package) — one line each.
     if ((groups.warnings || []).length) out += `<div class="status-msg status-warn tr-impwarn"><b>Check before using the lists:</b>${groups.warnings.map(w => `<div class="tr-impwarn-l" data-kind="${w.kind}">${h(w.text)}</div>`).join('')}</div>`;
     if (groups.missingRefs) out += `<div class="status-msg status-info tr-soft">${groups.missingRefs} booking${groups.missingRefs === 1 ? '' : 's'} not yet in HQ — import bookings</div>`;
@@ -2352,7 +2378,7 @@
     return out;
   }
   // The camp report: what saving would change, before anything is saved (the rules of camp_trips_import).
-  function reportPlanHtml(P, GP) {
+  function reportPlanHtml(P, GP, holds) {
     const d = k => k === 'airport_departure' ? 'Departure' : 'Arrival';
     const trip = (t, extra) => `<div class="tr-row tr-static"><div class="tr-main"><b>${h((t.guests || []).join(', ') || t.guest_names || '')}</b><div class="cell-sub">${d(t.kind)} · ${fmtDay(t.date || t.trip_date)} · ${t.pax} ${Number(t.pax) === 1 ? 'person' : 'persons'} · ${h(t.booking_ref)}${extra ? ' · ' + extra : ''}</div></div></div>`;
     const chg = c => c.map(x => `${h(x.field.replace('_', ' '))} ${h(String(x.app || '–'))} → ${h(String(x.report || '–'))}${x.kept ? ' (typed by hand, kept)' : ''}`).join(' · ');
@@ -2367,7 +2393,9 @@
     out += block('Filled from the report', 'Empty in the app, now filled', (P.fills || []).map(x => trip(x.trip, x.fills.map(c => `${h(c.field.replace('_', ' '))} ${h(String(c.report))}`).join(' · '))));
     out += block('Typed by hand — kept', 'The report says something else: the trip shows «Bookinglayer says … use it?»', (P.conflicts || []).map(x => trip(x.trip, x.conflicts.map(c => `${h(c.field.replace('_', ' '))}: app ${h(String(c.app))}, Bookinglayer ${h(String(c.report))}`).join(' · '))));
     out += block('Not in the report — cancel?', 'The booking is in the report without this transfer. Saving only marks it; cancel it in Transport if it is right.', P.flagRemoved.map(a => trip(a)));
-    out += block('Booking not in the report', 'Future trips of bookings that are not in this report (cancelled in Bookinglayer?). Nothing changes.', P.notInReport.map(a => trip(a)));
+    const held = new Set((holds || []).map(x => x.id));
+    out += block('Booking no longer in the report — on hold', 'Cancelled in Bookinglayer? Saving holds these trips out of «Send the whole day» and asks «cancel this trip?» in Transport. Nothing is cancelled.', (holds || []).map(x => trip(x.trip)));
+    out += block('Booking not in the report', 'Future trips of bookings that are not in this report (cancelled in Bookinglayer?). Nothing changes.', P.notInReport.filter(a => !held.has(a.id)).map(a => trip(a)));
     out += block('Not changed (paid, done or past)', 'The report differs from the app here; the app is kept', P.untouched.filter(x => x.diffs.length).map(x => trip(x.trip, `${h(x.why)} · ${chg(x.diffs)}`)));
     if (GP) {
       const gl = (x, extra) => `<div class="tr-row tr-static"><div class="tr-main"><b>${h(x.guest_name)}</b><div class="cell-sub">${h(x.booking_ref)} · ${fmtShort(x.check_in)} → ${fmtShort(x.check_out)}${extra ? ' · ' + extra : ''}</div></div></div>`;
@@ -2513,7 +2541,8 @@
     } catch (_) { guestPlan = null; }
     TR.imp = { ...TR.imp, parsed, stage: 'preview',
       // merge, never blank: the guests sent are the report's values with the stored ones kept where the report is empty
-      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests: guestPlan ? guestPlan.rows : guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan } };
+      groups: { audit: IMP().guestAudit(TR.imp.text, parsed.file, GTC), warnings: IMP().importWarnings(TR.imp.text, parsed.file, GTC), trips, guests: guestPlan ? guestPlan.rows : guests, hqCancelled, hqMissing, missingRefs, cancelledRefs, cancelRefs: [...new Set(parsed.cancel_refs.concat([...cancelledRefs]))], plan, guestPlan,
+        holds: plan ? reportHolds(parsed) : [] } };
     render();
   }
   // Ready = /prices loaded and both airport ways have a priced vehicle (the default airport for Morocco).
@@ -2551,13 +2580,12 @@
       // Logged beside the automatic imports (bl_report_runs, supabase/bl-report-ingest.sql): Week shows «Last import: … · by hand».
       // The camp report's window (check-out −3..+32, never before the file's first check-out) keeps Week from asking «cancelled?»
       // for guests the file could not hold. Never blocks: the import is saved either way.
+      // Bookings no longer in the report: their trips on hold with the question (never cancelled). Never blocks the import.
+      let held = 0;
+      for (const x of (I.groups.holds || [])) if (await updateTrip(x.id, x.patch)) held++;
+      if (held) I.result = { ...I.result, held };
       try {
-        let w = null;
-        if (I.parsed.report && window.BlIngest) {
-          const ex = I.parsed.export_date || cToday(); w = BlIngest.reportWindow(ex);
-          const minCo = (I.parsed.bookings || []).reduce((m, b) => b.co && (!m || b.co < m) ? b.co : m, '');
-          if (minCo > w.from) w.from = minCo;
-        }
+        const w = reportFileWindow(I.parsed);
         await client().rpc('bl_report_log_manual', { p_location: loc, p_file: String(I.name || ''), p_rows: (I.groups.guests || []).length, p_result: result || {}, p_window_from: w ? w.from : null, p_window_to: w ? w.to : null });
       } catch (_) { /* not set up yet */ }
       try { window.dispatchEvent(new CustomEvent('camp-week-imported')); } catch (_) {}   // Week reloads its lists

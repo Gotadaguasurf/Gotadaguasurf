@@ -133,6 +133,27 @@ test('window guard: only future, unpaid trips of a booking that left the report 
   // off by default (the camp hub's import never cancels them) → nothing cancelled, the would-cancel list is still logged
   const off = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
   expect(off.vanish).toEqual([]); expect(off.vanishHeld).toMatch(/switched off/); expect(off.changes.trips.vanish.length).toBe(1);
+  // … and its trips go on hold with the question (WEEK-03): never cancelled, out of «Send the whole day» until answered
+  expect(off.hold.map(x => x.id)).toEqual(['t-in']);
+  expect(off.hold[0].patch).toEqual({ missing_since: '2026-11-17', import_flags: [I.GONE_FLAG] });
+  expect(off.changes.counts.hold).toBe(1); expect(off.changes.trips.hold[0]).toMatch(/^2026-200 arr 2026-11-25 .* on hold, asked$/);
+  expect(r.hold).toEqual([]);                                                      // cancel_vanished on: cancelled instead, not held
+  // asked once: a trip already held, or one the camp kept («Still needed»), is not asked again; other flags are kept
+  const again = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', catalog: MA_CAT, now: '2026-11-17T11:00', receivedYmd: '2026-11-17', appGuests: [],
+    appTrips: [appTrip('t-held', '2026-200', '2026-11-25', '2026-12-01', { missing_since: '2026-11-17', import_flags: [I.GONE_FLAG] }),
+      appTrip('t-kept', '2026-207', '2026-11-25', '2026-12-01', { edited_fields: [I.KEPT_MARK] }),
+      appTrip('t-flag', '2026-208', '2026-11-26', '2026-12-01', { import_flags: ['night arrival: lands 02:45'] })] });
+  expect(again.hold.map(x => [x.id, x.patch.import_flags])).toEqual([['t-flag', ['night arrival: lands 02:45', I.GONE_FLAG]]]);
+});
+
+test('window guard: a check-out on the window\'s last day is not judged — Bookinglayer cuts the file at 00:00 UTC, the window is camp time (WEEK-21)', () => {
+  const text = csvPriced([maBk('2026-100', '2026-11-20', '2026-11-27', 'Ann A')]);
+  // sent 18 Nov (camp time) → window to 20 Dec; the file may still end on 19 Dec
+  const app = [appTrip('t-last', '2026-210', '2026-12-13', '2026-12-20'), appTrip('t-before', '2026-211', '2026-12-12', '2026-12-19')];
+  const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-18T00:30', receivedYmd: '2026-11-18' });
+  expect(r.window.to).toBe('2026-12-20');
+  expect(r.hold.map(x => x.id)).toEqual(['t-before']);
+  expect(r.vanishOutside.map(a => a.id)).toEqual(['t-last']);
 });
 
 test('window guard: many bookings leaving at once (a truncated file?) cancels nothing', () => {
@@ -140,6 +161,9 @@ test('window guard: many bookings leaving at once (a truncated file?) cancels no
   const app = [1, 2, 3, 4, 5].map(n => appTrip('t' + n, '2026-30' + n, '2026-11-25', '2026-12-01'));
   const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17', cancelVanished: true });
   expect(r.vanish).toEqual([]); expect(r.vanishAll.length).toBe(5); expect(r.vanishHeld).toMatch(/at once/);
+  // nor held: a broken file must not keep every driver at home
+  const off = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
+  expect(off.hold).toEqual([]); expect(off.vanishHeld).toMatch(/nothing cancelled or held/);
 });
 
 test('window guard: Week asks «cancelled?» only for stored guests whose check-out is inside the window', () => {
@@ -261,6 +285,29 @@ test('revenue: idempotent — the same file again changes nothing', () => {
   expect(again.upserts).toEqual([]); expect(again.unchanged).toBe(2);
 });
 
+// Postgres jsonb keeps an object's keys by length, then by bytes: {methods, dates, amounts} is read back as
+// {dates, amounts, methods}. Comparing with a plain JSON.stringify never matched, so the daily run rewrote and
+// snapshotted every booking (18 Nov 2026: 305 of 310 «changed», 0 material — audit PRT-03 / SEAM-04).
+const asJsonb = v => Array.isArray(v) ? v.map(asJsonb) : v && typeof v === 'object'
+  ? Object.fromEntries(Object.keys(v).sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0)).map(k => [k, asJsonb(v[k])])) : v;
+test('revenue: the row read back from Postgres (jsonb key order) is unchanged — only a real change is written and snapshotted', () => {
+  const file = (status, due) => RV.parse(revCsv([{ ref: '2026-40', total: '650.00', channel: 'KILROY', via: 'Backoffice via KILROY', pct: '20' }, { ref: '2026-41', total: '99.50', status, due }])).rows;
+  const stored = RV.plan(file('Deposit paid', '49.50'), [], ['Kilroy']).upserts.map(asJsonb);
+  expect(Object.keys(stored[0].raw_payload.payments)).toEqual(['dates', 'amounts', 'methods']);   // the order the 18 Nov snapshots show
+  const again = RV.plan(file('Deposit paid', '49.50'), stored, ['Kilroy']);
+  expect(again.upserts).toEqual([]); expect(again.changes).toEqual([]); expect(again.unchanged).toBe(2);
+  expect(RV.summarize(again, { rows: file('Deposit paid', '49.50'), missing: [], unknownLocations: [] }).counts).toMatchObject({ upserts: 0, changed: 0, unchanged: 2 });
+  // deposit → paid: that booking only, as a material change
+  const paid = RV.plan(file('Paid', '0.00'), stored, ['Kilroy']);
+  expect(paid.upserts.map(u => u.booking_ref)).toEqual(['2026-41']); expect(paid.unchanged).toBe(1);
+  expect(paid.changes[0].material.map(d => d.field).sort()).toEqual(['raw.due', 'raw.status']);
+  // the comparison still looks inside the object: another payment method in Bookinglayer is a change («extra information»)
+  const other = stored.map(b => b.booking_ref === '2026-40' ? { ...b, raw_payload: { ...b.raw_payload, payments: { ...b.raw_payload.payments, methods: 'PayPal' } } } : b);
+  const pay = RV.plan(file('Deposit paid', '49.50'), other, ['Kilroy']);
+  expect(pay.upserts.map(u => u.booking_ref)).toEqual(['2026-40']);
+  expect(pay.changes[0]).toMatchObject({ ref: '2026-40', material: [], extra: ['raw.payments'] });
+});
+
 test('revenue: «List of locations» names → the stay wins (as the HQ import)', () => {
   expect(RV.locationOf('Surf Camp Portugal, Surf Camp Ahangama', 'Surf Camp Ahangama Package')).toMatchObject({ code: 'LK', name: 'Surf Camp Ahangama' });
   expect(RV.locationOf('Tamraght Camp', '')).toMatchObject({ code: 'MA', name: 'Tamraght Camp' });
@@ -285,7 +332,7 @@ function fakeDb(seed = {}) {
     select() { return this; }
     eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; }
     not(k, op, v) { this.f.push(r => op === 'is' && v === null ? r[k] != null : r[k] !== v); return this; }
-    in(k, vs) { this.f.push(r => vs.includes(r[k])); return this; } gte(k, v) { this.f.push(r => String(r[k]) >= v); return this; }
+    in(k, vs) { this.f.push(r => vs.includes(r[k])); return this; } is(k, v) { this.f.push(r => (r[k] == null ? null : r[k]) === v); return this; } gte(k, v) { this.f.push(r => String(r[k]) >= v); return this; }
     order(k, o) { this.ord = this.ord || [k, !!(o && o.ascending === false)]; return this; } limit(n) { this.lim = n; return this; } range(a, b) { this.rng = [a, b]; return this; }
     insert(o) { this.op = 'insert'; this.payload = o; return this; } update(o) { this.op = 'update'; this.payload = o; return this; } delete() { this.op = 'delete'; return this; }
     maybeSingle() { this.one = 'maybe'; return this; } single() { this.one = 'single'; return this; }
@@ -453,6 +500,29 @@ test('reports.ts: report files older than 30 days are removed from the bucket', 
   await runReports(db, g.deps);
   expect([...db.files.keys()].some(k => k.includes('2020-01-01'))).toBe(false);
   expect(db.files.has(`bl-reports/${today}/camp-morocco-new.csv.gz`)).toBe(true);
+});
+
+test('reports.ts: a booking that left the report — its future trips are put on hold with the question after the import, never cancelled (WEEK-03)', async () => {
+  const db = fakeDb();
+  Object.assign(db.T.bl_report_settings[0], { dry_run_camp: false });
+  // the report is sent «now» (the camp's today): the trips must be in the future and the check-out inside its window
+  const today = I.localNow('Africa/Casablanca').slice(0, 10); const add = n => new Date(Date.parse(today) + n * 864e5).toISOString().slice(0, 10);
+  db.T.camp_trips = [
+    appTrip('t-gone', '2026-300', add(5), add(9), { location_id: 'L-MA' }),
+    appTrip('t-paid', '2026-301', add(5), add(9), { location_id: 'L-MA', payment_entry_id: 'pay1' }),
+    appTrip('t-other', '2026-302', add(5), add(9), { location_id: 'L-SL' }),
+  ];
+  const g = mailbox([rep('m20', new Date().toISOString(), MA_SUBJ, ['2026-100'])]);
+  await runReports(db, g.deps);
+  expect(db.rpcCalls.map(c => c[0])).toEqual(['bl_report_camp_apply']);
+  expect(db.rpcCalls[0][1].p_vanish).toEqual([]);                                     // nothing cancelled
+  const t = id => db.T.camp_trips.find(x => x.id === id);
+  expect(t('t-gone')).toMatchObject({ status: 'planned', missing_since: today, import_flags: [I.GONE_FLAG] });
+  expect(t('t-paid').missing_since).toBeUndefined();
+  expect(t('t-other').missing_since).toBeUndefined();
+  const run = db.T.bl_report_runs.find(r => r.message_id === 'm20');
+  expect(run).toMatchObject({ status: 'imported' }); expect(run.error).toBeUndefined();
+  expect(run.changes.counts.hold).toBe(1);
 });
 
 test('reports.ts: without bl_report_settings (SQL not run) nothing happens', async () => {
