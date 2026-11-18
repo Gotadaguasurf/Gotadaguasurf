@@ -7959,12 +7959,19 @@ function ledgerDrawerDelta(r){
   }
   return none;
 }
+// The local amount a row moves in a drawer. A euro row in a camp that counts in LKR / MAD carries the rate it was
+// paid at: amount × that rate, as camp_cash_balance() does in SQL (audit CH-18); a euro row without a real rate
+// (fx 1) keeps today's rate, as before. The table's own display (entryLocalDisplayAmount) is unchanged.
+function drawerLocalAmount(r){
+  if(r && r.currency==='EUR' && (LOCAL_CURRENCY||'EUR')!=='EUR' && Number(r.fxRate)>1) return Number(r.amount||0)*Number(r.fxRate);
+  return entryLocalDisplayAmount(r);
+}
 function ledgerDrawerBalances(rows){
   const out={bankLocal:0,bankEur:0,cashLocal:0,cashEur:0};
   (rows||[]).forEach(r=>{
     const d=ledgerDrawerDelta(r);
     if(!d.bank&&!d.cash) return;
-    const l=entryLocalDisplayAmount(r), e=entryEurAmount(r);
+    const l=drawerLocalAmount(r), e=entryEurAmount(r);
     out.bankLocal+=d.bank*l; out.bankEur+=d.bank*e;
     out.cashLocal+=d.cash*l; out.cashEur+=d.cash*e;
   });

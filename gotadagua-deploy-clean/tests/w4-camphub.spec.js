@@ -114,3 +114,15 @@ test('CH-17: a camp that does not exist says so and offers the camps — no empt
   await expect(page.locator('a[href="/camp-hub/?location=morocco"]')).toBeVisible();
   expect(await page.evaluate(() => window.__x)).toBeUndefined();
 });
+
+test('CH-18: a euro row paid in cash in Sri Lanka moves the cash box by its own rate, as camp_cash_balance() counts it', async ({ page }) => {
+  seq = 0;
+  const lkr = row('expense', 'Cash', 1000, 340);
+  const eur = row('expense', 'Cash', 10, 350, { currency: 'EUR', eur: 10 });   // 10 € paid at 350 → LKR 3,500 out of the box
+  await openHub(page, [lkr, eur]);
+  const b = await page.evaluate(() => ledgerDrawerBalances(S.ledger));
+  expect(Math.round(b.cashLocal)).toBe(-4500);
+  // a euro row with no real rate (fx 1, how HQ-paid euro rows are stored) keeps today's rate, as before
+  const plain = await page.evaluate(() => drawerLocalAmount({ currency: 'EUR', fxRate: 1, amount: 10 }) === entryLocalDisplayAmount({ currency: 'EUR', fxRate: 1, amount: 10 }));
+  expect(plain).toBe(true);
+});
