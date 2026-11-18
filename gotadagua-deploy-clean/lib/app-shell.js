@@ -53,7 +53,8 @@
     <path fill="#fff4d5" d="M142.8,61.3h-6.9c-.2-.5-.1-1-.2-1.4-.1-.5-1.3-2.4-1.5-2.8-.5-.7-1.5-1.5-2.3-1.5-1.3,0-3.2,0-4.3.8-.5.3-1.2,2.1-1.4,2.7-1.1,3.3-1.3,6.7-1.5,10.1,0,3.6.2,8.1,1.7,11.5,0,.3.5.9.6,1.1.2.3,1.7,1.1,2,1.1.9,0,2.5,0,3.5-.3.4,0,1.7-1,2-1.3.6-.7,1.3-3.3,1.3-4.3s-.3-1.9-.4-2l-4.5-.2c-.3-1.9-.1-3.9.1-5.8v-.2c.9,0,6.9.3,9.1.5h2.2c0,.7.2,1.3.3,2.1.5,3.1.4,5.2.1,8.3-.3,3.1-.5,6.5-3.1,8.6-1.1.9-1.8,1.5-3.3,1.9-1.9.6-2.8.6-4.7.7-1.3,0-2.3,0-3.6-.2-3.9-.8-6.3-2.8-7.5-6.6-2.7-8.9-3.1-18.9-.9-27.9.8-3.1,1.3-4.7,3.9-6.5,2.1-1.5,7.1-2.3,9.5-1.6,2.7.8,6.6,2.7,8.1,4.4.7.8,1.5,2.8,1.7,3.8.2,1.3,0,5,0,5h0Z"/>
   </svg>`;
 
-  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  // All five HTML characters, the apostrophe too, so it is safe inside a single-quoted attribute (UXC-13).
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const $ = (id) => document.getElementById(id);
   const eur = (n) => '€' + Number(n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const eur0 = (n) => '€' + Math.round(Number(n || 0)).toLocaleString('en-GB');
@@ -188,7 +189,7 @@
     </details>` : ''}
   </div>
   <div class="nav-tabs" id="${o.tabsId || 'navTabs'}"${o.tabsHidden ? ' style="display:none"' : ''}>${tabs.map(t => tabHtml(t, attr, 'ntab')).join('')}</div>
-  <div class="nav-actions" id="navActions">${o.actions || ''}${o.user === false ? '' : `<span class="user-chip" id="userChip">—</span>`}${o.signOut ? `<button class="nav-action-btn" onclick="${esc(o.signOut)}" title="Sign out">Sign out</button>` : ''}</div>
+  <div class="nav-actions" id="navActions">${o.actions || ''}${o.user === false ? '' : `<span class="user-chip" id="userChip">—</span>`}${o.signOut ? `<button class="nav-action-btn" onclick="${esc(o.signOut)}" title="Log out">Log out</button>` : ''}</div>
   ${o.mobile === false ? '' : `<button class="nav-hamburger" onclick="AppShell.toggleMobile()" aria-label="Open menu">☰</button>`}`;
   }
   function drawerHtml(o){
