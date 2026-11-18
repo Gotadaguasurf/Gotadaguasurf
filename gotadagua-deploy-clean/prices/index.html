@@ -107,6 +107,9 @@
 .route-sub{font-size:12.5px;color:var(--muted)}
 
 /* drag to reorder (desktop) */
+.card.tbl-wrap table tr.sec-row td{background:var(--surface-2);padding:10px 14px 8px;border-top:1px solid var(--border);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2,var(--ink))}
+.card.tbl-wrap table tr.sec-row:first-child td{border-top:0}
+tr.sec-row .sec-count{margin-left:8px;font-weight:600;color:var(--muted);letter-spacing:0}
 .drag-handle{cursor:grab;color:var(--muted-2);display:inline-flex;padding:4px;border-radius:4px;user-select:none}
 .drag-handle:hover{color:var(--ink);background:var(--surface-2)}
 .drag-handle .ic{width:14px;height:14px}
@@ -287,6 +290,9 @@ details.rooms-card[open] .rooms-caret{transform:rotate(180deg)}
   .card.tbl-wrap table.rtable td::before{content:attr(data-short);color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
   .card.tbl-wrap table.rtable td.drag-col,.card.tbl-wrap table.rtable td.td-cat{display:none}
   .card.tbl-wrap table.rtable td.td-name{display:block;grid-column:1 / -1}
+  .card.tbl-wrap table.rtable tr.sec-row{display:block;padding:0;border:0}
+  .card.tbl-wrap table.rtable tr.sec-row td{display:block;padding:10px 14px 8px}
+  .card.tbl-wrap table.rtable tr.sec-row td::before{content:none}
   .card.tbl-wrap table.rtable td.td-name::before,.card.tbl-wrap table.rtable td.td-actions::before{content:none}
   .card.tbl-wrap table.rtable td.td-pax{grid-column:1 / 3}
   table.rtable tr:has(.td-pax) td.td-actions{grid-row:2}
@@ -1506,8 +1512,24 @@ function renderTable(){
           canEdit ? `<button class="btn btn-s" onclick="openNew()">${ic('plus')} New item</button>` : '');
     return;
   }
-  wrap.innerHTML = catalogCard(rows, { title: area?.label, drag: canEdit });
+  wrap.innerHTML = catalogCard(rows, { title: area?.label, drag: canEdit, sections: filterArea === 'surf' });
   paintFlash();
+}
+
+// Surf tab in areas (Miguel 18 Nov 2026: «organizar por áreas… rentals, group lessons»): read from the item name, so a new
+// item lands in the right block without a new column. Only shown when the tab has more than one area.
+const SURF_SECTIONS = ['Surf courses & packs', 'Group lessons', 'Private lessons', 'Lessons', 'Erasmus & students', 'Residents', 'Rentals', 'Yoga', 'Other'];
+function surfSectionOf(r){
+  const n = String(r.name || '');
+  if (/^(board|wetsuit|rental)\b|board\s*&\s*wetsuit|soft\s*top/i.test(n)) return 'Rentals';
+  if (/erasmus|student/i.test(n)) return 'Erasmus & students';
+  if (/resident/i.test(n)) return 'Residents';
+  if (/^group lesson/i.test(n)) return 'Group lessons';
+  if (/^private lesson/i.test(n)) return 'Private lessons';
+  if (/yoga/i.test(n)) return 'Yoga';
+  if (/course|surf pack|guiding|flex surf|coaching/i.test(n)) return 'Surf courses & packs';
+  if (/lesson/i.test(n)) return 'Lessons';
+  return 'Other';
 }
 
 const bySortOrder = (a, b)=> ((Number(a.sort_order) || 100) - (Number(b.sort_order) || 100)) || (a.name || '').localeCompare(b.name || '');
@@ -1527,8 +1549,18 @@ function catalogCard(rows, opts = {}){
   const hint = opts.hint || `${rows.length} item${rows.length === 1 ? '' : 's'}`;
   return `<div class="card cat-card tbl-wrap">
     <div class="card-hdr"><div><div class="card-title">${escapeHtml(opts.title || 'Items')}</div><div class="card-hint">${escapeHtml(hint)}</div></div></div>
-    <table class="rtable">${head}<tbody>${rows.map(r => catalogRowHtml(r, opts)).join('')}</tbody></table>
+    <table class="rtable">${head}<tbody>${catalogBody(rows, opts)}</tbody></table>
   </div>`;
+}
+
+function catalogBody(rows, opts){
+  if (!opts.sections) return rows.map(r => catalogRowHtml(r, opts)).join('');
+  const groups = new Map();
+  rows.forEach(r => { const k = surfSectionOf(r); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+  if (groups.size < 2) return rows.map(r => catalogRowHtml(r, opts)).join('');
+  const cols = (opts.drag ? 1 : 0) + 4 + (canViewCosts ? 2 : 0) + 1 + (canEdit ? 1 : 0);
+  return SURF_SECTIONS.filter(k => groups.has(k)).map(k => `<tr class="sec-row"><td colspan="${cols}"><span class="sec-name">${escapeHtml(k)}</span><span class="sec-count">${groups.get(k).length}</span></td></tr>` +
+    groups.get(k).map(r => catalogRowHtml(r, opts)).join('')).join('');
 }
 
 function marginOf(r){
