@@ -27,7 +27,7 @@ async function openHub(page, rows, opts = {}) {
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
     if (url.includes('/rest/v1/locations')) {
-      if (opts.locations) return json(opts.locations);
+      if (opts.locations !== undefined) return json(opts.locations);
       return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 330, camp_tab_mode: 'per_guest' });
     }
     if (url.includes('/rest/v1/daily_fx_rates')) return method === 'GET' ? json(opts.rate ? { rate: opts.rate } : null) : json([]);
@@ -105,4 +105,12 @@ test('CH-11: a change from another device redraws only the page on screen', asyn
   expect(n.overview).toBeGreaterThan(0);
   expect(n.expenses).toBe(0);
   expect(n.weekly).toBe(0);
+});
+
+test('CH-17: a camp that does not exist says so and offers the camps — no empty hub in LKR; the slug is shown as text', async ({ page }) => {
+  await openHub(page, [], { slug: 'marocco<img src=x onerror=window.__x=1>', locations: null, noWait: true });
+  await expect(page.locator('body')).toContainText('Unknown camp');
+  await expect(page.locator('body')).toContainText('There is no camp «marocco<img src=x onerror=window.__x=1>»');
+  await expect(page.locator('a[href="/camp-hub/?location=morocco"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__x)).toBeUndefined();
 });

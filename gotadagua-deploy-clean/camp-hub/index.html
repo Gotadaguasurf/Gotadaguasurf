@@ -10884,10 +10884,12 @@ async function enforceLocationAccess(client, session){
   }
 }
 function renderAccessBlockScreen(result){
-  const wanted = result.wanted || __HUB_LOCATION_SLUG;
-  const accessible = Array.isArray(result.accessible) ? result.accessible : [];
+  // The slug comes from the link and names from the database: written as text, never as HTML.
+  const wanted = escapeHtml(result.wanted || __HUB_LOCATION_SLUG);
+  const unknown = result.reason === 'unknown-camp';
+  const accessible = (Array.isArray(result.accessible) ? result.accessible : []).map(a => ({ ...a, name: escapeHtml(a.name || ''), slug: String(a.slug || '') }));
   const links = accessible.length ? `
-    <div style="opacity:.7;margin-bottom:10px;font-size:14px">Camps you can open:</div>
+    <div style="opacity:.7;margin-bottom:10px;font-size:14px">${unknown ? 'Camps:' : 'Camps you can open:'}</div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
       ${accessible.map(a => `
         <a href="/camp-hub/?location=${encodeURIComponent(a.slug)}${a.campTabOnly ? '&view=camp-tab-only' : ''}"
@@ -10897,12 +10899,12 @@ function renderAccessBlockScreen(result){
     </div>` : `
     <div style="opacity:.6;margin-bottom:24px;font-size:14px">You don't have access to any camp yet. Ask the owner to give you access.</div>`;
   const errNote = (result.reason === 'query-error' || result.reason === 'threw') && result.message ?
-    `<div style="opacity:.5;font-size:12px;margin-top:16px">${result.message}</div>` : '';
+    `<div style="opacity:.5;font-size:12px;margin-top:16px">${escapeHtml(result.message)}</div>` : '';
   document.body.innerHTML = `
     <div style="position:fixed;inset:0;background:var(--navy-deep);color:#e8ecf5;display:flex;align-items:center;justify-content:center;font-family:'Outfit',system-ui,sans-serif;padding:24px;z-index:99999">
       <div style="max-width:520px;width:100%;text-align:center">
-        <div style="font-weight:700;letter-spacing:-.02em;font-size:28px;margin-bottom:10px">No access to this camp</div>
-        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">You don't have permission to open <strong>${wanted}</strong>. Ask the owner to give you access in Settings → Team Access.</div>
+        <div style="font-weight:700;letter-spacing:-.02em;font-size:28px;margin-bottom:10px">${unknown ? 'Unknown camp' : 'No access to this camp'}</div>
+        <div style="opacity:.7;margin-bottom:24px;font-size:15px;line-height:1.5">${unknown ? `There is no camp «<strong>${wanted}</strong>». Pick one below.` : `You don't have permission to open <strong>${wanted}</strong>. Ask the owner to give you access in Settings → Team Access.`}</div>
         ${links}
         <div style="display:flex;gap:10px;justify-content:center">
           <a href="/" style="background:transparent;border:1px solid rgba(255,255,255,.2);padding:10px 18px;border-radius:10px;color:#e8ecf5;text-decoration:none;font-size:14px">Back</a>
@@ -10937,6 +10939,17 @@ async function requirePlatformSession(){
   if(!access.ok){
     renderAccessBlockScreen(access);
     return;
+  }
+  // A link with a camp that does not exist (a typo, «marocco») used to open an empty hub in LKR with zeros and no word
+  // (audit CH-17). Now: «Unknown camp» and the camps to pick. A failed read (no network) is not judged here.
+  if(HUB_QUERY.get('location')){
+    let known=true;
+    try{ known=!!(await ensureHubLocationId()); }catch(_e){ known=true; }
+    if(!known){
+      const camps=[...document.querySelectorAll('#hubLocSwitch a[data-loc]')].map(a=>({slug:a.dataset.loc,name:(a.querySelector('span')?.textContent||a.dataset.loc).trim()}));
+      renderAccessBlockScreen({ reason:'unknown-camp', wanted:__HUB_LOCATION_SLUG, accessible:camps });
+      return;
+    }
   }
   if(access.localManager && !LOCAL_MANAGER_MODE){
     // Local manager → Camp Tab + Ledger view (the HQ lines are already filtered out by the database)
