@@ -84,6 +84,7 @@ header{display:none}
 @media (pointer:coarse){.ci-disc{width:32px;height:32px;top:6px;right:6px}}
 .ce-phone{display:none}
 .ac-what{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-removed{color:var(--red);font-weight:600}
 .ci-desc{font-size:10px;color:var(--muted);line-height:1.3;margin-top:1px}
 .ci-price{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ocean);margin-top:3px}
 /* Right panel */
@@ -994,7 +995,7 @@ async function ensureCampTabLocationId(){
   // reacts to the location automatically. Falls back silently to the
   // Sri Lanka defaults if the columns aren't present yet.
   if(data?.currency){
-    LOCAL_CURRENCY=data.currency;
+    LOCAL_CURRENCY=String(data.currency).replace(/[^A-Za-z]/g,'')||LOCAL_CURRENCY;   // a currency code: letters only (it is printed in every amount)
     if(data.default_fx_to_eur){
       LOCAL_PER_EUR=Number(data.default_fx_to_eur)||LOCAL_PER_EUR;
       DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
@@ -2517,7 +2518,14 @@ const passLines = g => (g && Array.isArray(g.items) ? g.items : []).filter(isPas
 const campUnpaid = i => !!i && !i.paidAt && Number(i.p||0) > 0 && !isPassThrough(i);   // what Pay / Bill / Close count
 const itemMoney = i => isPassThrough(i) ? fmtPass(i.p) : euro(i.p);
 const gtot=g=>campLines(g).reduce((s,i)=>s+Number(i.p),0);
-const esc=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+// Two escapers, one per place a stored string can land on the page (audit 18 Nov 2026, CT-01):
+//   escHtml(x)  HTML text and attribute values — a name, a note, a category, title="…", value="…"
+//   jsArg(x)    a JS string inside an inline handler — onclick="f('${jsArg(x)}')". JS-escaped first and
+//               HTML-escaped after, because the browser decodes the attribute before it runs the JS.
+// For the screen only: state, the database and the messages to the hub keep the text as typed
+// (the ledger finds a line by its guest and item name).
+const escHtml=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const jsArg=s=>escHtml(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029'));
 const getCats=()=>Object.keys(MENU);
 // Category visibility is data-driven: every category that has items in
 // the menu (catalog-sourced or local) shows; empty categories drop out.
@@ -2602,7 +2610,7 @@ function renderDiploriaPicker(el){
     const foot = DIPLORIA_SIZES.map(sz => models.reduce((t, m) => { const c = diploriaCell(m, sz); t.l += c.left; t.i += c.initial; return t; }, { l: 0, i: 0 }));
     el.innerHTML = `<div class="dip-wrap">${head}<div class="dip-hint">Read-only · each cell = left / initial · compare with the sheet «Stock Dipløria Sri Lanka»</div>
       <div class="dip-table-wrap"><table class="dip-table" id="dipStock"><thead><tr><th>Model</th>${DIPLORIA_SIZES.map(s => `<th>${s}</th>`).join('')}<th>Total</th><th>Sold</th></tr></thead>
-      <tbody>${models.map(m => { const t = diploriaModelTotals(m); return `<tr data-model="${esc(m.model)}"><th>${esc(m.model)}</th>${DIPLORIA_SIZES.map(sz => cell(diploriaCell(m, sz))).join('')}<td class="tot"><b>${t.left}</b><span>/${t.initial}</span></td><td>${t.sold}</td></tr>`; }).join('')}</tbody>
+      <tbody>${models.map(m => { const t = diploriaModelTotals(m); return `<tr data-model="${escHtml(m.model)}"><th>${escHtml(m.model)}</th>${DIPLORIA_SIZES.map(sz => cell(diploriaCell(m, sz))).join('')}<td class="tot"><b>${t.left}</b><span>/${t.initial}</span></td><td>${t.sold}</td></tr>`; }).join('')}</tbody>
       <tfoot><tr><th>Total</th>${foot.map(f => `<td class="tot"><b>${f.l}</b><span>/${f.i}</span></td>`).join('')}<td class="tot" id="dipGrand"><b>${T.left}</b><span>/${T.initial}</span></td><td>${T.sold}</td></tr></tfoot></table></div>${diploriaSalesHtml()}</div>`;
     return;
   }
@@ -2610,14 +2618,14 @@ function renderDiploriaPicker(el){
   if(m){
     const t = diploriaModelTotals(m);
     el.innerHTML = `<div class="dip-wrap">${head}
-      <div class="dip-model-head"><button class="btn btn-s btn-sm" id="dipBack" onclick="dipBack()">‹ Models</button><div><div class="dip-model-name">${esc(m.model)}</div><div class="dip-sub">${fmtPass(m.price)} · ${t.left} left · pick the size</div></div></div>
+      <div class="dip-model-head"><button class="btn btn-s btn-sm" id="dipBack" onclick="dipBack()">‹ Models</button><div><div class="dip-model-name">${escHtml(m.model)}</div><div class="dip-sub">${fmtPass(m.price)} · ${t.left} left · pick the size</div></div></div>
       <div class="dip-sizes" id="dipSizes">${DIPLORIA_SIZES.map(sz => { const c = diploriaCell(m, sz);
         return `<button class="dip-size${c.left ? '' : ' out'}" data-size="${sz}" ${c.left ? '' : 'disabled'} onclick="dipAddSize('${sz}', this)"><span class="dip-sz">${sz}</span><span class="dip-left">${c.left ? `${c.left} left` : 'none'}</span></button>`; }).join('')}</div></div>`;
     return;
   }
   el.innerHTML = `<div class="dip-wrap">${head}<div class="dip-models" id="dipModels">${models.map((x, i) => { const t = diploriaModelTotals(x);
-    return `<button class="c-item dip-model${t.left ? '' : ' out'}" data-model="${esc(x.model)}" ${t.left ? '' : 'disabled'} onclick="dipPickModel(${i})">
-      <div class="ci-name">${esc(x.model)}</div>
+    return `<button class="c-item dip-model${t.left ? '' : ' out'}" data-model="${escHtml(x.model)}" ${t.left ? '' : 'disabled'} onclick="dipPickModel(${i})">
+      <div class="ci-name">${escHtml(x.model)}</div>
       <div class="ci-desc" style="color:${t.left ? 'var(--green)' : 'var(--red)'};font-weight:700">${t.left ? `${t.left} left` : 'Out of stock'}</div>
       <div class="ci-price">${fmtPass(x.price)}</div></button>`; }).join('') || '<div class="c-item-empty">No Dipløria rows in the catalog yet.</div>'}</div></div>`;
 }
@@ -2633,7 +2641,7 @@ function diploriaSalesHtml(){
   const sold = L.reduce((s,x)=>s+x.price,0), paid = L.filter(x=>x.paid).reduce((s,x)=>s+x.price,0);
   return `<div class="dip-sales" id="dipSales"><div class="dip-title">Dipløria sales</div>
     <div class="dip-sub" id="dipSalesTot">${L.length} sold · ${fmtPass(sold)} · paid ${fmtPass(paid)} · not paid ${fmtPass(sold - paid)}</div>
-    ${L.length ? `<div class="dip-table-wrap"><table class="dip-table dip-sales-t"><thead><tr><th>Date</th><th>Guest</th><th>Short</th><th>Price</th><th>Paid</th></tr></thead><tbody>${L.map(x => `<tr data-sale="${esc(x.sku)}"><td>${esc(x.date)}</td><td>${esc(x.guest)}</td><td>${esc(x.sku)}</td><td>${fmtPass(x.price)}</td><td>${x.paid ? `${esc(String(x.paidAt).slice(0,10))} · ${esc(x.method)}` : '<b class="dip-unpaid">not paid</b>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="dip-hint">No Dipløria sale yet.</div>'}</div>`;
+    ${L.length ? `<div class="dip-table-wrap"><table class="dip-table dip-sales-t"><thead><tr><th>Date</th><th>Guest</th><th>Short</th><th>Price</th><th>Paid</th></tr></thead><tbody>${L.map(x => `<tr data-sale="${escHtml(x.sku)}"><td>${escHtml(x.date)}</td><td>${escHtml(x.guest)}</td><td>${escHtml(x.sku)}</td><td>${fmtPass(x.price)}</td><td>${x.paid ? `${escHtml(String(x.paidAt).slice(0,10))} · ${escHtml(x.method)}` : '<b class="dip-unpaid">not paid</b>'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="dip-hint">No Dipløria sale yet.</div>'}</div>`;
 }
 function dipPickModel(i){ const m = diploriaModels()[i]; if(!m) return; DIP_MODEL = m.model; renderItemGrid(); }
 function dipBack(){ DIP_MODEL = null; renderItemGrid(); }
@@ -2857,7 +2865,7 @@ function renderStaffSelect(){
   if(!el) return;
   STAFF=normalizeStaff(STAFF);
   if(!STAFF.find(s=>s.id===activeStaffId)) activeStaffId=STAFF[0]?.id||'';
-  el.innerHTML=STAFF.map(staff=>`<option value="${staff.id}">${staff.name}</option>`).join('');
+  el.innerHTML=STAFF.map(staff=>`<option value="${escHtml(staff.id)}">${escHtml(staff.name)}</option>`).join('');
   if(activeStaffId) el.value=activeStaffId;
 }
 
@@ -2927,15 +2935,15 @@ function renderGuestList(){
       }
     }
     const bikeChip = (bikeNo != null)
-      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-variant-numeric:tabular-nums;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">${bikeNo}</span>`
+      ? `<span style="display:inline-block;background:var(--ocean);color:#fff;border-radius:6px;padding:1px 6px;font-variant-numeric:tabular-nums;font-size:10px;font-weight:800;margin-right:6px;vertical-align:1px">${escHtml(bikeNo)}</span>`
       : '';
-    return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${esc(g.id)}')">
+    return `<div class="c-guest ${AG===g.id?'active':''}" onclick="selGuest('${jsArg(g.id)}')">
     <div style="min-width:0;flex:1">
-      <div class="c-guest-name">${bikeChip}${displayName}</div>
+      <div class="c-guest-name">${bikeChip}${escHtml(displayName)}</div>
       <div class="c-guest-amt">${gtot(g)>0?euro(gtot(g)):'no charges'}${currentRoster==='guests'&&isQueuedForNextWeek(g.name)?' / queued next week':''}${currentRoster==='staff'&&isStaffPlus(g)?` · Staff plus, ${staffPlusLeftFor(g)} free left`:''}</div>
     </div>
     ${isGuestFullyPaid(g)?'<div class="c-gpaid"></div>':''}
-    <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${esc(g.id)}')" title="Remove from this week">×</button>
+    <button class="c-guest-del" onclick="event.stopPropagation();delGuestRow('${jsArg(g.id)}')" title="Remove from this week">×</button>
   </div>`;
   }).join('');
   if(searchEl&&document.activeElement!==searchEl&&term){
@@ -2953,7 +2961,7 @@ function renderCatTabs(){
   // /prices — and Drinks heading the same way — there's no editable
   // category left to surface from the POS. The catalog is the single
   // source of truth, so the button would only invite confusion.
-  el.innerHTML=visibleCats().map(c=>`<button class="pill c-cat ${AC===c?'active':''}" onclick="setCat('${esc(c)}')">${esc(displayCatName(c))}</button>`).join('');
+  el.innerHTML=visibleCats().map(c=>`<button class="pill c-cat ${AC===c?'active':''}" onclick="setCat('${jsArg(c)}')">${escHtml(displayCatName(c))}</button>`).join('');
 }
 
 function renderItemGrid(){
@@ -3034,7 +3042,7 @@ function renderItemGrid(){
   if(!items.length){
     el.innerHTML=`<div class="c-item-empty">
       <div style="font-size:28px;opacity:.2">Menu</div>
-      <div style="font-weight:700;color:var(--navy)">No items in ${AC}</div>
+      <div style="font-weight:700;color:var(--navy)">No items in ${escHtml(AC)}</div>
       <div style="max-width:240px;line-height:1.6">Open menu settings to add products for this location.</div>
       <button class="btn btn-p" onclick="openMenuSettings()">Add items</button>
     </div>`;
@@ -3093,20 +3101,20 @@ function renderItemGrid(){
     const glyph = isStaffRoster ? giftSvg : '%';
     const btnTitle = isStaffRoster ? 'Give as gift' : 'Give discount / gift';
     const discountBtn = showDiscount
-      ? `<button aria-label="${btnTitle}" title="${btnTitle}" onclick="event.stopPropagation();openDiscountModal('${esc(item.id||'')}', '${esc(item.n)}')" class="btn btn-a ci-disc">${glyph}</button>`
+      ? `<button aria-label="${btnTitle}" title="${btnTitle}" onclick="event.stopPropagation();openDiscountModal('${jsArg(item.id||'')}', '${jsArg(item.n)}')" class="btn btn-a ci-disc">${glyph}</button>`
       : '';
     if(hasAlt){
       const altLabel = String(item.altLabel || 'Offer');
       return `<div class="card c-item-card${discountBtn?' ci-has-disc':''}${outOfStock?' out':''}" id="ci${i}" style="position:relative;padding:12px;display:flex;flex-direction:column;gap:8px;${outOfStock?'opacity:.5':''}">
         ${discountBtn}
-        <button class="c-item-main" onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;display:flex;flex-direction:column;gap:4px">
-          <div class="ci-name">${item.n}</div>
-          ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
+        <button class="c-item-main" onclick="addItemById('${jsArg(item.id||'')}', '${jsArg(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;display:flex;flex-direction:column;gap:4px">
+          <div class="ci-name">${escHtml(item.n)}</div>
+          ${item.d?`<div class="ci-desc">${escHtml(item.d)}</div>`:''}
           ${stockLabel}
           <div class="ci-price" style="margin-top:4px">${euro(displayPriceFor(item))}${staffPriceTag()}</div>
         </button>
-        <button onclick="event.stopPropagation();addItemAtAltPrice('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} class="btn btn-s" style="font-size:11px;padding:6px 12px;justify-content:space-between;gap:8px;width:100%">
-          <span style="text-transform:uppercase;letter-spacing:.06em">${esc(altLabel)}</span>
+        <button onclick="event.stopPropagation();addItemAtAltPrice('${jsArg(item.id||'')}', '${jsArg(item.n)}', this)" ${outOfStock?'disabled':''} class="btn btn-s" style="font-size:11px;padding:6px 12px;justify-content:space-between;gap:8px;width:100%">
+          <span style="text-transform:uppercase;letter-spacing:.06em">${escHtml(altLabel)}</span>
           <span style="font-variant-numeric:tabular-nums">${euro(Number(item.altPrice||0))}</span>
         </button>
       </div>`;
@@ -3117,17 +3125,17 @@ function renderItemGrid(){
     if(showDiscount){
       return `<div class="c-item ci-has-disc${outOfStock?' out':''}" id="ci${i}" style="position:relative">
         ${discountBtn}
-        <button onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;width:100%;display:flex;flex-direction:column;gap:4px">
-          <div class="ci-name">${item.n}</div>
-          ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
+        <button onclick="addItemById('${jsArg(item.id||'')}', '${jsArg(item.n)}', this)" ${outOfStock?'disabled':''} style="background:none;border:none;text-align:left;cursor:${outOfStock?'not-allowed':'pointer'};padding:0;font-family:inherit;color:inherit;width:100%;display:flex;flex-direction:column;gap:4px">
+          <div class="ci-name">${escHtml(item.n)}</div>
+          ${item.d?`<div class="ci-desc">${escHtml(item.d)}</div>`:''}
           ${stockLabel}
           <div class="ci-price">${euro(displayPriceFor(item))}${staffPriceTag()}</div>
         </button>
       </div>`;
     }
-    return `<button class="c-item${outOfStock?' out':''}" id="ci${i}" onclick="addItemById('${esc(item.id||'')}', '${esc(item.n)}', this)" ${outOfStock?'disabled':''}>
-    <div class="ci-name">${item.n}</div>
-    ${item.d?`<div class="ci-desc">${item.d}</div>`:''}
+    return `<button class="c-item${outOfStock?' out':''}" id="ci${i}" onclick="addItemById('${jsArg(item.id||'')}', '${jsArg(item.n)}', this)" ${outOfStock?'disabled':''}>
+    <div class="ci-name">${escHtml(item.n)}</div>
+    ${item.d?`<div class="ci-desc">${escHtml(item.d)}</div>`:''}
     ${stockLabel}
     <div class="ci-price">${euro(displayPriceFor(item))}${staffPriceTag()}</div>
   </button>`;
@@ -3220,7 +3228,7 @@ function renderTabPanel(){
   }
 
   const spTxt = currentRoster==='staff' ? staffPlusLeftText(g) : '';
-  const spLine = spTxt ? `<div class="sp-tabline" id="spTabLeft"><span class="badge badge-blue">Staff plus</span><span>${esc(spTxt)}</span></div>` : '';
+  const spLine = spTxt ? `<div class="sp-tabline" id="spTabLeft"><span class="badge badge-blue">Staff plus</span><span>${escHtml(spTxt)}</span></div>` : '';
   if(!g.items.length){
     document.getElementById('tabList').innerHTML=spLine+'<div style="padding:14px;text-align:center;font-size:12px;color:var(--muted)">No items yet.</div>';
     // per_guest mode: keep the footer visible so the owner can still
@@ -3263,7 +3271,7 @@ function renderTabPanel(){
     const isPaid = CAMP_TAB_MODE==='per_guest' && !!item.paidAt;
     const perItemPay = CAMP_TAB_MODE==='per_guest'
       ? (isPaid
-          ? `<span class="badge badge-green" title="Paid ${esc(String(item.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItem(${idx})" title="Mark this item unpaid">Mark unpaid</button>`
+          ? `<span class="badge badge-green" title="Paid ${escHtml(String(item.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItem(${idx})" title="Mark this item unpaid">Mark unpaid</button>`
           : (PAY_PER_LINE?`<button class="btn btn-s btn-sm" onclick="event.stopPropagation();payItem(${idx})" title="Pay this item now">Pay</button>`:''))
       : '';
     const delBtn = isPaid
@@ -3277,9 +3285,9 @@ function renderTabPanel(){
     const priceCell = isEditableBar
       ? `<button class="ctr-price" onclick="event.stopPropagation();openBarEditModal(${idx})" style="background:none;border:1px dashed var(--border-2);border-radius:var(--r-sm);padding:4px 8px;cursor:pointer;font-family:inherit;font-size:inherit;color:inherit" title="Tap to add drinks or correct the amount">${euro(item.p)}</button>`
       : `<div class="ctr-price">${euro(item.p)}</div>`;
-    const offerTitle = (item.offerFrom && item.compReason!=='staff_plus') ? ` title="${esc(`Made an offer${item.compByName?' by '+item.compByName:''}${item.compAt?' · '+String(item.compAt).slice(0,16).replace('T',' '):''} · was ${euro(Number(item.offerFrom.p||0))}`)}"` : '';
-    return `<div class="c-tab-row${isPaid?' paid':''}${item.offerFrom?' offered':''}" data-item="${esc(item.id)}"${offerTitle}>
-      <div style="flex:1;min-width:0"><div class="ctr-name">${item.n}</div><div class="ctr-time">${item.c} · ${item.t}${item.s?' · '+item.s:''}</div>${offerActionHtml(g,item)}</div>
+    const offerTitle = (item.offerFrom && item.compReason!=='staff_plus') ? ` title="${escHtml(`Made an offer${item.compByName?' by '+item.compByName:''}${item.compAt?' · '+String(item.compAt).slice(0,16).replace('T',' '):''} · was ${euro(Number(item.offerFrom.p||0))}`)}"` : '';
+    return `<div class="c-tab-row${isPaid?' paid':''}${item.offerFrom?' offered':''}" data-item="${escHtml(item.id)}"${offerTitle}>
+      <div style="flex:1;min-width:0"><div class="ctr-name">${escHtml(item.n)}</div><div class="ctr-time">${escHtml(item.c)} · ${escHtml(item.t)}${item.s?' · '+escHtml(item.s):''}</div>${offerActionHtml(g,item)}</div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         ${priceCell}
         ${perItemPay}
@@ -3303,11 +3311,11 @@ function passBlockHtml(g){
   const lines = passLines(g); if(!lines.length) return '';
   const unpaid = lines.filter(i => !i.paidAt), sum = lines.reduce((s,i)=>s+Number(i.p||0),0), due = unpaid.reduce((s,i)=>s+Number(i.p||0),0);
   const rows = lines.map(item => { const idx = g.items.indexOf(item);
-    return `<div class="c-tab-row${item.paidAt?' paid':''}" data-pass="1"><div style="flex:1;min-width:0"><div class="ctr-name">${esc(item.n)}</div><div class="ctr-time">Dipløria · ${esc(item.t||'')}${item.paidAt?` · paid ${esc(String(item.paidAt).slice(0,10))} · ${esc(item.payMethod||PASS_METHOD)}`:''}</div></div>
+    return `<div class="c-tab-row${item.paidAt?' paid':''}" data-pass="1"><div style="flex:1;min-width:0"><div class="ctr-name">${escHtml(item.n)}</div><div class="ctr-time">Dipløria · ${escHtml(item.t||'')}${item.paidAt?` · paid ${escHtml(String(item.paidAt).slice(0,10))} · ${escHtml(item.payMethod||PASS_METHOD)}`:''}</div></div>
       <div style="display:flex;align-items:center;gap:8px;flex-shrink:0"><div class="ctr-price">${fmtPass(item.p)}</div>
       ${item.paidAt?`<span class="badge badge-green">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItem(${idx})">Mark unpaid</button>`:`<button class="ctr-del" onclick="delItem(${idx})" title="Remove from tab">×</button>`}</div></div>`; }).join('');
   return `<div class="pass-block" id="passBlock"><div class="pass-head"><span>Dipløria · paid by card to Dipløria, not camp money</span><b id="passTotal">${fmtPass(sum)}</b></div>${rows}
-    ${unpaid.length?`<button class="btn btn-s pass-pay" id="passPayBtn" onclick="payDiploria()">Pay Dipløria · ${fmtPass(due)}</button>`:'<div class="pass-done">Dipløria paid · '+esc(PASS_METHOD)+'</div>'}</div>`;
+    ${unpaid.length?`<button class="btn btn-s pass-pay" id="passPayBtn" onclick="payDiploria()">Pay Dipløria · ${fmtPass(due)}</button>`:'<div class="pass-done">Dipløria paid · '+escHtml(PASS_METHOD)+'</div>'}</div>`;
 }
 // «Pay Dipløria»: one tap + confirm (the guest's name and the shorts). Marks only those lines paid with the
 // method «Card → Dipløria». No ledger row, no cash, no revenue: nothing is posted to the hub.
@@ -3516,7 +3524,7 @@ function openDiscountModal(id, name){
   m = document.createElement('div');
   m.id = 'discountModal';
   m.className = 'overlay open'; m.style.zIndex = '9999';
-  const button = (label, price, note) => `<button data-price="${price}" data-note="${esc(note)}" class="btn btn-s" style="flex:1;min-width:76px;flex-direction:column;gap:0;padding:12px 8px;font-size:13px"><div>${label}</div><div style="font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;margin-top:4px">${cur(price)}</div></button>`;
+  const button = (label, price, note) => `<button data-price="${price}" data-note="${escHtml(note)}" class="btn btn-s" style="flex:1;min-width:76px;flex-direction:column;gap:0;padding:12px 8px;font-size:13px"><div>${label}</div><div style="font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600;margin-top:4px">${cur(price)}</div></button>`;
   const p10 = Math.max(0, basePrice * 0.9);
   const p25 = Math.max(0, basePrice * 0.75);
   const p50 = Math.max(0, basePrice * 0.5);
@@ -3613,7 +3621,7 @@ function openBarEditModal(idx){
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
         <div>
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Bar tab</div>
-          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${esc(item.n)}</div>
+          <div style="font-size:18px;font-weight:800;color:var(--navy);margin-top:2px">${escHtml(item.n)}</div>
         </div>
         <button id="barEditClose" style="background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer;line-height:1">×</button>
       </div>
@@ -3895,14 +3903,14 @@ function undoOfferForLine(guestId, itemId){
 // «Make it an offer» / «Undo offer» under a tab line (Charge panel and This week card).
 function offerActionHtml(g, item){
   if(!g||!offerEligible(item)) return '';
-  const gid=esc(g.id), iid=esc(item.id);
+  const gid=jsArg(g.id), iid=jsArg(item.id);
   if(item.offerFrom&&!(Number(item.p||0)>0)){
     const by=item.compByName?` by ${item.compByName}`:'';
     const when=item.compAt?` · ${String(item.compAt).slice(0,10)}`:'';
-    return `<span class="ct-offer-row"><button type="button" class="btn btn-link btn-sm ct-offer ct-undo-offer" data-item="${iid}" onclick="event.stopPropagation();undoOfferForLine('${gid}','${iid}')" title="Back to ${esc(euro(Number(item.offerFrom.p||0)))}${esc(by)}${esc(when)}">Undo offer</button></span>`;
+    return `<span class="ct-offer-row"><button type="button" class="btn btn-link btn-sm ct-offer ct-undo-offer" data-item="${escHtml(item.id)}" onclick="event.stopPropagation();undoOfferForLine('${gid}','${iid}')" title="Back to ${escHtml(euro(Number(item.offerFrom.p||0)))}${escHtml(by)}${escHtml(when)}">Undo offer</button></span>`;
   }
   if(!(Number(item.p||0)>0)) return '';
-  return `<span class="ct-offer-row"><button type="button" class="btn btn-link btn-sm ct-offer ct-make-offer" data-item="${iid}" onclick="event.stopPropagation();makeOfferForLine('${gid}','${iid}')">Make it an offer</button></span>`;
+  return `<span class="ct-offer-row"><button type="button" class="btn btn-link btn-sm ct-offer ct-make-offer" data-item="${escHtml(item.id)}" onclick="event.stopPropagation();makeOfferForLine('${gid}','${iid}')">Make it an offer</button></span>`;
 }
 
 // ══════════════ STAFF PLUS — N free drinks a week (17 Nov 2026, comps.js STAFF_PLUS) ══════════════
@@ -3957,8 +3965,8 @@ function renderStaffPlusBar(g){
   if(!g||currentRoster!=='staff'||!cfg){ el.style.display='none'; el.innerHTML=''; return; }
   el.style.display='flex';
   el.innerHTML=isStaffPlus(g)
-    ? `<span class="badge badge-blue">Staff plus</span><span class="sp-left" id="spLeftCharge">${esc(staffPlusLeftText(g))}</span>${staffPlusFromConfig(g)?'<span class="sp-hint" id="spFromConfig">(set in config)</span>':`<button type="button" class="btn btn-link btn-sm" id="spOffBtn" onclick="setStaffPlus('${esc(g.id)}',false)">Turn off</button>`}`
-    : `<button type="button" class="btn btn-s btn-sm" id="spOnBtn" onclick="setStaffPlus('${esc(g.id)}',true)">Make Staff plus</button><span class="sp-hint">${cfg.perWeek} free drinks a week</span>`;
+    ? `<span class="badge badge-blue">Staff plus</span><span class="sp-left" id="spLeftCharge">${escHtml(staffPlusLeftText(g))}</span>${staffPlusFromConfig(g)?'<span class="sp-hint" id="spFromConfig">(set in config)</span>':`<button type="button" class="btn btn-link btn-sm" id="spOffBtn" onclick="setStaffPlus('${jsArg(g.id)}',false)">Turn off</button>`}`
+    : `<button type="button" class="btn btn-s btn-sm" id="spOnBtn" onclick="setStaffPlus('${jsArg(g.id)}',true)">Make Staff plus</button><span class="sp-hint">${cfg.perWeek} free drinks a week</span>`;
 }
 
 // Per_guest mode only — close the currently-active guest. Stamps a
@@ -4179,9 +4187,9 @@ function openBill(guestId){
   const byCat={};campLines(g).forEach(i=>{if(!byCat[i.c])byCat[i.c]=[];byCat[i.c].push(i);});   // the camp part only
   let html='';
   Object.keys(byCat).forEach(cat=>{
-    html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${cat}</div>`;
+    html+=`<div style="margin-bottom:14px"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${escHtml(cat)}</div>`;
     // The guest's bill says «Free» / «-50%» but never why (the comp reason is for the owners).
-    byCat[cat].forEach(i=>{const bs=i.compReason?String(i.s||'').replace(/ · [^·]+$/,''):i.s;html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${i.n}${bs?` <span style="font-size:10px;color:var(--muted)">· ${bs}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
+    byCat[cat].forEach(i=>{const bs=i.compReason?String(i.s||'').replace(/ · [^·]+$/,''):i.s;html+=`<div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)"><span>${escHtml(i.n)}${bs?` <span style="font-size:10px;color:var(--muted)">· ${escHtml(bs)}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${euro(i.p)}</span></div>`;});
     html+=`</div>`;
   });
   // per_guest: lines already paid one by one are not «to pay» any more.
@@ -4267,20 +4275,36 @@ function renderThisWeek(){
   // the Guests roster (it's actionable info, not duplication). Search
   // input, Guests/Staff toggle, and the Collected/Outstanding stats
   // share a single row below for compact scanning.
-  twHdr.innerHTML=`
-    ${currentRoster==='guests' && CAMP_TAB_MODE!=='per_guest' ?`<div class="tw-next-week-bar" style="width:100%">
+  // The header is built once and then updated in place. It used to be rewritten on every render — every
+  // letter typed in the search, every save, every realtime update — and a rewritten <input> is a new
+  // input: the keyboard closed after one letter (CT-02). The search box is never replaced while it exists.
+  if(!document.getElementById('twSearch')){
+    twHdr.innerHTML=`
+    <div id="twNextWeek" style="width:100%;display:none"></div>
+    <div class="tw-header-row" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%">
+      <input class="search tw-search" id="twSearch" autocomplete="off" oninput="setTwSearch(this.value)" style="flex:1;min-width:200px;margin:0">
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="pill ts-cat-btn" data-tw-roster="guests" onclick="setRoster('guests')">Guests</button>
+        <button class="pill ts-cat-btn" data-tw-roster="staff" onclick="setRoster('staff')">Staff</button>
+      </div>
+      <div id="twStats" style="display:contents"></div>
+    </div>`;
+  }
+  const twNext=document.getElementById('twNextWeek');
+  const showNext=currentRoster==='guests' && CAMP_TAB_MODE!=='per_guest';
+  twNext.style.display=showNext?'':'none';
+  twNext.innerHTML=showNext?`<div class="tw-next-week-bar" style="width:100%">
       <div>
         <div style="font-size:10px;color:var(--ocean);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">Next Week</div>
         <div style="font-weight:700;color:var(--navy)">${weekSpan(nextStart)}</div>
       </div>
       <div style="font-size:11px;color:var(--muted)">${nextDraft?.guests?.length?`${nextDraft.guests.length} guest${nextDraft.guests.length!==1?'s':''} ready to continue`:'No guests queued yet'}</div>
-    </div>`:''}
-    <div class="tw-header-row" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%">
-      <input class="search tw-search" id="twSearch" placeholder="Search ${currentRoster==='staff'?'staff':'guest'}..." value="${esc(twSearch)}" oninput="setTwSearch(this.value)" style="flex:1;min-width:200px;margin:0">
-      <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="pill ts-cat-btn ${currentRoster==='guests'?'active':''}" onclick="setRoster('guests')">Guests</button>
-        <button class="pill ts-cat-btn ${currentRoster==='staff'?'active':''}" onclick="setRoster('staff')">Staff</button>
-      </div>
+    </div>`:'';
+  const twIn=document.getElementById('twSearch');
+  twIn.placeholder=`Search ${currentRoster==='staff'?'staff':'guest'}...`;
+  if(twIn.value!==twSearch) twIn.value=twSearch;
+  twHdr.querySelectorAll('[data-tw-roster]').forEach(b=>b.classList.toggle('active',b.dataset.twRoster===currentRoster));
+  document.getElementById('twStats').innerHTML=`
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val green">${euro(totalCollected)}</div>
         <div class="tw-stat-label">Collected</div>
@@ -4288,9 +4312,7 @@ function renderThisWeek(){
       ${totalOutstanding>0?`<div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val red">${euro(totalOutstanding)}</div>
         <div class="tw-stat-label">Outstanding</div>
-      </div>`:''}
-    </div>
-  `;
+      </div>`:''}`;
 
   if(!guests.length){
     twEl.innerHTML=`<div class="tw-empty"><div>No ${currentRoster} yet.</div></div>`;
@@ -4312,11 +4334,11 @@ function renderThisWeek(){
       const closeReady = isFullyPaid || tot===0;
       const hasUnpaidItems = (g.items||[]).some(campUnpaid);
       return `<div class="card tw-card">
-        <div class="tw-card-head" onclick="toggleTwExpand('${esc(g.id)}')">
+        <div class="tw-card-head" onclick="toggleTwExpand('${jsArg(g.id)}')">
         <div style="flex:1;min-width:0">
-          <div class="tw-card-name">${g.name}</div>
+          <div class="tw-card-name">${escHtml(g.name)}</div>
           <div style="font-size:11px;color:var(--muted);margin-top:2px">${g.items.length} item${g.items.length!==1?'s':''}</div>
-          ${(currentRoster==='staff'&&isStaffPlus(g))?`<div class="tw-guest-meta"><span class="badge badge-blue tw-sp-badge">Staff plus · ${esc(staffPlusLeftText(g))}</span></div>`:''}
+          ${(currentRoster==='staff'&&isStaffPlus(g))?`<div class="tw-guest-meta"><span class="badge badge-blue tw-sp-badge">Staff plus · ${escHtml(staffPlusLeftText(g))}</span></div>`:''}
           ${(stayMeta(g)||isQueuedForNextWeek(g.name))?`<div class="tw-guest-meta">
             ${stayMeta(g)?`<span class="badge badge-grey">${stayMeta(g)}</span>`:''}
             ${isQueuedForNextWeek(g.name)?`<span class="badge badge-blue">Continues ${weekSpan(nextStart)}</span>`:''}
@@ -4336,16 +4358,16 @@ function renderThisWeek(){
             const itemPaid = CAMP_TAB_MODE==='per_guest' && !!i.paidAt;
             const perItemPay = CAMP_TAB_MODE==='per_guest'
               ? (itemPaid
-                  ? `<span class="badge badge-green" style="margin-left:8px" title="Paid ${esc(String(i.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItemForGuestId('${esc(g.id)}',${idx})" title="Mark this item unpaid">Mark unpaid</button>`
-                  : (PAY_PER_LINE?`<button class="btn btn-s btn-sm" style="margin-left:8px" onclick="event.stopPropagation();payItemForGuestId('${esc(g.id)}',${idx})" title="Pay this item now">Pay</button>`:''))
+                  ? `<span class="badge badge-green" style="margin-left:8px" title="Paid ${escHtml(String(i.paidAt).slice(0,10))}">Paid</span><button class="btn btn-link btn-sm ct-unpay" onclick="event.stopPropagation();unpayItemForGuestId('${jsArg(g.id)}',${idx})" title="Mark this item unpaid">Mark unpaid</button>`
+                  : (PAY_PER_LINE?`<button class="btn btn-s btn-sm" style="margin-left:8px" onclick="event.stopPropagation();payItemForGuestId('${jsArg(g.id)}',${idx})" title="Pay this item now">Pay</button>`:''))
               : '';
             const delBtn = itemPaid
               ? ''
-              : `<button class="tw-item-del" onclick="deleteGuestItem('${esc(g.id)}',${idx});event.stopPropagation()" title="Delete item">×</button>`;
+              : `<button class="tw-item-del" onclick="deleteGuestItem('${jsArg(g.id)}',${idx});event.stopPropagation()" title="Delete item">×</button>`;
             const auditTitle = auditTitleFor(i);
-            return `<div class="tw-item-row${itemPaid?' paid':''}" data-item="${esc(i.id)}"${auditTitle?` title="${esc(auditTitle)}"`:''}>
+            return `<div class="tw-item-row${itemPaid?' paid':''}" data-item="${escHtml(i.id)}"${auditTitle?` title="${escHtml(auditTitle)}"`:''}>
               <div class="tw-item-main">
-                <span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}${offerActionHtml(g,i)}</span>
+                <span>${escHtml(i.n)}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${escHtml(i.s)}</span>`:''}${offerActionHtml(g,i)}</span>
                 <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span>
               </div>
               ${isPassThrough(i)?(i.paidAt?'<span class="badge badge-green" style="margin-left:8px">Paid · Dipløria</span>':''):perItemPay}
@@ -4354,18 +4376,18 @@ function renderThisWeek(){
           }).join(''):'<div style="font-size:12px;color:var(--muted);padding:8px 0">No items yet.</div>'}
           <div class="tw-actions">
             ${CAMP_TAB_MODE==='per_guest'
-              ? `${!isFullyPaid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
-                 ${passLines(g).some(i=>!i.paidAt)?`<button class="btn btn-s btn-sm" onclick="AG='${esc(g.id)}';payDiploria()">Pay Dipløria · ${fmtPass(passLines(g).filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0))}</button>`:''}
-                 ${(()=>{ const n=(g.items||[]).filter(campUnpaid).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${esc(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
-                 <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${esc(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
-                 ${(currentRoster==='staff'&&staffPlusCfg()&&!staffPlusFromConfig(g))?`<button class="btn btn-s btn-sm tw-sp-toggle" onclick="setStaffPlus('${esc(g.id)}',${g.staffPlus?'false':'true'})">${g.staffPlus?'Turn off Staff plus':'Make Staff plus'}</button>`:''}
-                 <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
-              : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${esc(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
-                 ${!g.paid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${esc(g.id)}')">Bill</button>`:''}
+              ? `${!isFullyPaid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${jsArg(g.id)}')">Bill</button>`:''}
+                 ${passLines(g).some(i=>!i.paidAt)?`<button class="btn btn-s btn-sm" onclick="AG='${jsArg(g.id)}';payDiploria()">Pay Dipløria · ${fmtPass(passLines(g).filter(i=>!i.paidAt).reduce((s,i)=>s+Number(i.p||0),0))}</button>`:''}
+                 ${(()=>{ const n=(g.items||[]).filter(campUnpaid).length; return n?`<button class="btn btn-p btn-sm" onclick="payAllForGuestId('${jsArg(g.id)}')">${n>1?`Pay all (${n})`:'Pay'}</button>`:''; })()}
+                 <button class="btn ${closeReady?'btn-p':'btn-s'} btn-sm" onclick="closeGuestById('${jsArg(g.id)}')" title="${hasUnpaidItems?'Close — unpaid items will stay as an unpaid record in history':'Remove guest from active list'}">Close guest</button>
+                 ${(currentRoster==='staff'&&staffPlusCfg()&&!staffPlusFromConfig(g))?`<button class="btn btn-s btn-sm tw-sp-toggle" onclick="setStaffPlus('${jsArg(g.id)}',${g.staffPlus?'false':'true'})">${g.staffPlus?'Turn off Staff plus':'Make Staff plus'}</button>`:''}
+                 <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${jsArg(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
+              : `${currentRoster==='guests'?`<button class="btn btn-s btn-sm" onclick="passGuestToNextWeek('${jsArg(g.id)}')">${isQueuedForNextWeek(g.name)?'Update next week':'Continue next week'}</button>`:''}
+                 ${!g.paid&&tot>0?`<button class="btn btn-s btn-sm" onclick="openBill('${jsArg(g.id)}')">Bill</button>`:''}
                  ${g.paid
-                   ? `<span class="badge badge-green">Paid</span><button class="btn btn-s btn-sm" onclick="toggleGuestPaid('${esc(g.id)}')">Mark unpaid</button>`
-                   : `<button class="btn btn-p btn-sm" onclick="toggleGuestPaid('${esc(g.id)}')">Pay</button>`}
-                 <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${esc(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
+                   ? `<span class="badge badge-green">Paid</span><button class="btn btn-s btn-sm" onclick="toggleGuestPaid('${jsArg(g.id)}')">Mark unpaid</button>`
+                   : `<button class="btn btn-p btn-sm" onclick="toggleGuestPaid('${jsArg(g.id)}')">Pay</button>`}
+                 <button class="btn btn-link btn-sm c-link-danger" onclick="deleteGuest('${jsArg(g.id)}')">Delete ${rosterLabel().toLowerCase()}</button>`
             }
           </div>
         </div>`:''}
@@ -4583,14 +4605,14 @@ function renderHistory(){
     const paidCount=guests.filter(g=>g.paid).length;
     const isOpen=histOpenWeek===wk.id;
     return `<div class="card hist-week ${isOpen?'open':''}">
-      <div class="hist-week-head" onclick="toggleHistWeek('${wk.id}')">
+      <div class="hist-week-head" onclick="toggleHistWeek('${jsArg(wk.id)}')">
         <div class="hw-left">
           <div class="hw-title">${weekSpan(wk.start)}</div>
           <div class="hw-sub">${guests.length} guests · closed ${new Date(wk.closedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</div>
         </div>
         <div class="hw-right">
           <div class="hw-mini-actions">
-            <button class="btn btn-r" onclick="event.stopPropagation();deleteHistoryWeek('${wk.id}')">Delete</button>
+            <button class="btn btn-r" onclick="event.stopPropagation();deleteHistoryWeek('${jsArg(wk.id)}')">Delete</button>
           </div>
           <div class="hw-total">${euro(total)}</div>
           <div class="badge badge-grey">${paidCount}/${guests.length} paid</div>
@@ -4602,9 +4624,9 @@ function renderHistory(){
           const gt=gtot(g);
           const isGOpen=histOpenGuest===wk.id+':'+g.name;
           return `<div>
-            <div class="hw-guest-row" onclick="toggleHistGuest('${wk.id}','${esc(g.name)}')">
+            <div class="hw-guest-row" onclick="toggleHistGuest('${jsArg(wk.id)}','${jsArg(g.name)}')">
               <div>
-                <div class="hw-guest-name">${g.name}</div>
+                <div class="hw-guest-name">${escHtml(g.name)}</div>
                 <div class="hw-guest-items">${g.items.length} item${g.items.length!==1?'s':''}</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px">
@@ -4614,7 +4636,7 @@ function renderHistory(){
               </div>
             </div>
             ${isGOpen&&g.items.length?`<div class="hw-items-detail">
-              ${g.items.map(i=>`<div class="hw-item-line"><span>${i.n}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${i.s}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span></div>`).join('')}
+              ${g.items.map(i=>`<div class="hw-item-line"><span>${escHtml(i.n)}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${escHtml(i.s)}</span>`:''}</span><span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span></div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
                 <span>Total</span><span style="font-variant-numeric:tabular-nums">${euro(gt)}</span>
               </div>
@@ -4661,9 +4683,18 @@ function renderHistoryPerGuest(el){
     return;
   }
 
-  el.innerHTML=`
+  // Same rule as This week (CT-02): the search box is built once; only the counters and the list are redrawn.
+  if(!document.getElementById('histSearch')){
+    el.innerHTML=`
     <div style="padding:14px 20px 6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <input class="search tw-search" placeholder="Search closed guest..." value="${esc(histPerGuestSearch)}" oninput="setHistPerGuestSearch(this.value)" style="flex:1;min-width:220px">
+      <input class="search tw-search" id="histSearch" placeholder="Search closed guest..." autocomplete="off" oninput="setHistPerGuestSearch(this.value)" style="flex:1;min-width:220px">
+      <div id="histStats" style="display:contents"></div>
+    </div>
+    <div id="histPerGuestBody" style="padding:6px 16px 16px"></div>`;
+  }
+  const histIn=document.getElementById('histSearch');
+  if(histIn.value!==histPerGuestSearch) histIn.value=histPerGuestSearch;
+  document.getElementById('histStats').innerHTML=`
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val green">${euro(totalCollected)}</div>
         <div class="tw-stat-label">Lifetime collected</div>
@@ -4671,9 +4702,8 @@ function renderHistoryPerGuest(el){
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val">${closed.length}</div>
         <div class="tw-stat-label">Closed guests</div>
-      </div>
-    </div>
-    <div style="padding:6px 16px 16px">
+      </div>`;
+  document.getElementById('histPerGuestBody').innerHTML=`
       ${filtered.length?filtered.map(g=>{
         const isOpen=histPerGuestOpen===g.id;
         const items=Array.isArray(g.items)?g.items:[];
@@ -4681,15 +4711,15 @@ function renderHistoryPerGuest(el){
         const totalPaid=paid.reduce((s,i)=>s+Number(i?.p||0),0);
         const closedDate=String(g.closedAt||g.closed_at||'').slice(0,10);
         return `<div class="card hist-week ${isOpen?'open':''}">
-          <div class="hist-week-head" onclick="toggleHistPerGuest('${esc(g.id)}')">
+          <div class="hist-week-head" onclick="toggleHistPerGuest('${jsArg(g.id)}')">
             <div class="hw-left">
-              <div class="hw-title">${esc(g.name)}</div>
+              <div class="hw-title">${escHtml(g.name)}</div>
               <div class="hw-sub">${paid.length} paid item${paid.length===1?'':'s'} · closed ${closedDate?fmtd(closedDate):'—'}</div>
             </div>
             <div class="hw-right">
               <div class="hw-mini-actions">
-                <button class="btn btn-s" onclick="event.stopPropagation();reopenGuestById('${esc(g.id)}')" title="Bring this guest back to the active list">Re-open</button>
-                <button class="btn btn-r" onclick="event.stopPropagation();deleteClosedGuest('${esc(g.id)}')" title="Delete this guest AND remove their ledger entries">Delete</button>
+                <button class="btn btn-s" onclick="event.stopPropagation();reopenGuestById('${jsArg(g.id)}')" title="Bring this guest back to the active list">Re-open</button>
+                <button class="btn btn-r" onclick="event.stopPropagation();deleteClosedGuest('${jsArg(g.id)}')" title="Delete this guest AND remove their ledger entries">Delete</button>
               </div>
               <div class="hw-total">${euro(totalPaid)}</div>
               <div class="hw-chevron">${isOpen?'Hide':'Open'}</div>
@@ -4698,7 +4728,7 @@ function renderHistoryPerGuest(el){
           ${isOpen?`<div class="hist-week-body">
             ${items.length?`<div class="hw-items-detail">
               ${items.map(i=>`<div class="hw-item-line" style="${i.paidAt?'opacity:.9':''}">
-                <span>${esc(i.n||'')}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${CampComps.escHtml(i.s)}</span>`:''}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
+                <span>${escHtml(i.n||'')}${i.s?` <span style="font-size:10px;color:var(--muted)">· ${escHtml(i.s)}</span>`:''}${i.paidAt?` <span style="font-size:9px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:20px;padding:1px 7px;margin-left:6px;letter-spacing:.04em;text-transform:uppercase">Paid</span>`:''}</span>
                 <span style="font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted)">${itemMoney(i)}</span>
               </div>`).join('')}
               <div style="display:flex;justify-content:space-between;padding:7px 0 0;border-top:1px solid var(--border);margin-top:4px;font-weight:700;font-size:13px">
@@ -4708,7 +4738,6 @@ function renderHistoryPerGuest(el){
           </div>`:''}
         </div>`;
       }).join(''):`<div class="hist-empty"><div style="font-size:13px">No closed guests match your search.</div></div>`}
-    </div>
   `;
 }
 function setHistPerGuestSearch(value){
@@ -4827,8 +4856,8 @@ function renderSellers(){
   el.innerHTML=sorted.map((item,i)=>`<div class="card ts-item">
     <div class="ts-rank" style="color:${i<3?getCatColor(item.cat):'var(--border)'}">${i+1}</div>
     <div class="ts-info">
-      <div class="ts-name">${item.n}</div>
-      <div class="ts-cat-label" style="color:${getCatColor(item.cat)}">${item.cat}</div>
+      <div class="ts-name">${escHtml(item.n)}</div>
+      <div class="ts-cat-label" style="color:${getCatColor(item.cat)}">${escHtml(item.cat)}</div>
     </div>
     <div class="ts-bar-wrap"><div class="ts-bar" style="width:${(item.qty/maxQty)*100}%;background:${getCatColor(item.cat)}"></div></div>
     <div class="ts-qty">${item.qty}x</div>
@@ -4862,7 +4891,7 @@ function renderComps(){
     }).join('');
   const rows=CC.lines(S,MENU,{...range,isPass:isPassThrough});
   const sum=CC.summarize(rows);
-  const h=CC.escHtml;
+  const h=escHtml;
   const span=range.from?`${fmtd(range.from)} – ${fmtd(range.to)}`:'All time';
   if(!rows.length){
     body.innerHTML=`<div class="empty-state" style="padding:40px 12px;text-align:center;color:var(--muted);font-size:13px"><div style="font-weight:700;color:var(--navy);margin-bottom:4px">Nothing given free · ${h(span)}</div>A free drink, T-shirt or tour shows here with the reason picked when it was added.</div>`;
@@ -4876,14 +4905,14 @@ function renderComps(){
   }
   const approx=sum.estimated?'≈ ':'';
   const noReason=sum.byReason.find(r=>r.key===CC.NO_REASON);
-  const reasonRows=sum.byReason.map(r=>`<div class="cp-row" data-reason="${r.key}"><span class="${r.key===CC.NO_REASON?'cp-none':''}">${h(r.label)}</span><span><span class="cnt">×${r.count}</span><span class="num">${euro(r.value)}</span></span></div>`).join('');
+  const reasonRows=sum.byReason.map(r=>`<div class="cp-row" data-reason="${h(r.key)}"><span class="${r.key===CC.NO_REASON?'cp-none':''}">${h(r.label)}</span><span><span class="cnt">×${r.count}</span><span class="num">${euro(r.value)}</span></span></div>`).join('');
   const itemRows=sum.byItem.slice(0,12).map(i=>`<div class="cp-row" data-item="${h(i.n)}"><span>${h(i.n)} <span style="color:var(--muted);font-size:12px">· ${h(displayCatName(i.c))}</span></span><span><span class="cnt">×${i.count}</span><span class="num">${euro(i.value)}</span></span></div>`).join('');
   const lineRows=rows.slice(0,200).map(r=>{
     // Made an offer after it was charged: who made it free (comp_by) and the price it had.
     const by=r.offer?(r.compByName||(r.compBy&&PROFILE_NAMES.get(r.compBy))||''):r.createdBy?(PROFILE_NAMES.get(r.createdBy)||''):'';
     const why=(r.reason===CC.NO_REASON?`<span class="cp-none">${h(CC.NO_REASON_LABEL)}</span>`:h(CC.whyText(r.reason,r.note)))
       +(r.offer&&r.wasPrice>0?` · <span class="cp-offer">made an offer, was ${euro(r.wasPrice)}</span>`:'');
-    return `<div class="cp-line" data-reason="${r.reason}"><span><b>${h(r.n)}</b> → ${h(r.to)}${r.roster==='Staff'?' <span class="badge badge-grey" style="margin-left:2px">Staff</span>':''}</span><span class="num">${r.estimated?'≈ ':''}${euro(r.value)}</span>
+    return `<div class="cp-line" data-reason="${h(r.reason)}"><span><b>${h(r.n)}</b> → ${h(r.to)}${r.roster==='Staff'?' <span class="badge badge-grey" style="margin-left:2px">Staff</span>':''}</span><span class="num">${r.estimated?'≈ ':''}${euro(r.value)}</span>
       <span class="cp-line-sub">${why} · ${r.d?fmtd(r.d):''}${r.t?' '+h(r.t):''}${by?` · by ${h(by)}`:''}${r.offer&&r.compAt?` on ${h(fmtd(String(r.compAt).slice(0,10)))}`:''}</span></div>`;
   }).join('');
   body.innerHTML=`
@@ -4907,6 +4936,34 @@ function renderComps(){
 // else (via ensureCampTabLocationId + the RLS phase-7 policies).
 let _acLastLoad = 0;
 let _acCache = null;
+
+// Lines taken off a tab (audit 18 Nov 2026, CT-05). A removed line is deleted
+// from camp_tab_items, and the delete trigger keeps a copy in audit_log
+// (supabase/audit-log.sql). RLS lets owners/admins and full-access accounts of
+// the location read it; anyone else gets no rows, and the feed shows lines
+// added only, as before. A guest deleted with its lines is one event.
+// rows: audit_log rows (newest first); guestName(id) → name or ''.
+function campTabRemovedEvents(rows, locationId, guestName){
+  const mine = (rows||[]).filter(r => String(r?.deleted_row?.location_id||'') === String(locationId));
+  const guestDeletes = new Map();
+  mine.filter(r => r.table_name === 'camp_guests').forEach(r => guestDeletes.set(String(r.row_id || r.deleted_row?.id || ''), r));
+  const out = []; const byGuest = new Map();
+  mine.filter(r => r.table_name === 'camp_tab_items').forEach(r => {
+    const line = r.deleted_row || {};
+    const gid = String(line.guest_id || '');
+    const g = guestDeletes.get(gid);
+    const name = guestName(gid) || String(g?.deleted_row?.name || '');
+    // the guest's own delete within two minutes = deleted together (Delete guest)
+    if (g && Math.abs(new Date(g.at) - new Date(r.at)) < 120000) {
+      let ev = byGuest.get(gid);
+      if (!ev) { ev = { kind:'guest', at:g.at, actor:g.actor_id || r.actor_id || null, guest:name, lines:[] }; byGuest.set(gid, ev); out.push(ev); }
+      ev.lines.push(line);
+      return;
+    }
+    out.push({ kind:'line', at:r.at, actor:r.actor_id || null, guest:name, lines:[line] });
+  });
+  return out;
+}
 
 async function renderPosActivity(){
   const body = document.getElementById('acBody');
@@ -4935,35 +4992,56 @@ async function renderPosActivity(){
         .limit(500);
       if (error) throw error;
 
+      // Removed lines (CT-05). Optional: no access or an error → none shown,
+      // the added lines still load.
+      let audit = [];
+      try {
+        const { data: aud, error: audErr } = await client
+          .from('audit_log')
+          .select('at, actor_id, table_name, row_id, deleted_row')
+          .in('table_name', ['camp_tab_items','camp_guests'])
+          .eq('deleted_row->>location_id', locationId)
+          .order('at', { ascending:false })
+          .limit(1000);
+        if (audErr) throw audErr;
+        audit = Array.isArray(aud) ? aud : [];
+      } catch (e) { console.warn('[CampTab] removed lines not loaded', e); }
+      const names = new Map();
+      (items||[]).forEach(r => { if (r.camp_guests?.id) names.set(String(r.camp_guests.id), r.camp_guests.name || ''); });
+      allConsumers(currentWeek()).forEach(g => { if (g?.id) names.set(String(g.id), g.name || ''); });
+      const removed = campTabRemovedEvents(audit, locationId, id => names.get(String(id)) || '');
+
       // Resolve staff UIDs → display names via platform_profiles. Uses
       // the same PROFILE_NAMES cache the item hover-tooltip populates,
       // so repeat renders reuse names without extra round-trips.
       const uids = [...new Set((items||[])
         .flatMap(r => [r.created_by, r.updated_by])
+        .concat(removed.map(ev => ev.actor))
         .filter(Boolean))];
       await resolveAuditNames(client, uids);
-      _acCache = { items: items || [] };
+      _acCache = { items: items || [], removed };
       _acLastLoad = now;
     } catch (e) {
-      body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">Load failed: ${String(e?.message || e)}</div>`;
+      body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">Load failed: ${escHtml(String(e?.message || e))}</div>`;
       return;
     }
   }
 
   const items = _acCache.items;
+  const removedAll = _acCache.removed || [];
 
   // Populate the filter dropdowns on first render.
   const staffSel = document.getElementById('acStaff');
   const catSel   = document.getElementById('acCat');
   if (staffSel && staffSel.options.length <= 1) {
-    const uids = [...new Set(items.map(r => r.created_by).filter(Boolean))];
+    const uids = [...new Set(items.map(r => r.created_by).concat(removedAll.map(ev => ev.actor)).filter(Boolean))];
     staffSel.innerHTML = '<option value="all">Everyone</option>' +
-      uids.map(id => `<option value="${id}">${PROFILE_NAMES.get(id) || 'Unknown'}</option>`).join('');
+      uids.map(id => `<option value="${escHtml(id)}">${escHtml(PROFILE_NAMES.get(id) || 'Unknown')}</option>`).join('');
   }
   if (catSel && catSel.options.length <= 1) {
-    const cats = [...new Set(items.map(r => r.category).filter(Boolean))].sort();
+    const cats = [...new Set(items.map(r => r.category).concat(removedAll.flatMap(ev => ev.lines.map(l => l.category))).filter(Boolean))].sort();
     catSel.innerHTML = '<option value="all">All categories</option>' +
-      cats.map(c => `<option value="${c}">${c}</option>`).join('');
+      cats.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
   }
 
   const staffF  = staffSel?.value  || 'all';
@@ -4990,8 +5068,14 @@ async function renderPosActivity(){
     if (cutoff && !(addedAt(r.added_at) >= cutoff)) return false;
     return true;
   });
+  const removed = removedAll.map(ev => {
+    if (staffF !== 'all' && ev.actor !== staffF) return null;
+    if (cutoff && !(new Date(ev.at) >= cutoff)) return null;
+    const lines = catF === 'all' ? ev.lines : ev.lines.filter(l => l.category === catF);
+    return lines.length ? { ...ev, lines } : null;
+  }).filter(Boolean);
 
-  if (!filtered.length) {
+  if (!filtered.length && !removed.length) {
     body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;font-style:italic">No activity in this window. Change the filters or come back after some items are added.</div>`;
     return;
   }
@@ -5001,7 +5085,7 @@ async function renderPosActivity(){
   // The stored per-row currency is only a fallback — historical rows
   // were stamped 'LKR' regardless of location (fixed at the write site,
   // healed in SQL), so trusting rows first showed "LKR" in Portugal.
-  const cur = (typeof LOCAL_CURRENCY !== 'undefined' && LOCAL_CURRENCY) || filtered[0]?.currency || 'LKR';
+  const cur = (typeof LOCAL_CURRENCY !== 'undefined' && LOCAL_CURRENCY) || filtered[0]?.currency || removed[0]?.lines[0]?.currency || 'LKR';
   const total = filtered.reduce((s,r) => s + Number(r.price_local||0), 0);
   const staffCount = new Set(filtered.map(r => r.created_by).filter(Boolean)).size;
 
@@ -5020,27 +5104,59 @@ async function renderPosActivity(){
     return d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
   };
 
-  const rows = filtered.slice(0, 200).map(r => {
+  const money = (v) => `${escHtml(cur)} ${Math.round(Number(v)||0).toLocaleString('en-GB')}`;
+  // added_at is local wall time; «at» (when it was removed) is a real timestamp
+  const addedLabel = (iso) => { const d = addedAt(iso); return d && !isNaN(d) ? d.toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'; };
+  const removedRow = (ev) => {
+    const who = escHtml(PROFILE_NAMES.get(ev.actor) || 'Unknown');
+    const guest = escHtml(ev.guest || '—');
+    const value = ev.lines.reduce((s,l) => s + Number(l.price_local||0), 0);
+    const paid = ev.lines.some(l => l.paid_at) ? ' · was paid' : '';
+    const n = ev.lines.length;
+    const what = ev.kind === 'guest'
+      ? `<strong>${who}</strong> <span class="ac-removed">deleted</span> guest <strong>${guest}</strong> with ${n} line${n===1?'':'s'}`
+      : `<strong>${who}</strong> <span class="ac-removed">removed</span> <strong>${escHtml(ev.lines[0].item_name||'item')}</strong> from <strong>${guest}</strong>`;
+    const names = ev.lines.slice(0, 6).map(l => escHtml(l.item_name||'item')).join(', ') + (n > 6 ? ` +${n-6} more` : '');
+    const sub = ev.kind === 'guest'
+      ? `${names} · removed ${when(ev.at)}${paid}`
+      : `${escHtml(ev.lines[0].category||'—')} · removed ${when(ev.at)} · added ${escHtml(addedLabel(ev.lines[0].added_at))}${paid}`;
+    return { t: new Date(ev.at), html: `<div class="ac-row ac-row-removed" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="min-width:0">
+        <div class="ac-what">${what}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px">${sub}</div>
+      </div>
+      <div style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--muted);text-align:right;white-space:nowrap"><s>${escHtml(cur)} ${value.toFixed(0)}</s></div>
+    </div>` };
+  };
+
+  const addedRows = filtered.map(r => {
     const who = PROFILE_NAMES.get(r.created_by) || 'Unknown';
     const guest = r.camp_guests?.name || '—';
     const edited = r.updated_by && r.updated_by !== r.created_by;
     const editedByName = edited ? (PROFILE_NAMES.get(r.updated_by) || 'someone else') : null;
-    return `<div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
+    return { t: addedAt(r.added_at), html: `<div class="ac-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
       <div style="min-width:0">
-        <div class="ac-what"><strong>${who}</strong> added <strong>${r.item_name||'item'}</strong> to <strong>${guest}</strong></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:1px">${r.category||'—'} · ${when(addedAt(r.added_at))}${edited?` · edited by ${editedByName} ${when(r.updated_at)}`:''}</div>
+        <div class="ac-what"><strong>${escHtml(who)}</strong> added <strong>${escHtml(r.item_name||'item')}</strong> to <strong>${escHtml(guest)}</strong></div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px">${escHtml(r.category||'—')} · ${when(addedAt(r.added_at))}${edited?` · edited by ${escHtml(editedByName)} ${when(r.updated_at)}`:''}</div>
       </div>
-      <div style="font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${cur} ${Number(r.price_local||0).toFixed(0)}</div>
-    </div>`;
-  }).join('');
+      <div style="font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${escHtml(cur)} ${Number(r.price_local||0).toFixed(0)}</div>
+    </div>` };
+  });
+  // newest first, lines added and lines removed in one list
+  const all = addedRows.concat(removed.map(removedRow)).sort((a,b) => (b.t||0) - (a.t||0));
+  const rows = all.slice(0, 200).map(x => x.html).join('');
 
-  const summary = `<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--muted)">
+  // «items / total / staff active» = lines on the tabs now; removed lines are counted apart
+  const removedLines = removed.reduce((s,ev) => s + ev.lines.length, 0);
+  const removedValue = removed.reduce((s,ev) => s + ev.lines.reduce((t,l) => t + Number(l.price_local||0), 0), 0);
+  const summary = `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--muted)">
     <span><strong style="color:var(--navy)">${filtered.length}</strong> items</span> ·
-    <span><strong style="color:var(--navy)">${cur} ${Math.round(total).toLocaleString('en-GB')}</strong> total</span> ·
-    <span><strong style="color:var(--navy)">${staffCount}</strong> staff active</span>
+    <span><strong style="color:var(--navy)">${escHtml(cur)} ${Math.round(total).toLocaleString('en-GB')}</strong> total</span> ·
+    <span><strong style="color:var(--navy)">${staffCount}</strong> staff active</span>${removedLines ? ` ·
+    <span id="acRemovedSum"><strong class="ac-removed">${removedLines}</strong> removed (${money(removedValue)})</span>` : ''}
   </div>`;
-  const truncNote = filtered.length > 200
-    ? `<div style="padding:10px 14px;text-align:center;color:var(--muted);font-size:11px;font-style:italic">Showing 200 most recent of ${filtered.length}. Narrow the filters to see older rows.</div>`
+  const truncNote = all.length > 200
+    ? `<div style="padding:10px 14px;text-align:center;color:var(--muted);font-size:11px;font-style:italic">Showing 200 most recent of ${all.length}. Narrow the filters to see older rows.</div>`
     : '';
 
   body.innerHTML = summary + rows + truncNote;
@@ -5056,7 +5172,7 @@ function renderSellerTabs(){
   ensureMenuState();
   const el=document.getElementById('tsCatRow');
   if(!el) return;
-  el.innerHTML=['All',...getCats()].map(cat=>`<button class="pill ts-cat-btn ${tsCat===cat?'active':''}" data-tscat="${cat}" onclick="setTsCat('${esc(cat)}')">${cat}</button>`).join('');
+  el.innerHTML=['All',...getCats()].map(cat=>`<button class="pill ts-cat-btn ${tsCat===cat?'active':''}" data-tscat="${escHtml(cat)}" onclick="setTsCat('${jsArg(cat)}')">${escHtml(cat)}</button>`).join('');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -5087,8 +5203,8 @@ function renderMenuSettings(){
     catList.innerHTML=cats.map(cat=>{
       const locked=isCatLocked(cat);
       const lockIcon=locked?' <span class="badge badge-grey" title="Managed in Prices">Prices</span>':'';
-      return `<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${esc(cat)}')">
-        <span>${cat}${lockIcon}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
+      return `<button class="menu-cat-chip ${menuEditCat===cat?'active':''}" onclick="pickMenuCategory('${jsArg(cat)}')">
+        <span>${escHtml(cat)}${lockIcon}</span><span style="font-size:10px;opacity:.7">${(MENU[cat]||[]).length}</span>
       </button>`;
     }).join('');
   }
@@ -5100,14 +5216,14 @@ function renderMenuSettings(){
   const items=MENU[menuEditCat]||[];
   if(itemList){
     const lockBanner=isLockedCat?`<div style="background:var(--foam);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--navy);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <span><strong>${esc(menuEditCat)} are managed in Prices.</strong> Edits made here don't sync.</span>
-      <a href="/prices?location=${esc(typeof CAMP_TAB_LOCATION_SLUG!=='undefined'?CAMP_TAB_LOCATION_SLUG:'')}" target="_blank" style="color:var(--ocean);font-weight:600;text-decoration:none">Open Prices</a>
+      <span><strong>${escHtml(menuEditCat)} are managed in Prices.</strong> Edits made here don't sync.</span>
+      <a href="/prices?location=${escHtml(encodeURIComponent(typeof CAMP_TAB_LOCATION_SLUG!=='undefined'?CAMP_TAB_LOCATION_SLUG:''))}" target="_blank" style="color:var(--ocean);font-weight:600;text-decoration:none">Open Prices</a>
     </div>`:'';
     const rows=items.length?items.map((item,idx)=>`<div class="card menu-item-row">
       <div>
-        <div class="menu-item-name">${item.n}${item.hasTransport?` <span class="badge badge-blue" style="margin-left:4px">transport</span>`:''}${Number(item.costPerGuest||0)>0?` <span style="font-size:10px;color:#b46c00;background:#fff4d5;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">cost ${LOCAL_CURRENCY||'LKR'} ${Number(item.costPerGuest).toLocaleString('en-GB')}/g</span>`:''}</div>
-      ${item.d?`<div class="menu-item-desc">${item.d}</div>`:''}
-      <div class="menu-item-price">${euro(item.p)}${item.sp?` <span style="font-size:10px;color:var(--muted)">· staff ${euro(item.sp)}</span>`:''}${Number.isFinite(Number(item.stk))?` <span style="font-size:10px;color:var(--muted)">· stock ${item.stk}</span>`:''}</div>
+        <div class="menu-item-name">${escHtml(item.n)}${item.hasTransport?` <span class="badge badge-blue" style="margin-left:4px">transport</span>`:''}${Number(item.costPerGuest||0)>0?` <span style="font-size:10px;color:#b46c00;background:#fff4d5;padding:2px 6px;border-radius:6px;margin-left:4px;font-weight:600">cost ${escHtml(LOCAL_CURRENCY||'LKR')} ${Number(item.costPerGuest).toLocaleString('en-GB')}/g</span>`:''}</div>
+      ${item.d?`<div class="menu-item-desc">${escHtml(item.d)}</div>`:''}
+      <div class="menu-item-price">${euro(item.p)}${item.sp?` <span style="font-size:10px;color:var(--muted)">· staff ${euro(item.sp)}</span>`:''}${Number.isFinite(Number(item.stk))?` <span style="font-size:10px;color:var(--muted)">· stock ${escHtml(item.stk)}</span>`:''}</div>
       </div>
       ${isLockedCat?'':`<div class="menu-item-actions">
         <button class="btn btn-s" onclick="editMenuItem(${idx})">Edit</button>
@@ -5209,7 +5325,7 @@ function refreshMenuItemTransportToggle(){
     window.S.ledger.forEach(e=>{
       if(e && e.businessArea==='Transport' && e.linkedItem) seen.add(String(e.linkedItem).trim());
     });
-    list.innerHTML=Array.from(seen).filter(Boolean).sort().map(n=>`<option value="${n}"></option>`).join('');
+    list.innerHTML=Array.from(seen).filter(Boolean).sort().map(n=>`<option value="${escHtml(n)}"></option>`).join('');
   }
 }
 
@@ -5438,7 +5554,7 @@ function openCloseWeek(){
         <div><div style="font-weight:700;letter-spacing:-.02em;font-size:22px;color:${outstanding>0?'var(--red)':'var(--green)'}">${outstanding>0?euro(outstanding):'All paid'}</div><div style="font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.06em">${outstanding>0?'Outstanding':'Status'}</div></div>
       </div>
     </div>
-    ${unpaid.length?`<div style="background:var(--red-bg);border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:13px;color:var(--red)">Still unpaid: <strong>${unpaid.map(g=>g.name).join(', ')}</strong></div>`:''}
+    ${unpaid.length?`<div style="background:var(--red-bg);border-radius:9px;padding:11px 13px;margin-bottom:12px;font-size:13px;color:var(--red)">Still unpaid: <strong>${escHtml(unpaid.map(g=>g.name).join(', '))}</strong></div>`:''}
     <div style="font-size:13px;color:var(--muted);line-height:1.6">After closing, this week moves to <strong style="color:var(--navy)">History</strong>. You can still view all guest tabs and totals there.</div>
   `;
   openOv('closeWeekOv');
