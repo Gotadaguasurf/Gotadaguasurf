@@ -832,7 +832,6 @@ body.dark .ed-input{background:var(--card)}
          the page header so it never scrolls out of reach during a sweep. -->
     <div id="bulkBar" class="bulk-bar hidden">
       <div class="bulk-count"><span id="bulkCount">0</span> selected</div>
-      <button type="button" class="btn btn-s" id="bulkSelectAllMatch" style="display:none"></button>
       <select id="bulkStatus" class="filter-select">
         <option value="">Set status…</option>
         <option value="not_started">Not started</option>
@@ -3173,9 +3172,6 @@ function computeGroupKpis(){
 // re-render of the contacts list, so toggling a filter doesn't blow away
 // the user's selection.
 const SELECTED = new Set();
-// Every id the current filters match, also past the 500 rows on screen —
-// «Select all N that match» uses it (crm-20).
-let LAST_FILTERED_IDS = [];
 
 // Richer partnership pipeline — 9 stages instead of 7.
 // Flat icon library — same style as the management hub (stroke 1.8,
@@ -5089,7 +5085,6 @@ function renderContacts(){
       if(check) check.checked = true;
     }
   });
-  LAST_FILTERED_IDS = filtered.map(c => c.id);
   updateBulkBar();
 
   if(filtered.length > 500){
@@ -5209,13 +5204,6 @@ function updateBulkBar(){
   const count = SELECTED.size;
   document.getElementById('bulkCount').textContent = count;
   bar.classList.toggle('hidden', count === 0);
-  const allMatch = document.getElementById('bulkSelectAllMatch');
-  if(allMatch){
-    const n = LAST_FILTERED_IDS.length;
-    const more = n > 500 && document.getElementById('selectAll')?.checked && LAST_FILTERED_IDS.some(id => !SELECTED.has(id));
-    allMatch.style.display = more ? '' : 'none';
-    allMatch.textContent = `Select all ${n} that match`;
-  }
   // Re-populate the Reassign dropdown each time the bar surfaces so
   // newly-added team members show up without a reload. Hidden when
   // the team is solo (no one to reassign TO).
@@ -5266,10 +5254,6 @@ document.getElementById('selectAll').addEventListener('change', (e)=>{
   updateBulkBar();
 });
 document.getElementById('bulkClear').addEventListener('click', clearSelection);
-document.getElementById('bulkSelectAllMatch').addEventListener('click', () => {
-  LAST_FILTERED_IDS.forEach(id => SELECTED.add(id));
-  updateBulkBar();
-});
 
 // Bulk delete — destructive, so requires confirming the COUNT by typing it.
 // Catches "I clicked the wrong button" much better than a yes/no prompt

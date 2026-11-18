@@ -1,7 +1,7 @@
 // CRM page, audit 18 Nov 2026 (W4): the dashboard leads with the day's real work (crm-15), errors stay
 // readable (UXC-15), English everywhere (crm-24), Gmail links open the shared mailbox (crm-21), stored text is
 // escaped (crm-22), a phone shows everything without sideways scroll (crm-16), one header row on a laptop
-// (UXC-08), and «Select all» can take every contact the filters match (crm-20).
+// (UXC-08), and the contacts search waits for a pause (crm-20).
 // Hermetic: tests/crm-stub.js answers every Supabase call; names and addresses are invented.
 const { test, expect } = require('@playwright/test');
 const path = require('path');
@@ -119,19 +119,13 @@ test('laptop 1280: the seven tabs stay on one row; «Open in Gmail» is in the I
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'crm-inbox-1280.png') });
 });
 
-test('contacts: past 500 rows, «Select all N that match» selects every match; typing waits for a pause (crm-20)', async ({ page }) => {
+test('contacts: typing in the search waits for a pause before redrawing (crm-20, debounce part)', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await stubCrm(page, baseTables({ outreach_contacts: Array.from({ length: 640 }, (_, i) => company(i + 1, { status: 'not_started' })) }));
   await openCrm(page);
   await page.evaluate(() => document.querySelector('.nav-tab[data-tab="contacts"]').click());
   await page.waitForSelector('#contactsBody tr[data-id]');
-  await page.locator('#selectAll').check();
-  await expect(page.locator('#bulkCount')).toHaveText('500');
-  await expect(page.locator('#bulkSelectAllMatch')).toHaveText('Select all 640 that match');
-  await page.locator('#bulkSelectAllMatch').click();
-  await expect(page.locator('#bulkCount')).toHaveText('640');
-  await expect(page.locator('#bulkSelectAllMatch')).toBeHidden();
-  // debounce: three quick letters → one redraw
+  // three quick letters → one redraw
   const redraws = await page.evaluate(async () => {
     let n = 0; const orig = window.renderContacts; window.renderContacts = (...a) => { n++; return orig(...a); };
     const box = document.getElementById('filterSearch');
