@@ -75,3 +75,34 @@ test('CH-06: editing only the text of an LKR line keeps its FX rate and its € 
   expect(Number(c.fx_rate)).toBe(380);
   expect(Number(c.amount_eur)).toBe(10000);
 });
+
+test('CH-12: a ledger save writes the line and the «other devices» ping, not the empty weeks blob', async ({ page }) => {
+  seq = 0;
+  const { writes, stateWrites } = await openHub(page, [row('expense', 'Cash', 1000, 340)]);
+  await page.waitForTimeout(300);
+  stateWrites.length = 0;
+  await page.evaluate(() => commitLedgerEntry(normalizeLedgerEntry({ id: 'e-w4-1', date: today(), type: 'expense', category: 'Food', paymentMethod: 'Cash',
+    currency: 'LKR', fxRate: 340, amountLocal: 3400, amount: 10, description: 'Rice' }), 'w4 test'));
+  await expect.poll(() => writes.length).toBeGreaterThan(0);
+  await expect.poll(() => stateWrites.map(b => (Array.isArray(b) ? b[0] : b).state_key)).toContain('hub_ledger_ts_sri-lanka');
+  expect(stateWrites.map(b => (Array.isArray(b) ? b[0] : b).state_key)).not.toContain('camphub_v2_sri-lanka');
+});
+
+test('CH-11: a change from another device redraws only the page on screen', async ({ page }) => {
+  seq = 0;
+  await openHub(page, [row('expense', 'Cash', 1000, 340)]);
+  const n = await page.evaluate(async () => {
+    const calls = { overview: 0, expenses: 0, weekly: 0 };
+    const o = window.renderOverview, e = window.renderExpenses, w = window.renderWeeklyPL;
+    window.renderOverview = (...a) => { calls.overview++; return o(...a); };
+    window.renderExpenses = (...a) => { calls.expenses++; return e(...a); };
+    window.renderWeeklyPL = (...a) => { calls.weekly++; return w(...a); };
+    showPage('overview'); calls.overview = 0;
+    scheduleHubLedgerRehydrate();
+    await new Promise(r => setTimeout(r, 1500));
+    return calls;
+  });
+  expect(n.overview).toBeGreaterThan(0);
+  expect(n.expenses).toBe(0);
+  expect(n.weekly).toBe(0);
+});

@@ -1873,7 +1873,8 @@ function scheduleHubLedgerRehydrate(){
     HUB_LEDGER_HYDRATE_PROMISE=null;
     try{
       await hydrateLedgerFromSupabase({mergeLocal:false});
-      renderExpenses();renderOverview();renderWeeklyPL();
+      // Only the page on screen is redrawn; showPage draws the others when they are opened (audit CH-11).
+      rerenderActivePageData();
     }catch(e){handleLedgerSupabaseError('RT ledger hydrate failed',e,{action:'load',background:true});}
   },500);
 }
@@ -2799,7 +2800,7 @@ async function commitLedgerEntries(entries,context='batch',opts={}){
     // converge on the same set of entries.
     if(!await pushLedgerEntriesToSupabase(entries)) throw new Error(HUB_NOT_CONNECTED);
     hubPutInLedger(entries);
-    save();
+    save_mem();   // a ledger save no longer re-sends the (always empty) weeks blob to location_state_store (CH-12)
     notifyLedgerChanged();
     setSavePill('saved','Saved');
     return true;
@@ -9660,7 +9661,7 @@ async function delLedger(id,{confirmed=false}={}){
       }
     }catch(_e){}
   }
-  save();
+  save_mem();   // CH-12: no weeks-blob write on a ledger delete
   renderExpenses();renderOverview();renderWeeklyPL();
   // «Deleted.» and the Camp Tab message wait for the server (audit CH-03): they
   // used to go out first, so a delete the database refused still said «Deleted.»,
@@ -9704,13 +9705,14 @@ async function delLedger(id,{confirmed=false}={}){
   }catch(_e){} };
   try{
     await deleteLedgerEntryFromSupabase(id);
+    setSavePill('saved','Saved');
     toast('Deleted.');
     tellCampTab();
   }catch(error){
     // Not deleted: the line comes back, the pill turns red and sends the delete again on tap.
     if(backup&&!S.ledger.some(x=>x.id===id)) S.ledger=[...S.ledger,backup];
     hubSaveFailed(failKey,()=>delLedger(id,{confirmed:true}),'Delete failed — tap to retry');
-    save();
+    save_mem();
     renderExpenses();renderOverview();renderWeeklyPL();
     handleLedgerSupabaseError('ledger delete failed',error,{action:'delete'});
   }finally{
@@ -9838,7 +9840,7 @@ async function commitLedgerEdit(editId,payload,pairTwin,opts={}){
     if(!await pushLedgerEntriesToSupabase([payload])) throw new Error(HUB_NOT_CONNECTED);
     if(pairTwin) await deleteLedgerEntryFromSupabase(pairTwin.id);
     S.ledger=S.ledger.filter(x=>!pairTwin||x.id!==pairTwin.id).map(x=>x.id===editId?payload:x);
-    save();
+    save_mem();   // CH-12: no weeks-blob write on a ledger save
     notifyLedgerChanged();
     setSavePill('saved','Saved');
     return true;
