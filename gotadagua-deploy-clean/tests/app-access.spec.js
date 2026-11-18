@@ -143,7 +143,17 @@ test('app switcher: Log out forgets the saved list', async ({ page }) => {
 test('hub «View as»: the home page says whose view it is and gives the way back', async ({ page }) => {
   await stubHub(page, { email: OWNER, role: 'super_admin', areas: [{ slug: 'hq' }] });
   await openHub(page);
-  await page.evaluate(() => { accessUsers.push({ userId: 'u-x', email: 'bar@example.com', role: 'Bar Man', meta: 'Bar', areas: ['portugal-camp-tab'], workspaceRoles: {} }); setPreviewAccess('bar@example.com'); });
+  // The hub hydrates twice at boot (initial session + auth event); the second pass resets accessUsers and the preview.
+  // Wait for the boot to settle, then (re)apply the preview until it holds, so the test does not race the boot.
+  await page.waitForLoadState('networkidle');
+  await expect.poll(async () => {
+    await page.evaluate(() => {
+      if(!accessUsers.find(u => u.email === 'bar@example.com')) accessUsers.push({ userId: 'u-x', email: 'bar@example.com', role: 'Bar Man', meta: 'Bar', areas: ['portugal-camp-tab'], workspaceRoles: {} });
+      if(currentPreviewUser !== 'bar@example.com') setPreviewAccess('bar@example.com');
+    });
+    await page.waitForTimeout(150);
+    return (await hubState(page)).cards;
+  }, { timeout: 10000 }).toEqual(['Portugal']);
   let s = await hubState(page);
   expect(s.cards).toEqual(['Portugal']);
   expect(await page.textContent('#hubPreviewNote')).toContain('bar@example.com');
