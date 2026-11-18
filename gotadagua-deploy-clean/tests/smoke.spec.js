@@ -15,6 +15,7 @@
 
 const { test, expect } = require('@playwright/test');
 const { fakeOwnerSession, collectFatalErrors } = require('./helpers');
+const { quietSurfSchool } = require('./surf-school-stub');
 
 const APPS = [
   { name: 'root (login/hub)', path: '/' },
@@ -65,6 +66,7 @@ test('surf-school pricing matrix matches the price card', async ({ page }) => {
   // The card of 9 Sep 2026: 1h / 2h / Full day, 3 days and 1 week per
   // combo; students pay 15 / 20 for the combo, +5 in July and August.
   await fakeOwnerSession(page);
+  await quietSurfSchool(page);   // no live auth call: its 401 used to blank the page mid-test
   await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.priceFor === 'function');
 
@@ -107,6 +109,7 @@ test('surf-school pricing matrix matches the price card', async ({ page }) => {
 // hardcoded value). Stubs CATALOG in-page — no network needed.
 test('surf-school live pricing override parses catalog rows', async ({ page }) => {
   await fakeOwnerSession(page);
+  await quietSurfSchool(page);   // no live auth call: its 401 used to blank the page mid-test
   await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.applyLivePricing === 'function');
   const result = await page.evaluate(() => {
@@ -132,6 +135,7 @@ test('surf-school live pricing override parses catalog rows', async ({ page }) =
 // multi-day N days = N × 24h.
 test('surf-school expected-return math', async ({ page }) => {
   await fakeOwnerSession(page);
+  await quietSurfSchool(page);   // no live auth call: its 401 used to blank the page mid-test
   await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.computeExpectedReturn === 'function');
 
@@ -1713,6 +1717,7 @@ test('surf-school: the Vendas tab sums a month per login with commission and lea
   // Miguel, 2 Oct 2026: sales commissions are paid per login, so a
   // dedicated monthly tab — not the 500-row History — shows who sold what.
   await fakeOwnerSession(page);
+  await quietSurfSchool(page);   // no live auth call: its 401 used to blank the page mid-test
   await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.salesSummaryRows === 'function');
   const out = await page.evaluate(() => {
@@ -2215,6 +2220,7 @@ test('hq: Investments tab — only the shop, total cost with taxes, rent receive
 // email) is one client; camp entries count as visits but not as spend.
 test('surf-school: Clientes groups the same person and searches by email or ID', async ({ page }) => {
   await fakeOwnerSession(page);
+  await quietSurfSchool(page);   // no live auth call: its 401 used to blank the page mid-test
   await page.goto('/surf-school/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof window.groupClients === 'function');
   const r = await page.evaluate(() => {
