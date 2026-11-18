@@ -269,6 +269,8 @@ async function boot(){
   mountForm();
   renderOverview();
   const h = location.hash.replace('#', ''); if (h && document.getElementById('page-' + h)) showPage(h);
+  // HQ «My tasks» → Upload opens /suk/?import=1#bank with the BCP importer unfolded
+  if (h === 'bank' && CAN_EDIT && new URLSearchParams(location.search).get('import') === '1') { $('importBox').open = true; $('importBox').scrollIntoView({ block:'start' }); }
 }
 function mountForm(){
   ExpenseForm.mount({

@@ -218,6 +218,25 @@ td.loc-name{font-weight:600;color:var(--navy)}
 .fecho-check input{width:18px;height:18px;margin:0;flex:0 0 auto;cursor:pointer;accent-color:var(--ocean)}
 .fecho-check span{flex:1;font-size:14px;cursor:pointer}
 .fecho-check.done span:first-of-type{color:var(--green)}
+/* my tasks (owners): one card per source, phone first */
+.mt-block{margin-bottom:var(--sp-6)}
+.mt-block-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 var(--sp-2)}
+.mt-list{display:flex;flex-direction:column;gap:var(--sp-2)}
+.mt-row{display:flex;align-items:center;gap:var(--sp-4);background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:var(--sp-4) var(--card-pad)}
+.mt-main{flex:1;min-width:0}
+.mt-name{display:flex;align-items:center;gap:var(--sp-2);font-size:15px;font-weight:700;color:var(--navy)}
+.mt-badge{margin-left:auto}
+.mt-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.mt-facts{font-size:13px;color:var(--ink);margin-top:var(--sp-1);font-variant-numeric:tabular-nums}
+.mt-why{font-size:12.5px;color:var(--amber);margin-top:2px;overflow-wrap:anywhere}
+.mt-why.neg{color:var(--red)}
+.mt-actions{display:flex;gap:var(--sp-2);flex:0 0 auto}
+.mt-btn{min-width:96px;justify-content:center}
+@media (max-width:700px){
+  .mt-row{flex-direction:column;align-items:stretch;gap:var(--sp-3);padding:var(--sp-4)}
+  .mt-actions{width:100%}
+  .mt-btn{flex:1;height:44px}
+}
 /* investments: label · value pairs */
 .ivs-def{border-collapse:collapse;font-size:14px}
 .ivs-def td{padding:3px 0;vertical-align:top}
@@ -231,7 +250,7 @@ td.loc-name{font-weight:600;color:var(--navy)}
 <nav class="app-nav" id="appNav"></nav>
 <script>
 AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tabsHidden:true, user:false,
-  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'fecho', label:'Month close', onclick:"switchTab('fecho')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }],
+  tabs:[{ id:'overview', label:'Overview', onclick:"switchTab('overview')", active:true }, { id:'invoices', label:'Expenses', onclick:"switchTab('invoices')" }, { id:'cashflow', label:'Cash flow', onclick:"switchTab('cashflow')" }, { id:'fecho', label:'Month close', onclick:"switchTab('fecho')" }, { id:'invest', label:'Investments', onclick:"switchTab('invest')" }, { id:'tasks', label:'My tasks', onclick:"switchTab('tasks')", hidden:true, domId:'ntabTasks' }],
   actions:'<span class="user-chip" id="userBadge">…</span>' });
 </script>
 
@@ -301,6 +320,7 @@ AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tab
 <script src="/owner-config.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script src="/hq/accountant-excel.js"></script>
+<script src="/hq/my-tasks.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
@@ -341,6 +361,7 @@ const payingCompanyFor = (locationSlug) => {
 const companyLabel = (slug) => (HQ_COMPANIES.find(c => c.slug === slug)?.label) || slug || '—';
 
 let CURRENT_USER = null;
+let IS_OWNER     = false;  // «My tasks» tab + chip: owner allow-list (owner-config.js) or super_admin
 let LOCATIONS    = [];     // from public.locations (BL revenue join)
 let CATEGORIES   = [];     // from hq_invoice_categories
 let FX_CACHE     = { date:null, rates:{ EUR:1 } };
@@ -378,6 +399,7 @@ async function fetchAllPaged(build){
   const role = String(profile?.platform_role || '').toLowerCase();
   const myEmail = String(profile?.email || session.user.email || '').toLowerCase();
   CURRENT_USER = profile || {};
+  IS_OWNER = OWNER_EMAILS.has(myEmail) || role === 'super_admin';
   $('userBadge').textContent = profile?.email || session.user.email || '';
 
   // Miguel, 9 Sep 2026: the platform role does not open the HQ — only the
@@ -427,7 +449,10 @@ function render(){
     <div class="tab-pane" id="tab-cashflow">${cashflowTabHtml()}</div>
     <div class="tab-pane" id="tab-fecho">${fechoTabHtml()}</div>
     <div class="tab-pane" id="tab-invest">${investTabHtml()}</div>
+    ${IS_OWNER ? '<div class="tab-pane" id="tab-tasks"></div>' : ''}
   `;
+  // «My tasks» exists only for owners: the tab is not drawn for anyone else, so neither ?tab=tasks nor #tasks can open it
+  ['ntabTasks', 'ntabTasksMob'].forEach(id => { const b = document.getElementById(id); if (b) { if (IS_OWNER) b.style.display = ''; else b.remove(); } });
   mountExpenseForm();
   wireInvoiceForm();
   wireBulkUpload();
@@ -436,7 +461,7 @@ function render(){
   // deep links from the hub «Hoje» panel: /hq/?tab=fecho · ?tab=invoices&filter=review · ?recurring=1
   try {
     const q = new URLSearchParams(location.search);
-    const tab = q.get('tab');
+    const tab = q.get('tab') || (location.hash || '').replace('#', '') || null;
     if (q.get('filter')) goToInvoicesFilter(q.get('filter'));
     else if (tab && document.getElementById('tab-' + tab)) switchTab(tab);
     if (q.get('recurring') === '1') setTimeout(() => { try { openRecurringPanel(); } catch (_e) {} }, 300);
@@ -463,6 +488,7 @@ function openAddExpense(){
 }
 
 function switchTab(name){
+  if (name === 'tasks' && !IS_OWNER) name = 'overview';
   document.querySelectorAll('.ntab[data-tab],.ntab-m[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-'+name));
   if (name === 'overview') { renderOverview(); }
@@ -470,6 +496,15 @@ function switchTab(name){
   if (name === 'fecho') { renderFecho(); }
   if (name === 'cashflow') { renderCashflow(); }
   if (name === 'invest') { renderInvest(); }
+  if (name === 'tasks') { renderMyTasks(); }
+}
+
+// ── My tasks (owners only) — hq/my-tasks.js + supabase/hq-my-tasks.sql ──
+async function renderMyTasks(){
+  const el = document.getElementById('tab-tasks');
+  if (!IS_OWNER || !el) return;
+  if (!el.innerHTML.trim()) el.innerHTML = '<div class="loading">Loading…</div>';
+  MyTasks.render(el, await MyTasks.load(sb));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -678,14 +713,21 @@ async function renderOverview(){
   // The rest of the day's pending items come from hq_todo() (supabase/hq-todo.sql) — same chips, no separate panel
   // (Miguel, 22 Oct 2026: the hub «Hoje» panel was too much; this strip is enough).
   try {
-    const { data: todo } = await sb.rpc('hq_todo');
+    // Statements: owners get one «My tasks: N» chip (overdue + due, hq_my_tasks() in supabase/hq-my-tasks.sql);
+    // everyone else — and owners until that SQL is run — keeps the per-bank «statement Nd old» chips.
+    const [{ data: todo }, tasksRes] = await Promise.all([sb.rpc('hq_todo'), IS_OWNER ? MyTasks.load(sb) : Promise.resolve(null)]);
+    const tasksOk = !!(tasksRes && tasksRes.state === 'ok');
+    if (tasksOk) {
+      const t = MyTasks.summarize(tasksRes.data);
+      if (t.overdue + t.due) healthChips.push({label:`My tasks: ${t.overdue + t.due}`, onclick:"switchTab('tasks')"});
+    }
     if (todo && typeof todo === 'object' && !Array.isArray(todo)) {
-      (todo.bank_unlinked || []).filter(b => b.company === 'water-movements' && b.n).forEach(b => healthChips.push({label:`${b.n} ${b.bank === 'cgd' ? 'CGD' : 'Santander'} debits without a line`, onclick:"switchTab('fecho')"}));
+      (todo.bank_unlinked || []).filter(b => b.company === 'water-movements' && b.n).forEach(b => healthChips.push({label:`${b.n} ${BANK_LABEL[b.bank] || b.bank} debits without a line`, onclick:"switchTab('fecho')"}));
       const pw = (todo.no_pdf || []).find(x => x.company === 'water-movements');
       if (pw && pw.n) healthChips.push({label:`${pw.n} without PDF since Sept`, onclick:"goToInvoicesFilter('nopdf')"});
       const pti = todo.partner_to_issue || [];
       if (pti.length) healthChips.push({label:`${pti.length} partner invoices to issue`, onclick:"window.open('/partners/','_self')"});
-      (todo.bank_last || []).filter(b => b.company === 'water-movements' && b.days >= 7).forEach(b => healthChips.push({label:`${b.bank === 'cgd' ? 'CGD' : 'Santander'} statement ${b.days}d old`, onclick:"switchTab('fecho')"}));
+      if (!tasksOk) (todo.bank_last || []).filter(b => b.company === 'water-movements' && b.days >= 7).forEach(b => healthChips.push({label:`${BANK_LABEL[b.bank] || b.bank} statement ${b.days}d old`, onclick:"switchTab('fecho')"}));
       const { count: mailReview } = await sb.from('mail_ingest_items').select('id', { count:'exact', head:true }).eq('status', 'review');
       if (mailReview) healthChips.push({label:`${mailReview} emailed invoices to decide`, onclick:"switchTab('fecho')"});
     }
