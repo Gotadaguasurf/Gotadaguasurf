@@ -138,3 +138,59 @@ test('CT-01: guest, staff, product, category and note text is shown as text ever
   await expect.poll(() => ctl.T.camp_tab_items.map(r => r.item_name)).toEqual(expect.arrayContaining([P_QUOTES, P_JS, P_JS2]));
   await expectInert(page, frame, 'end');
 });
+
+// ── CT-02 — the search boxes keep the keyboard ───────────────────────────────────────────
+// History and This week rebuilt their own <input> on every keystroke (and on every save or
+// realtime update), so the box lost focus after one letter. Typed letter by letter here:
+// fill() would pass on the broken code.
+test('CT-02: History and This week search keep focus while typing — same input node, also across a re-render', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const guests = []; const items = [];
+  for (let i = 1; i <= 12; i++) guests.push(guestRow(i, `Guest ${i}`));
+  for (let i = 1; i <= 12; i++) guests.push(guestRow(20 + i, `Closed ${i}`, { closed_at: `2026-06-09T10:${String(i).padStart(2, '0')}:00.000Z` }));
+  items.push(itemRow(1, uuid('9e57', 2), 'Lion Lager', 'Drinks', 600));
+  const { frame } = await openCampTab(page, { camp_guests: guests, camp_tab_items: items });
+  const typeInto = async (sel, text) => {
+    const box = frame.locator(sel);
+    await box.click();
+    await box.evaluate((el) => { el.__kept = true; });
+    await box.pressSequentially(text, { delay: 30 });
+    return box;
+  };
+  const kept = (sel) => frame.evaluate((s) => { const el = document.querySelector(s); return { same: el.__kept === true, focused: document.activeElement === el, value: el.value }; }, sel);
+
+  await sub(frame, 'week');
+  await typeInto('#twSearch', 'Guest 2');
+  expect(await kept('#twSearch')).toEqual({ same: true, focused: true, value: 'Guest 2' });
+  await expect(frame.locator('#twList .tw-card-name')).toHaveText(['Guest 2']);
+  // a save / realtime update while typing redraws the page: the box and what was typed stay
+  await frame.evaluate(() => renderAllCampTabViews());
+  expect(await kept('#twSearch')).toEqual({ same: true, focused: true, value: 'Guest 2' });
+  // the rest of the header still follows the data: roster switch and the Collected / Outstanding figures
+  await expect(frame.locator('#twHeader .tw-stat-label')).toHaveText(['Collected', 'Outstanding']);
+  await frame.locator('#twHeader button', { hasText: 'Staff' }).click();
+  await expect(frame.locator('#twSearch')).toHaveAttribute('placeholder', 'Search staff...');
+  await expect(frame.locator('#twHeader button', { hasText: 'Staff' })).toHaveClass(/active/);
+  await frame.locator('#twHeader button', { hasText: 'Guests' }).click();
+  await frame.locator('#twSearch').fill('');
+  await expect(frame.locator('#twList .tw-card-name')).toHaveCount(12);
+
+  await sub(frame, 'history');
+  await typeInto('#histSearch', 'Closed 1');
+  expect(await kept('#histSearch')).toEqual({ same: true, focused: true, value: 'Closed 1' });
+  await expect(frame.locator('#histList .hw-title')).toHaveText(['Closed 12', 'Closed 11', 'Closed 10', 'Closed 1']);   // newest closed first
+  await frame.evaluate(() => renderAllCampTabViews());
+  expect(await kept('#histSearch')).toEqual({ same: true, focused: true, value: 'Closed 1' });
+  await frame.locator('#histSearch').pressSequentially('2');
+  await expect(frame.locator('#histList .hw-title')).toHaveText(['Closed 12']);
+  await expect(frame.locator('#histList .tw-stat-val').last()).toHaveText('12');   // the counters next to the box are still there
+  // a row of the filtered list still opens
+  await frame.locator('#histList .hw-title').click();
+  await expect(frame.locator('#histList .hist-week-body')).toBeVisible();
+  expect((await kept('#histSearch')).value).toBe('Closed 12');
+  // nothing matches → the message, and the box is still there to correct the search
+  await frame.locator('#histSearch').press('End');
+  await frame.locator('#histSearch').pressSequentially('zz');
+  await expect(frame.locator('#histList')).toContainText('No closed guests match your search.');
+  expect(await kept('#histSearch')).toEqual({ same: true, focused: true, value: 'Closed 12zz' });
+});

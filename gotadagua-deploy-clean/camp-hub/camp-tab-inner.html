@@ -4274,20 +4274,36 @@ function renderThisWeek(){
   // the Guests roster (it's actionable info, not duplication). Search
   // input, Guests/Staff toggle, and the Collected/Outstanding stats
   // share a single row below for compact scanning.
-  twHdr.innerHTML=`
-    ${currentRoster==='guests' && CAMP_TAB_MODE!=='per_guest' ?`<div class="tw-next-week-bar" style="width:100%">
+  // The header is built once and then updated in place. It used to be rewritten on every render — every
+  // letter typed in the search, every save, every realtime update — and a rewritten <input> is a new
+  // input: the keyboard closed after one letter (CT-02). The search box is never replaced while it exists.
+  if(!document.getElementById('twSearch')){
+    twHdr.innerHTML=`
+    <div id="twNextWeek" style="width:100%;display:none"></div>
+    <div class="tw-header-row" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%">
+      <input class="search tw-search" id="twSearch" autocomplete="off" oninput="setTwSearch(this.value)" style="flex:1;min-width:200px;margin:0">
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="pill ts-cat-btn" data-tw-roster="guests" onclick="setRoster('guests')">Guests</button>
+        <button class="pill ts-cat-btn" data-tw-roster="staff" onclick="setRoster('staff')">Staff</button>
+      </div>
+      <div id="twStats" style="display:contents"></div>
+    </div>`;
+  }
+  const twNext=document.getElementById('twNextWeek');
+  const showNext=currentRoster==='guests' && CAMP_TAB_MODE!=='per_guest';
+  twNext.style.display=showNext?'':'none';
+  twNext.innerHTML=showNext?`<div class="tw-next-week-bar" style="width:100%">
       <div>
         <div style="font-size:10px;color:var(--ocean);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:2px">Next Week</div>
         <div style="font-weight:700;color:var(--navy)">${weekSpan(nextStart)}</div>
       </div>
       <div style="font-size:11px;color:var(--muted)">${nextDraft?.guests?.length?`${nextDraft.guests.length} guest${nextDraft.guests.length!==1?'s':''} ready to continue`:'No guests queued yet'}</div>
-    </div>`:''}
-    <div class="tw-header-row" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;width:100%">
-      <input class="search tw-search" id="twSearch" placeholder="Search ${currentRoster==='staff'?'staff':'guest'}..." value="${escHtml(twSearch)}" oninput="setTwSearch(this.value)" style="flex:1;min-width:200px;margin:0">
-      <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="pill ts-cat-btn ${currentRoster==='guests'?'active':''}" onclick="setRoster('guests')">Guests</button>
-        <button class="pill ts-cat-btn ${currentRoster==='staff'?'active':''}" onclick="setRoster('staff')">Staff</button>
-      </div>
+    </div>`:'';
+  const twIn=document.getElementById('twSearch');
+  twIn.placeholder=`Search ${currentRoster==='staff'?'staff':'guest'}...`;
+  if(twIn.value!==twSearch) twIn.value=twSearch;
+  twHdr.querySelectorAll('[data-tw-roster]').forEach(b=>b.classList.toggle('active',b.dataset.twRoster===currentRoster));
+  document.getElementById('twStats').innerHTML=`
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val green">${euro(totalCollected)}</div>
         <div class="tw-stat-label">Collected</div>
@@ -4295,9 +4311,7 @@ function renderThisWeek(){
       ${totalOutstanding>0?`<div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val red">${euro(totalOutstanding)}</div>
         <div class="tw-stat-label">Outstanding</div>
-      </div>`:''}
-    </div>
-  `;
+      </div>`:''}`;
 
   if(!guests.length){
     twEl.innerHTML=`<div class="tw-empty"><div>No ${currentRoster} yet.</div></div>`;
@@ -4668,9 +4682,18 @@ function renderHistoryPerGuest(el){
     return;
   }
 
-  el.innerHTML=`
+  // Same rule as This week (CT-02): the search box is built once; only the counters and the list are redrawn.
+  if(!document.getElementById('histSearch')){
+    el.innerHTML=`
     <div style="padding:14px 20px 6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <input class="search tw-search" placeholder="Search closed guest..." value="${escHtml(histPerGuestSearch)}" oninput="setHistPerGuestSearch(this.value)" style="flex:1;min-width:220px">
+      <input class="search tw-search" id="histSearch" placeholder="Search closed guest..." autocomplete="off" oninput="setHistPerGuestSearch(this.value)" style="flex:1;min-width:220px">
+      <div id="histStats" style="display:contents"></div>
+    </div>
+    <div id="histPerGuestBody" style="padding:6px 16px 16px"></div>`;
+  }
+  const histIn=document.getElementById('histSearch');
+  if(histIn.value!==histPerGuestSearch) histIn.value=histPerGuestSearch;
+  document.getElementById('histStats').innerHTML=`
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val green">${euro(totalCollected)}</div>
         <div class="tw-stat-label">Lifetime collected</div>
@@ -4678,9 +4701,8 @@ function renderHistoryPerGuest(el){
       <div class="tw-stat" style="flex-shrink:0">
         <div class="tw-stat-val">${closed.length}</div>
         <div class="tw-stat-label">Closed guests</div>
-      </div>
-    </div>
-    <div style="padding:6px 16px 16px">
+      </div>`;
+  document.getElementById('histPerGuestBody').innerHTML=`
       ${filtered.length?filtered.map(g=>{
         const isOpen=histPerGuestOpen===g.id;
         const items=Array.isArray(g.items)?g.items:[];
@@ -4715,7 +4737,6 @@ function renderHistoryPerGuest(el){
           </div>`:''}
         </div>`;
       }).join(''):`<div class="hist-empty"><div style="font-size:13px">No closed guests match your search.</div></div>`}
-    </div>
   `;
 }
 function setHistPerGuestSearch(value){
