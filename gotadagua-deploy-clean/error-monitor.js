@@ -11,6 +11,13 @@
 //  Usage: include `<script src="/error-monitor.js"></script>` in <head>.
 //  Pure vanilla, no dependencies, no third-party network calls.
 //
+//  Reaches Miguel (audit 18 Nov 2026): when the person is logged in, each error
+//  is also stored in our own database (table client_errors, insert-only, read by
+//  the owner through hq_automation_health()). At most 3 per page load, the same
+//  message once, the page path without its query string, never page data.
+//  Before supabase/audit-w4-infra.sql runs the call fails quietly; a failed call
+//  never shows the banner or reports itself.
+//
 //  To inspect from DevTools:    window.__lastError
 //  To clear the banner:         click the × button on it
 // ════════════════════════════════════════════════════════════════════════════
@@ -46,6 +53,39 @@
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  // ── Report to the database (client_errors) ─────────────────────────────
+  var MAX_REPORTS = 3, sent = 0, seenMsgs = {};
+  function sessionToken(){
+    try{
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (!/^sb-.*-auth-token$/.test(k || '')) continue;
+        var v = JSON.parse(localStorage.getItem(k) || 'null');
+        var t = v && (v.access_token || (v.currentSession && v.currentSession.access_token));
+        if (t) return t;
+      }
+    }catch(_){}
+    return '';
+  }
+  function noQuery(s){ return String(s || '').split(/[?#]/)[0]; }
+  function report(kind, message, source){
+    try{
+      var cfg = window.__SUPABASE_CONFIG;
+      if (!cfg || !cfg.url || !cfg.anonKey || typeof fetch !== 'function') return;
+      var msg = String(message || 'Unknown error').slice(0, 500);
+      if (sent >= MAX_REPORTS || seenMsgs[msg]) return;
+      var token = sessionToken();
+      if (!token) return;                                   // only a logged-in person; the table refuses anyone else
+      seenMsgs[msg] = 1; sent++;
+      fetch(String(cfg.url).replace(/\/$/, '') + '/rest/v1/client_errors', {
+        method: 'POST', keepalive: true,
+        headers: { 'apikey': cfg.anonKey, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ page: noQuery(location.pathname).slice(0, 200), kind: kind, message: msg,
+          source: source ? noQuery(source).slice(0, 300) : null, user_agent: String(navigator.userAgent || '').slice(0, 200) })
+      }).catch(function(){ /* quiet: never a second error */ });
+    }catch(_){ /* never let the monitor itself fail */ }
+  }
+
   function record(kind, payload){
     try{
       window.__lastError = { kind: kind, ...payload, when: new Date().toISOString() };
@@ -61,6 +101,7 @@
     const at  = e && e.filename ? (e.filename + ':' + (e.lineno||0) + ':' + (e.colno||0)) : '';
     record('window.error', { message: msg, source: at, error: e && e.error });
     showBanner(msg, at);
+    report('window.error', msg, at);
   });
 
   window.addEventListener('unhandledrejection', function(e){
@@ -68,6 +109,7 @@
     const msg = (reason && (reason.message || reason.toString())) || 'Unhandled promise rejection';
     record('unhandledrejection', { message: msg, reason: reason });
     showBanner(msg, 'Unhandled promise rejection');
+    report('unhandledrejection', msg, '');
   });
 
   // Console signal so anyone debugging knows the monitor is live

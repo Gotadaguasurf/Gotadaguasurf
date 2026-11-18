@@ -116,3 +116,15 @@ export function routeByBuyer(parsed: Parsed): { company: string | null; outcome?
   return { company: null, outcome: { status: 'review', reason: nif ? `comprador desconhecido (NIF ${nif}${buyer ? ', ' + buyer : ''})` : 'comprador não identificado' } }
 }
 
+
+// A PDF that is plainly not an invoice by its file name (a CV, a cover letter, a catalogue, a portfolio):
+// recorded as skipped and never sent to the reader. info@ sent 186 PDFs to the reader in four weeks for 5 lines,
+// mostly job applicants' CVs (audit 18 Nov 2026, AUT-07). File name only — no subject, sender or mailbox rule — and
+// never when the name also says invoice / fatura / recibo, so a real invoice is never held back («Fatura em mão vai para a app»).
+const NOT_INVOICE_NAME = /(^|[^a-z0-9])(cv|curriculum|curr[ií]culo|resume|r[ée]sum[ée]|cover[ _-]?letter|carta[ _-]de[ _-]apresenta[cç][aã]o|motivation[ _-]?letter|portfolio|portf[oó]lio|catalog(ue)?|cat[aá]logo)([^a-z0-9]|$)/i
+// also a Portuguese document number (FT 2026/17, FR 348, FS, NC, RC …) anywhere in the name
+const INVOICE_NAME = /(invoice|fatura|factura|recibo|receipt|nota[ _-]de[ _-]cr[eé]dito|credit[ _-]?note)|(^|[^a-z0-9])(ft|fr|fs|nc|ncc|rc)[ _.\/-]*\d/i
+export function notAnInvoiceByName(filename: string): boolean {
+  const name = String(filename || '')
+  return NOT_INVOICE_NAME.test(name) && !INVOICE_NAME.test(name)
+}

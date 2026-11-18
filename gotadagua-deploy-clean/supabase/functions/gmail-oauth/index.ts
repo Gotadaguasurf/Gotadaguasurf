@@ -40,6 +40,17 @@ ${body}`,
   )
 }
 
+// Everything echoed into the page is text, never HTML (SEC-20: Google's «error» and the
+// «state» went into the page as they came).
+const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+// «Return to CRM» only to our own site over https.
+function safeReturn(raw: string): string {
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' && /(^|\.)gotadaguasurf\.(com|vercel\.app)$/.test(u.hostname) ? u.toString() : ''
+  } catch { return '' }
+}
+
 function buildRedirectUri(_req: Request) {
   // Edge Functions see an internal URL via req.url (no /functions/v1/ prefix,
   // http not https), so we can't derive the public redirect from it. Build
@@ -78,7 +89,9 @@ Deno.serve(async (req) => {
   if (path === 'callback') {
     const code = url.searchParams.get('code')
     const error = url.searchParams.get('error')
-    if (error) return html(`<h1>OAuth refused</h1><p class="err">Google returned: <code>${error}</code></p>`, 400)
+    if (error) return html(`<h1>OAuth refused</h1><p class="err">Google returned: <code>${esc(error)}</code></p>`, 400)
+    // Without the expected address any Google account could replace the shared mailbox (SEC-20)
+    if (!EXPECTED_EMAIL) return html(`<h1>Setup incomplete</h1><p class="err">Set the Supabase secret <code>SHARED_GMAIL_ADDRESS</code> (the shared mailbox, e.g. groups@…) and start again.</p>`, 500)
     if (!code)  return html(`<h1>OAuth failed</h1><p class="err">Missing <code>code</code> param.</p>`, 400)
 
     // 1. Exchange code for tokens
@@ -95,7 +108,7 @@ Deno.serve(async (req) => {
     })
     if (!tokenResp.ok) {
       const t = await tokenResp.text()
-      return html(`<h1>Token exchange failed</h1><pre class="err">${t}</pre>`, 502)
+      return html(`<h1>Token exchange failed</h1><pre class="err">${esc(t)}</pre>`, 502)
     }
     const tokens = await tokenResp.json() as {
       access_token: string; refresh_token?: string; expires_in: number; scope: string
@@ -118,9 +131,9 @@ Deno.serve(async (req) => {
       { headers: { Authorization: `Bearer ${tokens.access_token}` } },
     ).then(r => r.ok ? r.json() : null) as { emailAddress?: string } | null
     const connectedEmail = (profile?.emailAddress || '').toLowerCase()
-    if (EXPECTED_EMAIL && connectedEmail !== EXPECTED_EMAIL) {
+    if (connectedEmail !== EXPECTED_EMAIL) {
       return html(`<h1>Wrong account</h1>
-        <p class="err">Expected <code>${EXPECTED_EMAIL}</code> but you consented as <code>${connectedEmail}</code>.</p>
+        <p class="err">Expected <code>${esc(EXPECTED_EMAIL)}</code> but you consented as <code>${esc(connectedEmail)}</code>.</p>
         <p>Go to <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>, remove the CRM's access, then retry — pick the shared mailbox this time.</p>`, 400)
     }
 
@@ -137,15 +150,16 @@ Deno.serve(async (req) => {
       access_expires_at: expiresAt,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'email' })
-    if (upErr) return html(`<h1>DB upsert failed</h1><pre class="err">${upErr.message}</pre>`, 500)
+    if (upErr) return html(`<h1>DB upsert failed</h1><pre class="err">${esc(upErr.message)}</pre>`, 500)
 
     // 4. Success — send the admin back if a return_to was set.
-    const returnTo = decodeURIComponent(url.searchParams.get('state') || '')
+    let returnTo = ''
+    try { returnTo = safeReturn(decodeURIComponent(url.searchParams.get('state') || '')) } catch { returnTo = '' }
     return html(`
       <h1 class="ok">✓ Shared Gmail connected</h1>
-      <p>Connected as <code>${connectedEmail}</code>.</p>
+      <p>Connected as <code>${esc(connectedEmail)}</code>.</p>
       <p>The CRM can now send and sync via this mailbox without any user keeping a tab open.</p>
-      ${returnTo ? `<p><a href="${returnTo}">Return to CRM →</a></p>` : ''}
+      ${returnTo ? `<p><a href="${esc(returnTo)}">Return to CRM →</a></p>` : ''}
     `)
   }
 

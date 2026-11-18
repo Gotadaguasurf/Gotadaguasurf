@@ -8,6 +8,11 @@ name: Supabase Backup
 # Cost: $0. GitHub Actions free tier (2,000 min/month private) covers
 # many years of daily runs at ~2 min each.
 #
+# WHERE THIS FILE MUST LIVE: GitHub runs workflows only from <repository root>/.github/workflows/.
+# The repository root is the folder ABOVE gotadagua-deploy-clean/, so while this file sits in
+# gotadagua-deploy-clean/.github/workflows/ it never runs («workflow not found on the default
+# branch», audit 18 Nov 2026, AUT-02). Move the folder up one level (see backup-readme.md).
+#
 # Secrets required (one-time setup, see backup-readme.md):
 #   • SUPABASE_DB_URL    — the Postgres URI from Supabase → Settings → Database
 #   • RCLONE_CONFIG      — contents of ~/.config/rclone/rclone.conf after
@@ -71,8 +76,8 @@ jobs:
           SIZE=$(stat -c%s "$F")
           echo "Backup size: $SIZE bytes"
           if [ "$SIZE" -lt 5000 ]; then
-            echo "::error::Backup file is suspiciously small (<5 KB). Likely a pg_dump failure."
-            head -50 "$F" || true
+            echo "::error::Backup file is suspiciously small (<5 KB). Likely a pg_dump failure (see the pg_dump step above)."
+            # never print the file: on a public repository the job log is public
             exit 1
           fi
           ls -lh "$F"
@@ -134,7 +139,23 @@ jobs:
           rclone lsl gdrive: --include '*.sql.gz' | sort
 
       # ── Secondary copy as a GitHub Artifact (belt-and-suspenders) ────────
-      - name: Upload also as GitHub Artifact (30-day retention)
+      # ONLY on a private repository. On a public one anyone with a GitHub login can download a
+      # workflow artifact, and this file is the whole database (salaries, bank statements, guests,
+      # auth users). Audit 18 Nov 2026 (AUT-02): the repository is public, so today the Drive copy
+      # is the only one and this step is skipped.
+      - name: Is the repository private?
+        id: vis
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRIVATE=$(gh api "repos/${{ github.repository }}" --jq .private 2>/dev/null || echo unknown)
+          echo "private=$PRIVATE" >> "$GITHUB_OUTPUT"
+          if [ "$PRIVATE" != "true" ]; then
+            echo "::notice::Repository is not private (or could not be checked): no GitHub artifact, the Drive copy only."
+          fi
+
+      - name: Upload also as GitHub Artifact (30-day retention, private repo only)
+        if: steps.vis.outputs.private == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.ts.outputs.FILENAME }}
@@ -150,7 +171,7 @@ jobs:
             echo "- File: \`${{ steps.ts.outputs.FILENAME }}\`"
             echo "- Kind: **${{ steps.ts.outputs.KIND }}**"
             echo "- Primary: Google Drive · Gota Dagua company folder"
-            echo "- Secondary: GitHub Artifact (30d retention)"
+            if [ "${{ steps.vis.outputs.private }}" = "true" ]; then echo "- Secondary: GitHub Artifact (30d retention)"; else echo "- Secondary: none (public repository: no artifact)"; fi
             echo ""
             echo "Restore: download from Drive, \`gunzip\`, then"
             echo "\`psql \$DB_URL -f backup.sql\` against a fresh project."

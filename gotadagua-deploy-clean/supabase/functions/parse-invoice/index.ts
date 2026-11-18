@@ -5,6 +5,11 @@
 //
 //  1. Auths the caller via their Supabase JWT (RLS on hq-invoices bucket
 //     already restricts read/write to HQ members via public.is_hq_member()).
+//     The file_base64 branch (HQ, The Suk, camp hub managers) needs a real
+//     team login: a person with at least one active area. The public anon
+//     key alone used to be enough to spend the Anthropic credit (audit
+//     18 Nov 2026, SEC-03). Staged: refused only once ENFORCE_CALLER_CHECKS
+//     is 'true' (_shared/auth.ts); logged until then.
 //  2. Downloads the file from storage.
 //  3. Sends it to the Anthropic Messages API with vision (Claude Sonnet 4.5).
 //  4. Returns a strict JSON object with the 10 invoice fields the HQ form
@@ -18,10 +23,12 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { parseInvoice, bytesToBase64, mediaTypeFor, PARSE_MODEL } from '../_shared/invoice-parse.ts'
+import { bearer, userOf, isTeamMember, refuseOrLog } from '../_shared/auth.ts'
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') || ''
 const SUPABASE_URL      = Deno.env.get('SUPABASE_URL') || ''
 const ANON_KEY          = Deno.env.get('SUPABASE_ANON_KEY') || ''
+const SERVICE_KEY       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 
 const MODEL = PARSE_MODEL
 
@@ -47,6 +54,15 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization') || ''
     if (!authHeader) return json({ error: 'Missing Authorization header' }, 401)
+
+    // A team login, not just the public key (SEC-03)
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } })
+    const who = await userOf(bearer(req))
+    if (!who || !(await isTeamMember(admin, who.id))) {
+      if (refuseOrLog('parse-invoice', who ? 'login without an active area' : 'no team login')) {
+        return json({ error: 'Log in with your Gota Dagua account to read invoices.' }, 401)
+      }
+    }
 
     const body = await req.json().catch(() => ({}))
     const storagePath = String(body?.storage_path || '').trim()
@@ -85,7 +101,8 @@ Deno.serve(async (req) => {
 
     let extracted, usage
     try {
-      const out = await parseInvoice(base64, mediaType, ANTHROPIC_API_KEY)
+      const { data: cats } = await admin.from('hq_invoice_categories').select('name').eq('active', true)
+      const out = await parseInvoice(base64, mediaType, ANTHROPIC_API_KEY, { categories: (cats || []).map((c: { name: string }) => c.name) })
       extracted = out.parsed; usage = out.usage
     } catch (e) {
       return json({ error: (e as Error).message || String(e) }, 502)

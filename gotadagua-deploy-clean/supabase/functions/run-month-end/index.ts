@@ -60,6 +60,16 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Salaries and monthly costs are entered by hand since 28 Oct 2026 («Ordenados e custos mensais à mão»).
+    // A working secret on the old cron would bring automatic salary lines back, so the function only writes
+    // when the project secret MONTH_END_ENABLED = 'true' (audit 18 Nov 2026, AUT-08 / SEAM-19).
+    if (Deno.env.get('MONTH_END_ENABLED') !== 'true') {
+      return new Response(JSON.stringify({ ok: false, disabled: true, reason: 'run-month-end is switched off (salaries are manual since 28 Oct 2026)' }), {
+        status: 200,
+        headers: corsHeaders,
+      })
+    }
+
     const body = await req.json().catch(() => ({}))
     const runDate = String(body?.runDate || new Date().toISOString().slice(0, 10))
     const salaryMode = body?.salaryMode === 'off' ? 'off' : 'season'

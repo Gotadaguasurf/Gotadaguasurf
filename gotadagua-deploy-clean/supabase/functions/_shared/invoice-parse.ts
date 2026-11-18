@@ -8,13 +8,25 @@
 import './lib-globals.ts'
 import './lib/credit-notes.js'   // lib/credit-notes.js (synced copy): the one «is this a credit note» rule
 
-export const PARSE_MODEL = 'claude-sonnet-4-5'
+// The model in one place: the project secret PARSE_MODEL wins, so a model change needs no code (AUT-16).
+// (read through globalThis: tests import this file in Node, where there is no Deno)
+// deno-lint-ignore no-explicit-any
+export const PARSE_MODEL = (globalThis as any).Deno?.env?.get('PARSE_MODEL') || 'claude-sonnet-4-5'
 
-export const CATEGORIES = ['Food', 'Drinks', 'Salary', 'Benefits', 'Taxes', 'Rent', 'Utilities', 'Services', 'Insurances',
+// Fallback list only. The callers pass the live list (hq_invoice_categories, active) so a category added in
+// the app reaches the reader the same day; this copy matches the app on 18 Nov 2026 (AUT-16).
+export const CATEGORIES = ['Food', 'Drinks', 'Drinking water', 'Salary', 'Benefits', 'Taxes', 'Rent', 'Utilities', 'Services', 'Insurances',
   'Equipment & maintenance', 'Cleaning', 'Laundry', 'Transport', 'Tours & activities', 'Merchandise', 'Marketing', 'Partners',
-  'Work Trips', 'Other']
+  'Work Trips', 'Wild · DJs', 'Wild · Som/luz', 'Wild · Foto/vídeo', 'Wild · Marketing', 'Wild · Porta', 'Wild · Comissões', 'Wild · Outros', 'Other']
 
-export const EXTRACTION_PROMPT = `You are an invoice-parsing assistant for a surf-camp business with entities in Portugal (Water Movements Lda, NIF 515059927; Manjar Alentejano Lda, NIF 502379723), Morocco, and Sri Lanka. Extract data from this document and return ONLY valid JSON, no markdown, no commentary.
+// The list the reader may answer with: the live active categories without the personal ones
+// (a supplier invoice is never filed as someone's personal spending by the reader).
+export function promptCategories(live?: string[] | null): string[] {
+  const names = (live || []).map(n => String(n || '').trim()).filter(n => n && !/personal/i.test(n))
+  return names.length ? names : CATEGORIES
+}
+
+export const extractionPrompt = (categories: string[] = CATEGORIES) => `You are an invoice-parsing assistant for a surf-camp business with entities in Portugal (Water Movements Lda, NIF 515059927; Manjar Alentejano Lda, NIF 502379723), Morocco, and Sri Lanka. Extract data from this document and return ONLY valid JSON, no markdown, no commentary.
 
 Schema:
 {
@@ -34,7 +46,7 @@ Schema:
   "atcud": "the ATCUD code if printed (Portuguese documents), or null",
   "service_month": "YYYY-MM when the document states the month the service refers to (e.g. 'Bookings for September', 'Setembro 2026'), else null",
   "payment_type": "Cash | Card | Bank Transfer | Other — null if not visible on the document",
-  "category_hint": "best guess from: ${CATEGORIES.join(', ')}",
+  "category_hint": "best guess from: ${categories.join(', ')}",
   "location_hint": "best guess from: portugal, surf-school, junior-camp, kids-camp, morocco, sri-lanka, wild-wednesday, general"
 }
 
@@ -43,7 +55,7 @@ Rules:
 - Moroccan addresses (Dirham/MAD/ICE number) → location_hint=morocco.
 - Sri Lankan (LKR/Colombo/Weligama) → location_hint=sri-lanka.
 - Generic digital services (Google Workspace, Cloudways, Uber, Anthropic, Supabase) → location_hint=general.
-- Party/event suppliers (DJs, sound/light rental, event production, video for the Wednesday party) → location_hint=wild-wednesday, category_hint=Other.
+- Party/event suppliers for the Wednesday party → location_hint=wild-wednesday and the matching «Wild · …» category: DJs → Wild · DJs, sound/light rental → Wild · Som/luz, photo/video → Wild · Foto/vídeo, door staff/security → Wild · Porta, party promotion → Wild · Marketing, anything else for the party → Wild · Outros.
 - "Fatura-Recibo" documents issued through the AT portal (Autoridade Tributária, recibos verdes) are freelancer receipts: category_hint=Salary, doc_type=receipt.
 - Drinks suppliers (beer, wine, coffee, soft drinks) → Drinks, never Food.
 - Nota de crédito, documento retificativo, credit note, avoir, or a number starting with NC / NCC / NCRTP / ADC → doc_type=credit_note (never invoice, never is_cancelled).
@@ -52,6 +64,8 @@ Rules:
 - If a value is unreadable or absent, return null (except amount, which must be a number when any total is visible).
 
 Return the JSON object and nothing else.`
+
+export const EXTRACTION_PROMPT = extractionPrompt(CATEGORIES)
 
 export interface Parsed {
   doc_type: string | null
@@ -108,7 +122,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
-export async function parseInvoice(base64: string, mediaType: string, apiKey: string): Promise<{ parsed: Parsed; usage: unknown; model: string }> {
+export async function parseInvoice(base64: string, mediaType: string, apiKey: string, opts: { categories?: string[] | null } = {}): Promise<{ parsed: Parsed; usage: unknown; model: string }> {
   const isPdf = mediaType === 'application/pdf'
   const contentBlock = isPdf
     ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: base64 } }
@@ -116,7 +130,7 @@ export async function parseInvoice(base64: string, mediaType: string, apiKey: st
   const resp = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: PARSE_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: EXTRACTION_PROMPT }] }] }),
+    body: JSON.stringify({ model: PARSE_MODEL, max_tokens: 1024, messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: extractionPrompt(promptCategories(opts.categories)) }] }] }),
   })
   if (!resp.ok) throw new Error(`Anthropic API error (${resp.status}): ${(await resp.text()).slice(0, 500)}`)
   const out = await resp.json()

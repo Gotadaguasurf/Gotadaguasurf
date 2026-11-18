@@ -1,5 +1,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// ════════════════════════════════════════════════════════════════════════════
+//  remove-platform-user — HARD delete of an account (auth user + profile +
+//  memberships + invitations). Nothing in the real app calls it: Settings
+//  deactivates softly. Since 18 Nov 2026 (audit SEC-11) only Miguel (platform
+//  super_admin) may call it, and never on an Owner or super_admin account;
+//  before, every team manager could delete any account, Miguel's included.
+//  Kept (not deleted) because the separate booking prototype still calls it.
+// ════════════════════════════════════════════════════════════════════════════
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -24,7 +33,7 @@ Deno.serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify caller is owner/admin
+    // The caller's login
     const callerClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -36,30 +45,14 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    // Caller authorization: super_admin / owner / admin platform role, or
-    // can_manage_team=true on at least one workspace. Mirrors the gate used
-    // by create-platform-invite so the two functions are interchangeable.
+    // Caller authorization: Miguel only (active super_admin) — SEC-11.
     const { data: callerProfile } = await supabaseAdmin
       .from('platform_profiles')
       .select('platform_role, active')
       .eq('id', caller.id)
       .maybeSingle();
-    const callerRole = callerProfile?.platform_role ?? '';
-    const isActive = callerProfile?.active === true;
-    const hasPrivilegedRole = isActive && ['super_admin', 'owner', 'admin'].includes(callerRole);
-    let canManageTeam = false;
-    if (!hasPrivilegedRole) {
-      const { data: mgmtRows } = await supabaseAdmin
-        .from('workspace_memberships')
-        .select('id')
-        .eq('user_id', caller.id)
-        .eq('active', true)
-        .eq('can_manage_team', true)
-        .limit(1);
-      canManageTeam = (mgmtRows?.length ?? 0) > 0;
-    }
-    if (!hasPrivilegedRole && !canManageTeam) {
-      return new Response(JSON.stringify({ ok: false, error: 'Insufficient permissions' }), {
+    if (!(callerProfile?.active === true && callerProfile?.platform_role === 'super_admin')) {
+      return new Response(JSON.stringify({ ok: false, error: 'Only Miguel can delete an account. Use «Deactivate» in Settings.' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
@@ -73,6 +66,18 @@ Deno.serve(async (req) => {
     if (targetUserId === caller.id) {
       return new Response(JSON.stringify({ ok: false, error: 'Cannot remove your own account' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Never an Owner or the super_admin (SEC-11)
+    const { data: targetProfile } = await supabaseAdmin
+      .from('platform_profiles')
+      .select('platform_role')
+      .eq('id', targetUserId)
+      .maybeSingle();
+    if (['super_admin', 'owner'].includes(String(targetProfile?.platform_role || ''))) {
+      return new Response(JSON.stringify({ ok: false, error: 'An Owner account cannot be deleted. Deactivate it in Settings instead.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
