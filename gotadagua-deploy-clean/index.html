@@ -1818,6 +1818,8 @@
             : `Saved — ${who}: ${roleLabel} · ${grantedAreas.map(areaLabel).join(', ') || 'no areas'}.${dropped.length ? ` Not granted (missing in the app): ${dropped.map(areaLabel).join(', ')}.` : ''}`);
           return;
         }
+        const guardProblem = inviteGuardProblem(email, roleLabel, areas);
+        if(guardProblem){ showToast(guardProblem); return; }
         const accessRows = buildWorkspaceAccessRows(role, areas);
         const dropped = buildWorkspaceAccessRows.lastDropped || [];
         if(!accessRows.length) throw new Error(`These areas can't be granted yet — contact support: ${dropped.map(areaLabel).join(', ')}.`);
@@ -1828,6 +1830,27 @@
       }catch(error){
         showToast(friendlyAccessError(error, 'Could not create the invite.'));
       }
+    }
+
+    // SA-03 / SEC-10 guard — FOR MIGUEL TO KEEP OR REVERT (audit 18 Nov 2026). The invite goes through
+    // create-platform-invite, which applies whatever access the browser sends for whatever email, so a team
+    // manager could give anyone — themselves included — HQ. Until Miguel decides the rule, the form refuses,
+    // for anyone who is not Miguel (super_admin / owner list): their own email; HQ or Settings the person does
+    // not already hold; the roles Owner / Admin the person does not already have. It only stops NEW grants:
+    // nobody loses access, «Resend invite» and Miguel's own invites are unchanged. The real fix is in the
+    // Edge Function (needs deploy) — this is the page side only.
+    function inviteGuardProblem(email, roleLabel, areas){
+      const me = String(__currentProfile?.email || '').toLowerCase();
+      const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+      if(String(__currentProfile?.role || '').toLowerCase() === 'super_admin' || OWNER_EMAILS.has(me)) return '';
+      const target = String(email || '').toLowerCase();
+      if(me && target === me) return "You can't change your own access here — ask Miguel.";
+      const person = findTeamPerson(target);
+      const held = new Set(person?.areas || []);
+      const newly = ['hq', 'settings'].filter(a => areas.includes(a) && !held.has(a));
+      if(newly.length) return `Only Miguel can give ${newly.map(areaLabel).join(' or ')} access.`;
+      if((roleLabel === 'Owner' || roleLabel === 'Admin') && person?.role !== roleLabel) return `Only Miguel can make someone ${roleLabel}.`;
+      return '';
     }
 
     const NO_PERMISSION_MSG = "You don't have permission to change team access — ask Miguel.";
