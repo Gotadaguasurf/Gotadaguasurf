@@ -25,7 +25,7 @@
    ledgerDrawerBalances, entryLocalDisplayAmount, getHubSupabaseClient,
    ensureHubLocationId, dbRowToLedgerEntry, renderExpenses, renderOverview,
    showPage, setExpPeriodUnified, toast, escapeHtml, notifyLedgerChanged,
-   hydrateLedgerFromSupabase.
+   hydrateLedgerFromSupabase, handleLedgerSupabaseError.
    ════════════════════════════════════════════════════════════════════════════ */
 window.CAMP_CHECKS = window.CAMP_CHECKS || [];
 (function(){
@@ -73,7 +73,9 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   const money = (n) => `${cur()} ${num(Math.abs(n))}`;
   const short = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
   const localAmt = (r) => (typeof entryLocalDisplayAmount === 'function' ? entryLocalDisplayAmount(r) : Number(r.amountLocal || 0));
-  const say = (msg, kind) => { try { if (typeof toast === 'function') toast(msg, kind); } catch (_) {} };
+  // The hub's toast is red (and stays longer) only for kind 'err': until 18 Nov 2026 «Count not
+  // saved: …» went out as 'error' and showed as a plain 2-second note (audit CH-03).
+  const say = (msg, kind) => { try { if (typeof toast === 'function') toast(msg, kind === 'error' ? 'err' : kind); } catch (_) {} };
 
   // The camp's date and hour — never through toISOString (UTC day shift).
   function colombo(d) {
@@ -150,6 +152,11 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
       // Table not created yet, or no session: no count button, no «not
       // counted» chip — unknown is not the same as «not counted».
       state.available = false; state.error = err;
+      // Anything else (network, access rules) is said, in the database's words (audit CH-03).
+      const missingTable = /42P01|PGRST205/.test(String(err && err.code)) || /does not exist|could not find the table/i.test(String(err && err.message));
+      if (!missingTable && String(err && err.message) !== 'no client' && typeof handleLedgerSupabaseError === 'function') {
+        handleLedgerSupabaseError('cash counts load failed', err, { action: 'load', background: true });
+      }
     }
     state.loaded = true;
     renderAll();
