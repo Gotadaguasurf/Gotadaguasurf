@@ -47,3 +47,19 @@ test('HQ-03 accountant Excel: one statement sheet per bank with its own totals, 
   expect(out.resumo).toContain('Débitos do banco sem linha na app=1');
   expect(out.resumo.join('\n')).not.toMatch(/comissões, leasing, anúncios, PayPal/);
 });
+
+// ── HQ-04 (page half) ─────────────────────────────────────────────────────
+test('HQ-04 Month close: a debit noted as financing / asset / refund, or a salary batch, is not «No expense line" (same rule as the chip and the Excel)', async ({ page }) => {
+  await openHqBare(page);
+  const out = await page.evaluate(() => {
+    const st = (m) => fechoBankStatus({ amount: -100, kind: 'expense', ...m }, []);
+    return [
+      st({ notes: '[financiamento — COVID loan]' }), st({ notes: '[ativo — loja]' }), st({ notes: '[devolução ao cliente]' }),
+      st({ description: 'LOTE TRF CRED SEPA+ pag mes setembro' }), st({ description: 'COMPRA LIDL' }),
+    ].map(s => [s.ok, s.label]);
+  });
+  expect(out).toEqual([
+    [true, 'Financing (see note)'], [true, 'Asset (see note)'], [true, 'Refund (see note)'],
+    [true, 'Salary batch (lines per person)'], [false, 'No expense line'],
+  ]);
+});

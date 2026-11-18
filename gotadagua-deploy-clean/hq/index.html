@@ -3251,6 +3251,15 @@ function fechoBankStatus(m, linked){
   if (m.kind === 'card_settlement') return { ok:true, label:'Card bill' };
   if (m.kind === 'other') return { ok:true, label:'Not an expense (see note)' };
   if (!linked.length && /\[no ledger /.test(String(m.notes || ''))) return { ok:true, label:'In the camp ledger' };   // camp purchases paid with the company card
+  // Same exclusions as the SQL rules (hq_todo bank_unlinked, hq_bank_unmatched — audit HQ-04 / SEAM-03): a debit noted as
+  // financing, an asset or a refund is not an expense, and a salary batch is booked per person with the payslips (6 Oct 2026).
+  if (!linked.length) {
+    const n = String(m.notes || '');
+    if (/^\[financiamento/i.test(n)) return { ok:true, label:'Financing (see note)' };
+    if (/^\[ativo/i.test(n)) return { ok:true, label:'Asset (see note)' };
+    if (/^\[devolu[cç][aã]o/i.test(n)) return { ok:true, label:'Refund (see note)' };
+    if (/^LOTE TRF CRED SEPA/i.test(String(m.description || ''))) return { ok:true, label:'Salary batch (lines per person)' };
+  }
   if (!linked.length) return /^\[sem fatura/i.test(String(m.notes || '')) ? { ok:true, label:'No invoice (noted)' } : { ok:false, label:'No expense line', action:'add' };
   const missing = linked.filter(l => docStatus(l) === 'falta');
   if (missing.length) return { ok:false, label:'Invoice missing', action:'attach', line: missing[0] };
