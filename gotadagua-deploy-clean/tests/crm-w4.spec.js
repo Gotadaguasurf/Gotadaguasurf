@@ -30,6 +30,7 @@ function dayTables() {
 }
 
 test('dashboard: replies to answer and hot leads with no next step lead the hero (crm-15)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await stubCrm(page, dayTables());
   const errs = await openCrm(page);
   const hero = await page.evaluate(() => ({
@@ -44,6 +45,7 @@ test('dashboard: replies to answer and hot leads with no next step lead the hero
   expect(hero.rows.join('\n')).not.toContain('Surf Club 6 | No next step');   // it has an open task
   expect(hero.title).not.toContain('🎉');
   expect(errs).toEqual([]);
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'crm-dashboard-1280.png'), fullPage: true });
 });
 
 test('toasts: an error is red and stays 6 s; a confirmation is not (UXC-15)', async ({ page }) => {
@@ -148,4 +150,5 @@ test('batch email: a bounced address and an Excluded company start unticked with
   const chips = await page.locator('#batchRecipientList').textContent();
   expect(chips).toContain('bounced');
   expect(chips).toContain('excluded');
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'crm-batch-1280.png') });
 });
