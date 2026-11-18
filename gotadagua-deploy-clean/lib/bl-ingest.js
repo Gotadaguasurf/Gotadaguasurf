@@ -207,13 +207,8 @@
     const appTrips = o.appTrips || []; const appGuests = o.appGuests || [];
     const plan = B.planTrips(trips, appTrips, { today, now, exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null, mergePast: slug !== 'sri-lanka' });
     trips = plan.send;
-    // = buildImport: a trip whose vehicle was changed by hand keeps it (its price = that vehicle's /prices price), and a trip
-    // split with «Separate» does not get the report's «N people, 1 transfer paid» back.
-    const byKey = new Map(appTrips.filter(a => a.import_key).map(a => [a.import_key, a]));
-    trips = trips.map(t => { const a = byKey.get(t.key); const ed = (a && a.edited_fields) || [];
-      let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: price(t.kind, a.vehicle, t.place) || t.expected_price } : t;
-      if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
-      return x; });
+    // The camp's own decisions on a trip (vehicle, «Separate», «Charge guest») stand: one shared rule with the manual import.
+    trips = B.keepCampEdits(trips, appTrips, price);
     const guests = okGuests.map(g => ({ ...g, hq_match: null, partner: partnerOf(g.booking_ref) || null }));
     const guestPlan = B.planGuests(guests, appGuests);
     // Week asks «cancelled?» only for a stored guest whose check-out is inside the report window.

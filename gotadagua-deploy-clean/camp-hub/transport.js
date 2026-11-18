@@ -2509,15 +2509,9 @@
       plan = BlReport.planTrips(trips, TR.trips, { today: cToday(), now: colomboNow(), exportDate: parsed.export_date, refsPresent: parsed.refs_active, window: maxCo ? { to: maxCo } : null,
         mergePast: !IS_SL });   // Sri Lanka: «só para os novos» — a trip of an earlier day is never changed
       trips = plan.send;
-      // A trip whose vehicle was changed by hand keeps it: its price is that vehicle's /prices price, not the report trip's.
-      const app = new Map(TR.trips.filter(a => a.import_key).map(a => [a.import_key, a]));
-      // A trip split with «Separate» keeps the camp's decision: the report's «N people, 1 transfer paid» (it still counts
-      // everyone of the booking) is not brought back onto it.
-      trips = trips.map(t => { const a = app.get(t.key); const ed = (a && a.edited_fields) || [];
-        let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: presetPrice(t.kind, a.vehicle, t.place) || t.expected_price } : t;
-        if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
-        if (ed.includes('money_charge:no transfer paid') && (x.flags || []).includes('no transfer paid')) x = { ...x, charge: 'camp_tab' };   // «Charge guest» stands
-        return x; });
+      // The camp's own decisions on a trip stand (vehicle changed by hand, «Separate», «Charge guest»): one shared rule
+      // with the hourly import (lib/bl-report.js keepCampEdits, audit WEEK-09).
+      trips = BlReport.keepCampEdits(trips, TR.trips, presetPrice);
     }
     const guests = okGuests.filter(g => !cancelledRefs.has(g.booking_ref)).map(g => ({ ...g, hq_match: matchOf(g.booking_ref), partner: partnerOf(g.booking_ref) || null }));
     const hqCancelled = okGuests.filter(g => cancelledRefs.has(g.booking_ref)).map(g => ({ guest: g.guest_name, ref: g.booking_ref, transfer: g.has_transfer, status: hqStatus(g.booking_ref) || 'not live' }));

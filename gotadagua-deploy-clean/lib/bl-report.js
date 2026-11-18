@@ -540,6 +540,20 @@
   const HAPPENED = ['planned', 'sent', 'confirmed', 'done', 'no_show'];
   const isAdded = t => !t.last_import_at && !!t.bl_checked_at;   // added from the booking page
   function presetOf(prices, kind, vehicle, place) { return prices ? Number(prices(kind, vehicle, place)) || 0 : null; }
+  // What the camp decided on a trip stands through every re-import (audit 18 Nov 2026, WEEK-09). One copy for the
+  // camp hub's manual import (transport.js buildImport) and the hourly one (lib/bl-ingest.js planCampReport): the two had
+  // drifted, and «Charge guest» was undone by the hourly import. priceOf(kind, vehicle, place) = the /prices price.
+  //  · a vehicle changed by hand stays, priced as that vehicle (unless the price was typed by hand too);
+  //  · a trip split with «Separate» does not get the report's «N people, 1 transfer paid» back;
+  //  · «Charge guest» on «no transfer paid» keeps charge = camp_tab (the report always says «bookinglayer»).
+  function keepCampEdits(trips, appTrips, priceOf) {
+    const byKey = new Map((appTrips || []).filter(a => a.import_key).map(a => [a.import_key, a]));
+    return (trips || []).map(t => { const a = byKey.get(t.key); const ed = (a && a.edited_fields) || [];
+      let x = a && ed.includes('vehicle') && !ed.includes('expected_price') && a.vehicle ? { ...t, expected_price: priceOf(t.kind, a.vehicle, t.place) || t.expected_price } : t;
+      if (ed.includes('together_split')) x = { ...x, flags: (x.flags || []).filter(f => !/^\d+ people, \d+ transfers? paid — one covers \d+$/.test(f)) };
+      if (ed.includes('money_charge:no transfer paid') && (x.flags || []).includes('no transfer paid')) x = { ...x, charge: 'camp_tab' };
+      return x; });
+  }
   function planTrips(trips, appTrips, o) {
     o = o || {}; const today = o.today; const now = o.now || `${today}T00:00`;
     // The import is sent with the camp's today when the file is older (Sri Lanka was already on 17 Nov when the 16 Nov
@@ -743,5 +757,5 @@
     return plan;
   }
 
-  return { blSays, blSaysOf, BL_SAYS_RE, MERGE_FIELDS, TOGETHER_FLAG, paidTwiceFlag, UNDERPAID_RE, UNDERSOLD_RE, moneyCheck, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, planGuests, tripDiffs, courseOf, exportDateOf };
+  return { blSays, blSaysOf, BL_SAYS_RE, MERGE_FIELDS, TOGETHER_FLAG, paidTwiceFlag, UNDERPAID_RE, UNDERSOLD_RE, moneyCheck, flightNo, priceOf, PRICE_HEADER, COL, isReportHeader, productKind, read, model, parse, guestRows, guestAudit, importWarnings, lessonsByDay, planTrips, keepCampEdits, planGuests, tripDiffs, courseOf, exportDateOf };
 });
