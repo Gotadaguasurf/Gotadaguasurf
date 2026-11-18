@@ -577,18 +577,9 @@
   }
   const body = (team, day, ws, rows, lang) => toText(parts(team, day, ws, rows, lang));
   const bilingual = team => team === 'cleaning' && CLEAN_LANG === 'ar';   // Darija sent, English beside it
-  // UPDATE header + the lines that changed (a line diff of the sent text against today's).
-  function lineDiff(oldText, newText) {
-    const strip = t => t.split('\n').slice(1).map(s => s.trim()).filter(Boolean);
-    const a = strip(oldText), b = strip(newText);
-    const left = a.slice(); const added = [];
-    b.forEach(x => { const i = left.indexOf(x); if (i >= 0) left.splice(i, 1); else added.push(x); });
-    return [...left.map(x => '– ' + x), ...added.map(x => '+ ' + x)];
-  }
   // Miguel, 13 Nov: «não quero update — sempre que mando tem de ser o real». A resend is the
   // real, current message, never an UPDATE header or a diff. «Changed since sent» only tells
-  // Francisco that the team has an old version.
-  function updateText(oldText, newText) { return newText; }
+  // Francisco that the team has an old version. (The old lineDiff / updateText helpers are gone, audit WEEK-19.)
 
 
   // ── Data ────────────────────────────────────────────────────────────────
@@ -1028,7 +1019,7 @@
     const text = body(team, day, ws, rows);
     const sent = sentOf(team, day, ws);
     const changed = sent && sent.hash !== hash(text);
-    const msg = dress(changed ? updateText(sent.text, text, day, ws) : text, cToday());
+    const msg = dress(text, cToday());
     if (bilingual(team)) {
       // Morocco Cleaning: the Darija that is sent, and beside each line its English twin — to check, never sent.
       const en = dress(body(team, day, ws, rows, 'en'), cToday());
@@ -1375,7 +1366,7 @@
     const ws = W.week; const rows = rowsOf(ws);
     if (W.team === 'guests') return body('guests', W.day, ws, rows);
     const text = body(W.team, W.day, ws, rows); const sent = sentOf(W.team, W.day, ws);
-    return { text, out: dress(sent && sent.hash !== hash(text) ? updateText(sent.text, text, W.day, ws) : text, cToday()) };
+    return { text, out: dress(text, cToday()) };
   }
   async function clip(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
@@ -1563,7 +1554,7 @@
     findGuest(name) { W.q = name; W.tab = 'guests'; W.team = 'guests'; W.day = 'week'; render(); },
     shiftWeek(n) { W.week = add(W.week, n); W.day = 'week'; W.undo = null; render(); loadWeek(W.week).then(render); },
     // for tests
-    _state: W, loadAll, classify, body, bodyOf: (team, day, lang) => body(team, day, W.week, rowsOf(W.week), lang), parts, toText, updateText, lineDiff, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
+    _state: W, loadAll, classify, body, bodyOf: (team, day, lang) => body(team, day, W.week, rowsOf(W.week), lang), parts, toText, hash, toCheck: () => toCheck(W.week), changes: () => changes(W.week),
     checks: { file: fileCheck, yoga: yogaCheck }, roomInfo, course, levelOf, dietOf, dress, dayMoves: d => dayMoves(rowsOf(W.week), d), e164, groupName: () => groupName(W.week), weekNo, weekLabel, groupDescription: () => groupDescription(W.week),
     vcf: () => vcfText(groupPeople(W.week, rowsOf(W.week), W.groupOutside), W.week), groupPeople: () => groupPeople(W.week, rowsOf(W.week), W.groupOutside),
     model: () => weekModel(W.week, rowsOf(W.week)), roomPlan: () => roomPlan(W.week, rowsOf(W.week)),
