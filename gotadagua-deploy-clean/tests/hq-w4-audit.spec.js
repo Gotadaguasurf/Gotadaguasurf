@@ -317,3 +317,10 @@ test('HQ-16 when hq_todo fails the strip says so instead of going quiet', async 
   const chips = await overviewWithTodo(page, { status: 500, body: { code: 'XX000', message: 'boom in hq_todo' } });
   expect(chips.some(c => /Could not load pending items: boom in hq_todo/.test(c))).toBe(true);
 });
+
+// ── HQ-21 ────────────────────────────────────────────────────────────────
+test('HQ-21 «no invoice by nature» is a prefix match, exactly like hq_doc_status', async ({ page }) => {
+  await openHqBare(page);
+  const out = await page.evaluate(() => ['Santander (comissões)', 'CGD (comissões)', 'Transportes Santander Lda', 'Santander - transferencia devolvida'].map(c => docStatus({ company: c, payment_type: 'Card' })));
+  expect(out).toEqual(['isento', 'isento', 'falta', 'isento']);
+});

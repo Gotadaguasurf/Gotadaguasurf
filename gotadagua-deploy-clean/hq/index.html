@@ -2542,7 +2542,8 @@ const ACC_HINTS = [
 // Only bank movements (the statement is the document). 3 Nov 2026, accountant review: ads, leasing, Getnet,
 // insurers, airlines, PayPal fees (monthly statement) and meal cards (payslip) all have a document to attach.
 const ACC_NO_INVOICE = ['santander','cgd (comiss'];
-function accNoInvoice(company){ const c = String(company||'').toLowerCase(); return ACC_NO_INVOICE.some(k => c.startsWith(k) || c.includes(k)); }
+// Prefix only, exactly like hq_doc_status ('^(santander|cgd \(comiss)'): a supplier with «Santander» inside its name still needs its invoice (HQ-21).
+function accNoInvoice(company){ const c = String(company||'').toLowerCase(); return ACC_NO_INVOICE.some(k => c.startsWith(k)); }
 function accHint(company){ const c = String(company||'').toLowerCase(); const h = ACC_HINTS.find(([k]) => c.startsWith(k) || c.includes(k)); return h ? h[1] : ''; }
 
 function accPeriod(kind, value){
