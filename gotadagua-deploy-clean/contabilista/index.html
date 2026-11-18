@@ -169,7 +169,7 @@ td.num,th.num{text-align:right}
     const T = ms.reduce((a, m) => ({ linhas: a.linhas + m.linhas, com_doc: a.com_doc + m.com_doc, isentas: a.isentas + m.isentas, em_falta: a.em_falta + m.em_falta, falta_eur: a.falta_eur + Number(m.falta_eur||0) }), { linhas:0, com_doc:0, isentas:0, em_falta:0, falta_eur:0 });
     const p = pctOf(T);
     const f = summary.folders || {};
-    $sub.textContent = `Atualizado automaticamente · ${new Date(summary.generated_at).toLocaleString('pt-PT', { dateStyle:'long', timeStyle:'short' })}${summary.extrato_ate ? ` · extrato Santander até ${fmtDate(summary.extrato_ate)}` : ''}`;
+    $sub.textContent = `Atualizado automaticamente · ${new Date(summary.generated_at).toLocaleString('pt-PT', { dateStyle:'long', timeStyle:'short' })}${summary.extrato_ate ? ` · extratos do banco até ${fmtDate(summary.extrato_ate)}` : ''}`;
     const cards = ms.map(m => {
       const pc = pctOf(m), tn = tone(pc);
       const label = m.linhas === 0 ? 'sem movimentos' : pc >= 100 ? 'completo' : `${m.em_falta} em falta`;
@@ -243,7 +243,7 @@ td.num,th.num{text-align:right}
     const total = list.reduce((s, r) => s + (Number(tab === 'vendas' || tab === 'banco' ? r.valor : r.valor_eur) || 0), 0);
 
     const table = tab === 'banco'
-      ? (list.length ? `<p class="desc" style="margin:0 0 10px">Débitos do extrato Santander que ainda não têm nenhuma despesa lançada com o mesmo valor. Lotes de salários estão documentados pelos recibos de vencimento.</p><table><thead><tr><th></th><th>Data</th><th>Descrição no extrato</th><th class="num">Valor</th></tr></thead><tbody>${
+      ? (list.length ? `<p class="desc" style="margin:0 0 10px">Débitos dos extratos do banco (Santander, CGD, PayPal, cartão) que ainda não têm nenhuma despesa lançada com o mesmo valor. Lotes de salários estão documentados pelos recibos de vencimento.</p><table><thead><tr><th></th><th>Data</th><th>Descrição no extrato</th><th class="num">Valor</th></tr></thead><tbody>${
           list.map(r => `<tr>
             <td class="c-st"><span class="st st-falta">✕</span></td>
             <td class="c-date mono">${fmtDate(r.data)}</td>

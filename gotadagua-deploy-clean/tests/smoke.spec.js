@@ -1645,7 +1645,7 @@ test('hq: accountant pack lists every expense, what has no document, camp fundin
     ['Sim', 'Safari na Horta', 890, 'abrir', ''],
   ]);
   expect(out.checklistSpec).toEqual({ dropdown: { col: 0, options: ['Sim', 'Não', 'Não existe'] }, statusCol: 0, links: [{ r: 3, c: 7, url: 'https://drive.google.com/file/d/def/view' }, { r: 4, c: 7, url: 'https://drive.google.com/file/d/abc/view' }] });
-  expect(out.bancoSem).toEqual([['Não', '2026-09-15', 'COMPRA LEROY MERLIN', -274.19, '']]);
+  expect(out.bancoSem).toEqual([['Não', '2026-09-15', 'Santander', 'COMPRA LEROY MERLIN', -274.19, '']]);   // HQ-03: a «Banco» column
   expect(out.bancoSemSpec).toEqual({ col: 0, options: ['Não', 'Sim', 'Não é despesa'] });
   expect(out.resumoLinks).toEqual(['https://drive.google.com/drive/folders/FW9', 'https://drive.google.com/drive/folders/FP']);
   expect(out.resumoFalta).toEqual([1, 1]);   // one rule: a bank fee is «não existe», not missing

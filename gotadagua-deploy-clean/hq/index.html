@@ -2498,6 +2498,10 @@ const ACC_BANK_KIND = {
   expense:'Despesa', internal_transfer:'Transferência para camp', bank_fee:'Comissão do banco',
   card_settlement:'Liquidação do cartão', income:'Receita', other:'Outro'
 };
+// One statement sheet per bank (audit HQ-03, 18 Nov 2026): Santander, CGD, PayPal and the card each
+// have their own totals and balance — mixed in one «Extrato Santander» sheet they did not add up.
+const ACC_BANKS = [['santander','Santander'], ['cgd','CGD'], ['paypal','PayPal'], ['santander_card','Cartão Santander']];
+function accBankName(code){ const b = ACC_BANKS.find(([k]) => k === (code || 'santander')); return b ? b[1] : String(code); }
 const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
 const EXCELJS_CDN = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
 // Onde procurar a fatura quando falta — por fornecedor (minúsculas, prefixo).
@@ -2631,13 +2635,20 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   const review  = inv.filter(r => r.drive_link && r.needs_review);
   const sum = (list, f) => Math.round(list.reduce((s,r) => s + Number(f(r)||0), 0) * 100) / 100;
   const bankList = (bank||[]).slice().sort((a,b) => String(a.movement_date).localeCompare(String(b.movement_date)));
-  const debits  = bankList.filter(b => Number(b.amount) < 0);
-  const credits = bankList.filter(b => Number(b.amount) > 0);
+  // Rows without a bank are Santander (the only statement before 20 Oct 2026). Santander always gets
+  // its sheet; the other banks only when the period has movements.
+  const bankOf = (b) => b.bank || 'santander';
+  const bankCodes = ACC_BANKS.map(([k]) => k).concat([...new Set(bankList.map(bankOf))].filter(k => !ACC_BANKS.some(([c]) => c === k)));
+  const perBank = bankCodes.map(code => {
+    const list = bankList.filter(b => bankOf(b) === code);
+    return { code, name: accBankName(code), list, debits: list.filter(b => Number(b.amount) < 0), credits: list.filter(b => Number(b.amount) > 0) };
+  }).filter(g => g.code === 'santander' || g.list.length);
+  const bankById = new Map(bankList.filter(b => b.id).map(b => [b.id, bankOf(b)]));
   const tr = (transfers||[]).slice().sort((a,b) => String(a.transfer_date).localeCompare(String(b.transfer_date)));
   // Sales invoices issued to partners (FT IN2/…), kept in partner_invoices
   // by the Partners app and the Downloads task (Miguel, 5 Oct 2026).
   const pi = (partnerInvoices||[]).slice().sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.invoice_number).localeCompare(String(b.invoice_number)));
-  // Débitos do Santander sem linha na app (RPC hq_bank_unmatched — a mesma
+  // Débitos do banco sem linha na app (RPC hq_bank_unmatched — a mesma
   // regra do portal do contabilista). Miguel, 6 Out 2026.
   const bu = (bankUnmatched||[]).slice().sort((a,b) => Number(a.amount) - Number(b.amount));
   const monthKey = period.slug.length === 7 ? period.slug : null;
@@ -2659,10 +2670,10 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   };
   const bancoSem = {
     name: 'Banco sem lançamento', kind: 'bank',
-    header: ['Lançado?','Data','Descrição do Santander','Montante','Nota'],
-    widths: [13,11,62,12,48],
-    rows: bu.map(b => ['Não', b.movement_date || '', b.description || '', Number(b.amount||0), '']),
-    links: [], dropdown: { col: 0, options: ['Não','Sim','Não é despesa'] }, statusCol: 0, totalCol: 3, wrapCol: 4,
+    header: ['Lançado?','Data','Banco','Descrição no extrato','Montante','Nota'],
+    widths: [13,11,16,62,12,48],
+    rows: bu.map(b => ['Não', b.movement_date || '', accBankName(b.bank || bankById.get(b.id)), b.description || '', Number(b.amount||0), '']),
+    links: [], dropdown: { col: 0, options: ['Não','Sim','Não é despesa'] }, statusCol: 0, totalCol: 4, wrapCol: 5,
   };
 
   const resumoRows = [
@@ -2676,7 +2687,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['O QUE FALTA',''],
       ['Despesas sem fatura', missing.length],
       ['Despesas sem fatura (EUR)', sum(missing, r => r.amount_eur)],
-      ['Débitos do Santander sem linha na app', bu.length],
+      ['Débitos do banco sem linha na app', bu.length],
       ['Débitos sem linha (EUR)', Math.abs(sum(bu, b => b.amount))],
       ['Com documento mas a rever', review.length],
       ['',''],
@@ -2705,14 +2716,18 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['Transferências', tr.length],
       ['Total (EUR)', sum(tr, t => t.amount_eur ?? t.amount)],
       ['',''],
-      ['EXTRATO SANTANDER',''],
-      ['Movimentos', bankList.length],
-      ['Débitos (EUR)', Math.abs(sum(debits, b => b.amount))],
-      ['Créditos (EUR)', sum(credits, b => b.amount)],
-      ['',''],
+      // One block per bank — never one total over Santander, CGD, PayPal and the card together.
+      ...perBank.flatMap(g => [
+        [`EXTRATO ${g.name.toUpperCase()}`,''],
+        ['Movimentos', g.list.length],
+        ['Débitos (EUR)', Math.abs(sum(g.debits, b => b.amount))],
+        ['Créditos (EUR)', sum(g.credits, b => b.amount)],
+        ['',''],
+      ]),
       ['COMO USAR',''],
-      ['«Checklist»: uma linha por despesa. O dropdown «Tem fatura?» vem preenchido pela app: Sim (verde) = está na Drive; Não (vermelho) = falta; Não existe (cinzento) = o fornecedor não emite fatura (comissões, leasing, anúncios, PayPal). As que faltam vêm primeiro, por valor; a coluna «Onde procurar» diz onde costuma estar.',''],
-      ['«Banco sem lançamento»: débitos do Santander que não têm linha na app. Marca «Sim» depois de lançar, ou «Não é despesa» se for transferência interna ou devolução.',''],
+      ['«Checklist»: uma linha por despesa. O dropdown «Tem fatura?» vem preenchido pela app: Sim (verde) = está na Drive; Não (vermelho) = falta; Não existe (cinzento) = só movimentos do banco (comissões bancárias), o extrato é o documento. Leasing, anúncios, seguros e PayPal têm documento (fatura, aviso ou extrato mensal). As que faltam vêm primeiro, por valor; a coluna «Onde procurar» diz onde costuma estar.',''],
+      ['«Banco sem lançamento»: débitos do banco (coluna «Banco») que não têm linha na app. Marca «Sim» depois de lançar, ou «Não é despesa» se for transferência interna ou devolução.',''],
+      ['«Extrato …»: uma folha por banco, cada uma com o seu total e o seu saldo.',''],
       ['A coluna «Documento» abre o ficheiro na Drive.',''],
   ];
   const rowIdx = (label) => resumoRows.findIndex(r => r[0] === label) + 1;
@@ -2726,7 +2741,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
     ].filter(Boolean),
     alerts: [
       { r: rowIdx('Despesas sem fatura'), c: 1, level: missing.length ? 'bad' : 'ok' },
-      { r: rowIdx('Débitos do Santander sem linha na app'), c: 1, level: bu.length ? 'bad' : 'ok' },
+      { r: rowIdx('Débitos do banco sem linha na app'), c: 1, level: bu.length ? 'bad' : 'ok' },
       { r: rowIdx('Com documento mas a rever'), c: 1, level: review.length ? 'warn' : 'ok' },
     ],
   };
@@ -2753,12 +2768,12 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
         totalCol: 5,
       },
       ...(sd.length ? [Saft.vendasSheet(sd)] : []),
-      {
-        name: 'Extrato Santander', header: ['Data','Descrição','Montante','Saldo','Tipo'],
+      ...perBank.map(g => ({
+        name: `Extrato ${g.name}`, header: ['Data','Descrição','Montante','Saldo','Tipo'],
         widths: [11,60,12,12,26],
-        rows: bankList.map(b => [b.movement_date, b.description, Number(b.amount), b.balance == null ? '' : Number(b.balance), ACC_BANK_KIND[b.kind] || b.kind || '']),
+        rows: g.list.map(b => [b.movement_date, b.description, Number(b.amount), b.balance == null ? '' : Number(b.balance), ACC_BANK_KIND[b.kind] || b.kind || '']),
         links: [], totalCol: 2,
-      },
+      })),
     ],
   };
 }
@@ -3590,7 +3605,7 @@ async function fetchAccountantData(period){
       .gte('transfer_date', period.from).lte('transfer_date', period.to)
       .order('transfer_date', { ascending:true }).order('id', { ascending:true })),
     fetchAllPaged(() => sb.from('hq_bank_movements')
-      .select('movement_date, description, amount, balance, kind')
+      .select('id, bank, movement_date, description, amount, balance, kind')
       .eq('paying_company', 'water-movements')
       .gte('movement_date', period.from).lte('movement_date', period.to)
       .order('movement_date', { ascending:true }).order('id', { ascending:true })),
