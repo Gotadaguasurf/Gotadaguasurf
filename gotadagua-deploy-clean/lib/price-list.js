@@ -225,7 +225,12 @@
     return rows.map(r => { const [route, vehicle] = split(r.name); return { r, route, vehicle }; })
       .sort((a, b) => ((/airport/i.test(a.route) ? 0 : 1) - (/airport/i.test(b.route) ? 0 : 1)) || a.route.localeCompare(b.route) ||
         ((Number(a.r.capacity) || 0) - (Number(b.r.capacity) || 0)) || bySort(a.r, b.r))
-      .map(({ r, route, vehicle }) => ({ route, vehicle, covers: Number(r.covers_pax) > 0 ? Number(r.covers_pax) : null, price: money(r.sell_price, r.sell_currency || r.currency || 'EUR') }));
+      .map(({ r, route, vehicle }, _, all) => {
+        // surfboards go in anything bigger than the route's smallest vehicle (the app's rule: boards → at least the Minivan)
+        const caps = all.filter(x => x.route === route).map(x => Number(x.r.capacity) || 0);
+        const boards = caps.length > 1 && (Number(r.capacity) || 0) > Math.min(...caps);
+        return { route, vehicle, covers: Number(r.covers_pax) > 0 ? Number(r.covers_pax) : null, boards, price: money(r.sell_price, r.sell_currency || r.currency || 'EUR') };
+      });
   }
 
   function campModel(camp, period, sections, today) {
@@ -249,6 +254,8 @@
     if (accommodation.some(p => p.flex)) notes.push('Flexible pack prices are per person, per night.');
     if (covers.length === 1) notes.push(`Transfer prices are per transfer; one transfer covers up to ${covers[0]} persons.`);
     else if (covers.length > 1) notes.push('Transfer prices are per transfer; «up to» is how many persons one transfer covers.');
+    const tRows = parts.filter(p => p.kind === 'transfers').flatMap(p => p.rows);
+    if (tRows.some(r => r.boards) && tRows.some(r => !r.boards)) notes.push('Travelling with a surfboard? Book a vehicle marked «with surfboards» — the car has no room for boards.');
     const nonEur = [...currencies].filter(c => c !== 'EUR');
     if (nonEur.length) notes.push(`Prices are in euro unless marked ${nonEur.join(' / ')}.`);
     // «from €…» = the lowest weekly per-person price printed (as the website's package cards say it)
@@ -332,7 +339,7 @@
       const body = routes.map(g => (g.rows.length === 1 && !g.rows[0].vehicle)
         ? `<tr><td><b>${esc(g.route)}</b></td><td>${g.rows[0].covers ? `up to ${g.rows[0].covers} persons` : '—'}</td><td class="r pl-price">${esc(g.rows[0].price)}</td></tr>`
         : `<tr class="pl-route-row"><td colspan="3">${esc(g.route)}</td></tr>` + g.rows.map(r =>
-          `<tr class="pl-veh"><td>${esc(r.vehicle || r.route)}</td><td>${r.covers ? `up to ${r.covers} persons` : '—'}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')).join('');
+          `<tr class="pl-veh"><td>${esc(r.vehicle || r.route)}${r.boards ? ' <span class="pl-boards">with surfboards</span>' : ''}</td><td>${r.covers ? `up to ${r.covers} persons` : '—'}</td><td class="r pl-price">${esc(r.price)}</td></tr>`).join('')).join('');
       return `<section class="pl-part${part.rows.length <= 12 ? ' whole' : ''}" data-part="transfers">${sectionHead(part.key, part.title)}
         <table class="pl-table pl-transfers"><colgroup><col><col class="pl-col-mid"><col class="pl-col-num"></colgroup>
           <thead><tr><th>Route and vehicle</th><th>One transfer covers</th><th class="r">Per transfer</th></tr></thead>

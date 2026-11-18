@@ -214,10 +214,11 @@ test('price list model: prices from the tables in their own currency, «up to N 
   const sl = m.camps[0];
   const transfers = sl.parts.find(p => p.key === 'transfers').rows;
   expect(transfers).toEqual([
-    { route: 'Airport → Surfcamp', vehicle: 'Car', covers: 3, price: '€80' },
-    { route: 'Airport → Surfcamp', vehicle: 'Minivan', covers: 3, price: '€95' },
-    { route: 'Surfcamp → Airport', vehicle: 'Car', covers: 3, price: '€80' },
-    { route: 'Surfcamp → Airport', vehicle: 'Minivan', covers: 3, price: '€95' }]);   // tuk-tuks / camp runs at 0 are left out
+    { route: 'Airport → Surfcamp', vehicle: 'Car', covers: 3, boards: false, price: '€80' },
+    { route: 'Airport → Surfcamp', vehicle: 'Minivan', covers: 3, boards: true, price: '€95' },
+    { route: 'Surfcamp → Airport', vehicle: 'Car', covers: 3, boards: false, price: '€80' },
+    { route: 'Surfcamp → Airport', vehicle: 'Minivan', covers: 3, boards: true, price: '€95' }]);   // stub data: covers 3
+  expect(sl.notes.some(n => /surfboard/.test(n))).toBe(true);   // tuk-tuks / camp runs at 0 are left out
   const tours = sl.parts.find(p => p.key === 'tours').rows;
   expect(tours.find(r => r.name === 'Cooking Class')).toEqual({ name: 'Cooking Class', note: '', price: 'LKR 6,000', group: false });
   expect(JSON.stringify(m)).not.toMatch(/Imported from|cost_per_guest|20,500|20500/);
