@@ -84,6 +84,7 @@ header{display:none}
 @media (pointer:coarse){.ci-disc{width:32px;height:32px;top:6px;right:6px}}
 .ce-phone{display:none}
 .ac-what{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-removed{color:var(--red);font-weight:600}
 .ci-desc{font-size:10px;color:var(--muted);line-height:1.3;margin-top:1px}
 .ci-price{font-variant-numeric:tabular-nums;font-size:13px;color:var(--ocean);margin-top:3px}
 /* Right panel */
@@ -4936,6 +4937,34 @@ function renderComps(){
 let _acLastLoad = 0;
 let _acCache = null;
 
+// Lines taken off a tab (audit 18 Nov 2026, CT-05). A removed line is deleted
+// from camp_tab_items, and the delete trigger keeps a copy in audit_log
+// (supabase/audit-log.sql). RLS lets owners/admins and full-access accounts of
+// the location read it; anyone else gets no rows, and the feed shows lines
+// added only, as before. A guest deleted with its lines is one event.
+// rows: audit_log rows (newest first); guestName(id) → name or ''.
+function campTabRemovedEvents(rows, locationId, guestName){
+  const mine = (rows||[]).filter(r => String(r?.deleted_row?.location_id||'') === String(locationId));
+  const guestDeletes = new Map();
+  mine.filter(r => r.table_name === 'camp_guests').forEach(r => guestDeletes.set(String(r.row_id || r.deleted_row?.id || ''), r));
+  const out = []; const byGuest = new Map();
+  mine.filter(r => r.table_name === 'camp_tab_items').forEach(r => {
+    const line = r.deleted_row || {};
+    const gid = String(line.guest_id || '');
+    const g = guestDeletes.get(gid);
+    const name = guestName(gid) || String(g?.deleted_row?.name || '');
+    // the guest's own delete within two minutes = deleted together (Delete guest)
+    if (g && Math.abs(new Date(g.at) - new Date(r.at)) < 120000) {
+      let ev = byGuest.get(gid);
+      if (!ev) { ev = { kind:'guest', at:g.at, actor:g.actor_id || r.actor_id || null, guest:name, lines:[] }; byGuest.set(gid, ev); out.push(ev); }
+      ev.lines.push(line);
+      return;
+    }
+    out.push({ kind:'line', at:r.at, actor:r.actor_id || null, guest:name, lines:[line] });
+  });
+  return out;
+}
+
 async function renderPosActivity(){
   const body = document.getElementById('acBody');
   if (!body) return;
@@ -4963,14 +4992,34 @@ async function renderPosActivity(){
         .limit(500);
       if (error) throw error;
 
+      // Removed lines (CT-05). Optional: no access or an error → none shown,
+      // the added lines still load.
+      let audit = [];
+      try {
+        const { data: aud, error: audErr } = await client
+          .from('audit_log')
+          .select('at, actor_id, table_name, row_id, deleted_row')
+          .in('table_name', ['camp_tab_items','camp_guests'])
+          .eq('deleted_row->>location_id', locationId)
+          .order('at', { ascending:false })
+          .limit(1000);
+        if (audErr) throw audErr;
+        audit = Array.isArray(aud) ? aud : [];
+      } catch (e) { console.warn('[CampTab] removed lines not loaded', e); }
+      const names = new Map();
+      (items||[]).forEach(r => { if (r.camp_guests?.id) names.set(String(r.camp_guests.id), r.camp_guests.name || ''); });
+      allConsumers(currentWeek()).forEach(g => { if (g?.id) names.set(String(g.id), g.name || ''); });
+      const removed = campTabRemovedEvents(audit, locationId, id => names.get(String(id)) || '');
+
       // Resolve staff UIDs → display names via platform_profiles. Uses
       // the same PROFILE_NAMES cache the item hover-tooltip populates,
       // so repeat renders reuse names without extra round-trips.
       const uids = [...new Set((items||[])
         .flatMap(r => [r.created_by, r.updated_by])
+        .concat(removed.map(ev => ev.actor))
         .filter(Boolean))];
       await resolveAuditNames(client, uids);
-      _acCache = { items: items || [] };
+      _acCache = { items: items || [], removed };
       _acLastLoad = now;
     } catch (e) {
       body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">Load failed: ${escHtml(String(e?.message || e))}</div>`;
@@ -4979,17 +5028,18 @@ async function renderPosActivity(){
   }
 
   const items = _acCache.items;
+  const removedAll = _acCache.removed || [];
 
   // Populate the filter dropdowns on first render.
   const staffSel = document.getElementById('acStaff');
   const catSel   = document.getElementById('acCat');
   if (staffSel && staffSel.options.length <= 1) {
-    const uids = [...new Set(items.map(r => r.created_by).filter(Boolean))];
+    const uids = [...new Set(items.map(r => r.created_by).concat(removedAll.map(ev => ev.actor)).filter(Boolean))];
     staffSel.innerHTML = '<option value="all">Everyone</option>' +
       uids.map(id => `<option value="${escHtml(id)}">${escHtml(PROFILE_NAMES.get(id) || 'Unknown')}</option>`).join('');
   }
   if (catSel && catSel.options.length <= 1) {
-    const cats = [...new Set(items.map(r => r.category).filter(Boolean))].sort();
+    const cats = [...new Set(items.map(r => r.category).concat(removedAll.flatMap(ev => ev.lines.map(l => l.category))).filter(Boolean))].sort();
     catSel.innerHTML = '<option value="all">All categories</option>' +
       cats.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
   }
@@ -5018,8 +5068,14 @@ async function renderPosActivity(){
     if (cutoff && !(addedAt(r.added_at) >= cutoff)) return false;
     return true;
   });
+  const removed = removedAll.map(ev => {
+    if (staffF !== 'all' && ev.actor !== staffF) return null;
+    if (cutoff && !(new Date(ev.at) >= cutoff)) return null;
+    const lines = catF === 'all' ? ev.lines : ev.lines.filter(l => l.category === catF);
+    return lines.length ? { ...ev, lines } : null;
+  }).filter(Boolean);
 
-  if (!filtered.length) {
+  if (!filtered.length && !removed.length) {
     body.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;font-style:italic">No activity in this window. Change the filters or come back after some items are added.</div>`;
     return;
   }
@@ -5029,7 +5085,7 @@ async function renderPosActivity(){
   // The stored per-row currency is only a fallback — historical rows
   // were stamped 'LKR' regardless of location (fixed at the write site,
   // healed in SQL), so trusting rows first showed "LKR" in Portugal.
-  const cur = (typeof LOCAL_CURRENCY !== 'undefined' && LOCAL_CURRENCY) || filtered[0]?.currency || 'LKR';
+  const cur = (typeof LOCAL_CURRENCY !== 'undefined' && LOCAL_CURRENCY) || filtered[0]?.currency || removed[0]?.lines[0]?.currency || 'LKR';
   const total = filtered.reduce((s,r) => s + Number(r.price_local||0), 0);
   const staffCount = new Set(filtered.map(r => r.created_by).filter(Boolean)).size;
 
@@ -5048,27 +5104,59 @@ async function renderPosActivity(){
     return d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
   };
 
-  const rows = filtered.slice(0, 200).map(r => {
+  const money = (v) => `${escHtml(cur)} ${Math.round(Number(v)||0).toLocaleString('en-GB')}`;
+  // added_at is local wall time; «at» (when it was removed) is a real timestamp
+  const addedLabel = (iso) => { const d = addedAt(iso); return d && !isNaN(d) ? d.toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '—'; };
+  const removedRow = (ev) => {
+    const who = escHtml(PROFILE_NAMES.get(ev.actor) || 'Unknown');
+    const guest = escHtml(ev.guest || '—');
+    const value = ev.lines.reduce((s,l) => s + Number(l.price_local||0), 0);
+    const paid = ev.lines.some(l => l.paid_at) ? ' · was paid' : '';
+    const n = ev.lines.length;
+    const what = ev.kind === 'guest'
+      ? `<strong>${who}</strong> <span class="ac-removed">deleted</span> guest <strong>${guest}</strong> with ${n} line${n===1?'':'s'}`
+      : `<strong>${who}</strong> <span class="ac-removed">removed</span> <strong>${escHtml(ev.lines[0].item_name||'item')}</strong> from <strong>${guest}</strong>`;
+    const names = ev.lines.slice(0, 6).map(l => escHtml(l.item_name||'item')).join(', ') + (n > 6 ? ` +${n-6} more` : '');
+    const sub = ev.kind === 'guest'
+      ? `${names} · removed ${when(ev.at)}${paid}`
+      : `${escHtml(ev.lines[0].category||'—')} · removed ${when(ev.at)} · added ${escHtml(addedLabel(ev.lines[0].added_at))}${paid}`;
+    return { t: new Date(ev.at), html: `<div class="ac-row ac-row-removed" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="min-width:0">
+        <div class="ac-what">${what}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:1px">${sub}</div>
+      </div>
+      <div style="font-variant-numeric:tabular-nums;font-weight:600;color:var(--muted);text-align:right;white-space:nowrap"><s>${escHtml(cur)} ${value.toFixed(0)}</s></div>
+    </div>` };
+  };
+
+  const addedRows = filtered.map(r => {
     const who = PROFILE_NAMES.get(r.created_by) || 'Unknown';
     const guest = r.camp_guests?.name || '—';
     const edited = r.updated_by && r.updated_by !== r.created_by;
     const editedByName = edited ? (PROFILE_NAMES.get(r.updated_by) || 'someone else') : null;
-    return `<div style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
+    return { t: addedAt(r.added_at), html: `<div class="ac-row" style="display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px${edited?';background:#fdf9ee':''}">
       <div style="min-width:0">
         <div class="ac-what"><strong>${escHtml(who)}</strong> added <strong>${escHtml(r.item_name||'item')}</strong> to <strong>${escHtml(guest)}</strong></div>
         <div style="font-size:10px;color:var(--muted);margin-top:1px">${escHtml(r.category||'—')} · ${when(addedAt(r.added_at))}${edited?` · edited by ${escHtml(editedByName)} ${when(r.updated_at)}`:''}</div>
       </div>
       <div style="font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap">${escHtml(cur)} ${Number(r.price_local||0).toFixed(0)}</div>
-    </div>`;
-  }).join('');
+    </div>` };
+  });
+  // newest first, lines added and lines removed in one list
+  const all = addedRows.concat(removed.map(removedRow)).sort((a,b) => (b.t||0) - (a.t||0));
+  const rows = all.slice(0, 200).map(x => x.html).join('');
 
-  const summary = `<div style="display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--muted)">
+  // «items / total / staff active» = lines on the tabs now; removed lines are counted apart
+  const removedLines = removed.reduce((s,ev) => s + ev.lines.length, 0);
+  const removedValue = removed.reduce((s,ev) => s + ev.lines.reduce((t,l) => t + Number(l.price_local||0), 0), 0);
+  const summary = `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg);font-size:11px;color:var(--muted)">
     <span><strong style="color:var(--navy)">${filtered.length}</strong> items</span> ·
     <span><strong style="color:var(--navy)">${escHtml(cur)} ${Math.round(total).toLocaleString('en-GB')}</strong> total</span> ·
-    <span><strong style="color:var(--navy)">${staffCount}</strong> staff active</span>
+    <span><strong style="color:var(--navy)">${staffCount}</strong> staff active</span>${removedLines ? ` ·
+    <span id="acRemovedSum"><strong class="ac-removed">${removedLines}</strong> removed (${money(removedValue)})</span>` : ''}
   </div>`;
-  const truncNote = filtered.length > 200
-    ? `<div style="padding:10px 14px;text-align:center;color:var(--muted);font-size:11px;font-style:italic">Showing 200 most recent of ${filtered.length}. Narrow the filters to see older rows.</div>`
+  const truncNote = all.length > 200
+    ? `<div style="padding:10px 14px;text-align:center;color:var(--muted);font-size:11px;font-style:italic">Showing 200 most recent of ${all.length}. Narrow the filters to see older rows.</div>`
     : '';
 
   body.innerHTML = summary + rows + truncNote;

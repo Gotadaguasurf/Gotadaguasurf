@@ -194,3 +194,77 @@ test('CT-02: History and This week search keep focus while typing — same input
   await expect(frame.locator('#histList')).toContainText('No closed guests match your search.');
   expect(await kept('#histSearch')).toEqual({ same: true, focused: true, value: 'Closed 12zz' });
 });
+
+// ── CT-05 — lines taken off a tab are visible ────────────────────────────────────────────
+// A removed line is deleted from camp_tab_items; the delete trigger keeps a copy in audit_log
+// (the stub does the same). Activity shows it next to the lines added, with who and when.
+test('CT-05: Activity shows lines removed from a tab (who, what, guest, when, price struck), a deleted guest as one event, and filters apply', async ({ page }) => {
+  test.setTimeout(90_000);
+  const g1 = uuid('9e57', 1); const g2 = uuid('9e57', 2); const gone = uuid('9e57', 9);
+  const ago = (min) => new Date(Date.now() - min * 60000).toISOString();
+  const del = (n, at, row, table = 'camp_tab_items', actor = 'u-host') => ({ id: `seed-${n}`, at, actor_id: actor, actor_email: 'x@example.com', table_name: table, action: 'DELETE', row_id: String(row.id), deleted_row: row });
+  const audit_log = [
+    del(1, ago(10), itemRow(51, g2, 'Cocktail', 'Drinks', 2000, { added_at: '2026-06-08T21:40:00.000Z' })),
+    del(2, ago(60), itemRow(52, gone, 'Shot', 'Drinks', 1000)),
+    del(3, ago(60), itemRow(53, gone, 'T-Shirt M', 'Merch', 9000)),
+    del(4, ago(60), guestRow(9, `Gone ${IMG}`), 'camp_guests'),
+    del(5, ago(30), itemRow(54, g1, `Paid ${IMG}`, 'Drinks', 600, { paid_at: '2026-06-08T10:00:00.000Z' }), 'camp_tab_items', 'u-other'),
+    del(6, ago(5), itemRow(55, g1, 'Other camp', 'Drinks', 700, { location_id: '00000000-0000-4000-8000-00000000abcd' })),
+  ];
+  const { ctl, frame } = await openCampTab(page, {
+    camp_guests: [guestRow(1, 'Guest 1'), guestRow(2, 'Guest 2')],
+    camp_tab_items: [itemRow(1, g1, 'Lion Lager', 'Drinks', 600, { created_by: 'u-host' })],
+    audit_log,
+    platform_profiles: [{ id: 'u-host', full_name: 'Sample Host', email: 'h@example.com' }, { id: 'u-other', full_name: `Other ${IMG}`, email: 'o@example.com' }, { id: 'u1', full_name: 'Owner Test', email: 'u1@example.com' }],
+  });
+  await sub(frame, 'activity');
+  await frame.locator('#acPeriod').selectOption('all');
+  const removed = frame.locator('#acBody .ac-row-removed');
+  await expect(removed).toHaveCount(3);
+  await expect(removed.nth(0)).toContainText('Sample Host removed Cocktail from Guest 2');
+  await expect(removed.nth(0)).toContainText('Drinks · removed 10 min ago · added 8 Jun, 21:40');
+  await expect(removed.nth(0).locator('s')).toHaveText('LKR 2000');
+  await expect(removed.nth(1)).toContainText(`Other ${IMG} removed Paid ${IMG} from Guest 1`);
+  await expect(removed.nth(1)).toContainText('was paid');
+  await expect(removed.nth(2)).toContainText(`Sample Host deleted guest Gone ${IMG} with 2 lines`);
+  await expect(removed.nth(2)).toContainText('Shot, T-Shirt M');
+  await expect(removed.nth(2).locator('s')).toHaveText('LKR 10000');
+  await expect(frame.locator('#acBody')).not.toContainText('Other camp');
+  // the live figures keep meaning the lines on the tabs; removed lines are counted apart
+  await expect(frame.locator('#acBody .ac-row:not(.ac-row-removed)')).toHaveCount(1);
+  await expect(frame.locator('#acBody')).toContainText('1 items');
+  await expect(frame.locator('#acRemovedSum')).toHaveText('4 removed (LKR 12,600)');
+  await expectInert(page, frame, 'activity removed');
+  // filters: category, then staff
+  await frame.locator('#acCat').selectOption('Merch');
+  await expect(removed).toHaveCount(1);
+  await expect(frame.locator('#acRemovedSum')).toHaveText('1 removed (LKR 9,000)');
+  await frame.locator('#acCat').selectOption('all');
+  await frame.locator('#acStaff').selectOption('u-other');
+  await expect(removed).toHaveCount(1);
+  await expect(removed.first()).toContainText('was paid');
+  await frame.locator('#acStaff').selectOption('all');
+
+  // a line removed now with the × on Charge shows up after Refresh
+  await sub(frame, 'charge');
+  await frame.evaluate((id) => selGuest(id), g1);
+  await frame.locator('#tabList .ctr-del').first().click();
+  await expect.poll(() => (ctl.T.audit_log || []).filter(r => r.deleted_row?.item_name === 'Lion Lager').length).toBe(1);
+  await sub(frame, 'activity');
+  await frame.locator('#sub-activity button', { hasText: 'Refresh' }).click();
+  await expect(removed.first()).toContainText('Owner Test removed Lion Lager from Guest 1');
+  await expect(removed.first()).toContainText('removed just now');
+});
+
+test('CT-05: without access to removed lines (or on an error) Activity still shows the lines added', async ({ page }) => {
+  const g1 = uuid('9e57', 1);
+  const { ctl, frame } = await openCampTab(page, {
+    camp_guests: [guestRow(1, 'Guest 1')],
+    camp_tab_items: [itemRow(1, g1, 'Lion Lager', 'Drinks', 600)],
+  });
+  ctl.fail = (t, m) => t === 'audit_log' && m === 'GET';
+  await sub(frame, 'activity');
+  await frame.locator('#acPeriod').selectOption('all');
+  await expect(frame.locator('#acBody .ac-what')).toHaveText(['Unknown added Lion Lager to Guest 1']);
+  await expect(frame.locator('#acRemovedSum')).toHaveCount(0);
+});
