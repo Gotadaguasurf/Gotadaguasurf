@@ -2611,12 +2611,15 @@ async function loadFromSupabase() {
       const PAGE_SIZE = 1000;
       let all = [];
       let from = 0;
+      let cols = BOOKING_COLUMNS;
       for(;;){
         const { data, error } = await client
           .from('bookings')
-          .select(BOOKING_COLUMNS)
+          .select(cols)
           .order('check_in_on', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
+        // the slim read refused (a column renamed, an older API)? read whole rows instead of showing nothing
+        if(error && cols !== '*' && from === 0){ console.warn('[Partners] slim bookings read refused, reading full rows', error); cols = '*'; continue; }
         if(error) throw error;
         if(!data || data.length === 0) break;
         all = all.concat(data);

@@ -273,3 +273,21 @@ test('Partners & Rates rate change: a booking with its own rate (from the Bookin
   expect(errs).toEqual([]);
   await ctx.close();
 });
+
+test('if the database refuses the slim bookings read, the page reads full rows and still shows everything', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, timezoneId: 'Europe/Lisbon' });
+  const page = await ctx.newPage(); const calls = []; const reads = {}; const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await page.clock.setFixedTime(new Date('2026-11-18T10:00:00Z'));
+  await stub(page, { tables: fixture(), calls, reads });
+  // registered after the stub, so it is tried first: refuse any bookings read that is not select=*
+  await page.route(/rest\/v1\/bookings\?/, r => /select=id%2C|select=id,/.test(r.request().url()) && r.request().method() === 'GET'
+    ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ code: 'PGRST100', message: 'failed to parse select parameter' }) }) : r.fallback());
+  await fakeOwnerSession(page);
+  await page.goto('/partners/', { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('#partnerTableBodyCamp tr .pname').first()).toBeVisible({ timeout: 15_000 });
+  expect(await kpi(page, 'Partner gross revenue')).toBe('€2,300.00');
+  expect(reads.urls.some(u => /bookings\?select=\*/.test(u))).toBe(true);
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
