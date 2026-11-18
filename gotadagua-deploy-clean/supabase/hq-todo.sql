@@ -8,7 +8,8 @@
 --                          duplicates, bank debits without a line, lines
 --                          without PDF since Sept, Wild «[pending HQ invoice]»
 --                          rows, recurring lines due, how old each bank
---                          statement is, partner invoices still to issue,
+--                          statement is, partner invoices still to issue
+--                          (rule in supabase/partners-open-invoices.sql),
 --                          month-close checks. Read by the hub («Hoje») and
 --                          the HQ overview.
 --  2. hq_recurring_run()   creates the monthly fixed lines from
@@ -26,6 +27,8 @@
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- 1 ───────────────────────────────────────────────────────────────────────
+-- The partner part (partner_to_issue, partner_waiting_60) needs partner_open_items() from
+-- supabase/partners-open-invoices.sql, which re-creates this same function: run that file after this one.
 create or replace function public.hq_todo()
 returns json
 language plpgsql stable security definer set search_path = public as $$
@@ -33,8 +36,15 @@ declare
   v json; v_since date := '2026-09-01'; v_today date := current_date;
   v_month text := to_char(current_date, 'YYYY-MM');
   v_prev  text := to_char(current_date - interval '1 month', 'YYYY-MM');
+  v_po json;
 begin
   if auth.uid() is not null and not public.is_hq_member() then raise exception 'HQ member required' using errcode = '42501'; end if;
+  -- who owes us (supabase/partners-open-invoices.sql): a problem there must not take the other chips down
+  begin
+    v_po := public.partner_open_items();
+  exception when others then
+    v_po := json_build_object('error', sqlerrm);
+  end;
   select json_build_object(
     'generated_at', now(),
     'month', v_month, 'prev_month', v_prev, 'since', v_since,
@@ -66,18 +76,11 @@ begin
                          and (r.last_created_on is null or to_char(r.last_created_on, 'YYYY-MM') < v_month)),
     'bank_last', (select json_agg(json_build_object('bank', bank, 'company', paying_company, 'last', mx, 'days', v_today - mx)) from (
         select bank, paying_company, max(movement_date) mx from hq_bank_movements group by 1, 2) d),
-    -- partner + month with bookings (net > 0, commission > 0, month ended) and no partner invoice yet
-    'partner_to_issue', (select json_agg(json_build_object('partner', partner_name, 'month', month_key, 'net', net, 'commission', comm) order by month_key desc, net desc) from (
-        select b.partner_name, b.month_key, round(sum(b.net_amount)::numeric, 2) net, round(sum(coalesce(b.commission_amount, 0))::numeric, 2) comm
-          from bookings b
-         where b.partner_name is not null and b.net_amount > 0
-           and b.month_key < v_month and b.month_key >= to_char(v_today - interval '4 months', 'YYYY-MM')
-           and lower(b.partner_name) not in ('bpi', 'caixa geral de depositos', 'caixa gestão de activos e pensões', 'surfer girls power',
-                                             'enjoy surf project', 'surf stories poland', 'solo campamentos', 'ocean adventure', 'juvigo')   -- Juvigo: advances + 15 % settlement, not monthly invoices
-         group by 1, 2
-        having sum(coalesce(b.commission_amount, 0)) > 0
-           and not exists (select 1 from partner_invoices pi join partners p on p.id = pi.partner_id
-                            where pi.month_key = b.month_key and lower(p.name) = lower(b.partner_name))) e),
+    -- company + closed month that is not Paid and is worth more than its invoices (same rule as the Partners page)
+    'partner_to_issue', v_po->'to_invoice',
+    -- issued partner invoices unpaid for more than 60 days (months «on hold» left out)
+    'partner_waiting_60', (select json_agg(w) from json_array_elements(v_po->'waiting') w where (w->>'days')::int > 60 and not (w->>'hold')::boolean),
+    'partner_error', v_po->>'error',
     'month_close', json_build_object('month', v_prev,
         'checks', (select json_agg(json_build_object('item', item, 'done', done_at is not null)) from hq_month_checks where month_key = v_prev),
         'no_pdf', (select count(*) from hq_invoices i where i.deleted_at is null and public.hq_doc_status(i) = 'falta'
