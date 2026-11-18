@@ -197,6 +197,44 @@ gunzip -c daily-2026-05-22_0300.sql.gz | docker exec -i $(docker ps -lq) psql -U
 docker exec -it $(docker ps -lq) psql -U postgres
 ```
 
+### Option D — Restore from the nightly JSON copy (Storage bucket «backups»)
+
+The `daily-backup` Edge Function writes a second, independent copy every night at 03:00 UTC to the
+private Storage bucket `backups`: `daily/<day>/` (30 days), `weekly/<ISO week>/` (90 days) and
+`monthly/<month>/` (forever), one `<table>.json.gz` per table plus `_manifest.json` (rows per table,
+and whether each table is complete). Folders before 18 Nov 2026 hold `<table>.json` and, for the big
+tables, only the first 1,000 rows (audit AUT-01) — check the manifest's `tables_incomplete`.
+
+1. Supabase → Storage → `backups` → open the day → download the files you need (or the whole folder)
+   into one local folder, e.g. `~/Downloads/2026-11-18/`.
+2. Make the SQL — this never touches a database:
+   ```bash
+   node scripts/restore-backup.js ~/Downloads/2026-11-18 --tables hq_invoices,ledger_entries --out restore.sql
+   ```
+   It prints the rows per table and a WARNING for anything the manifest marked incomplete.
+   By default it only ADDS rows that are missing (`on conflict do nothing`); `--replace` overwrites
+   existing rows with the backup (tables with an `id` column only). Triggers are off for the restore
+   (`session_replication_role = replica`) so ledger mirrors and audit lines are not written twice;
+   `--keep-triggers` leaves them on.
+3. Read `restore.sql`. Run it first on a scratch project (Option B), check the rows, then in the
+   production SQL editor. It is one transaction: an error changes nothing.
+
+Not in the JSON copy: `auth.users` (logins — Supabase's own daily backups, Pro plan, ~7 days), the
+token tables (`gmail_account`, `drive_account`, `mail_ingest_account`, `accountant_portal_tokens`,
+`password_reset_requests`), Storage files (CRM attachments) and `audit_log` older than 35 days in that
+day's file (the monthly files overlap).
+
+---
+
+## Where the workflow must live (it has never run)
+
+GitHub runs workflows only from `<repository root>/.github/workflows/`. The repository root is the folder
+above `gotadagua-deploy-clean/`, so this workflow is invisible to GitHub («workflow not found on the default
+branch», audit 18 Nov 2026). To switch it on: move it up one level
+(`git mv gotadagua-deploy-clean/.github .github` at the repository root), set the two secrets above, and press
+**Run workflow** once. The repository is public: the workflow therefore skips the GitHub-artifact copy
+(anyone with a GitHub login could download it) and keeps the Drive copy only.
+
 ---
 
 ## Manual trigger (force a backup right now)
