@@ -5,6 +5,9 @@
 //  the old category list); anything that parses invoices imports from here.
 // ════════════════════════════════════════════════════════════════════════════
 
+import './lib-globals.ts'
+import './lib/credit-notes.js'   // lib/credit-notes.js (synced copy): the one «is this a credit note» rule
+
 export const PARSE_MODEL = 'claude-sonnet-4-5'
 
 export const CATEGORIES = ['Food', 'Drinks', 'Salary', 'Benefits', 'Taxes', 'Rent', 'Utilities', 'Services', 'Insurances',
@@ -16,14 +19,15 @@ export const EXTRACTION_PROMPT = `You are an invoice-parsing assistant for a sur
 Schema:
 {
   "doc_type": "invoice | receipt | credit_note | proforma | statement | report | other",
-  "is_cancelled": true/false — true when the document says Anulado, Anulada, Sem efeito, Cancelled, Void, or is a credit note that cancels an invoice,
+  "is_cancelled": true/false — true ONLY when this document itself is void (it says Anulado, Anulada, Sem efeito, Cancelled, Void). A credit note is NOT cancelled: it is a valid document with doc_type=credit_note and is_cancelled=false,
+  "credits_invoice_number": "credit notes only: the number of the invoice it corrects or cancels, exactly as printed (e.g. FT 2026/123), else null",
   "invoice_date": "YYYY-MM-DD or null",
   "company": "supplier name in lowercase, strip Lda/SA/SARL/Ltda/Unipessoal suffixes",
   "supplier_nif": "supplier tax number if present (Portuguese NIF, Moroccan ICE, etc.), or null",
   "buyer_name": "the client/customer name on the document, or null",
   "buyer_nif": "the client/customer tax number (NIF/VAT) on the document, digits only, or null",
   "description": "one-line description of what was purchased/paid, or null",
-  "amount": "numeric total including tax, no currency symbol",
+  "amount": "numeric total including tax, no currency symbol (a credit note: the total as a positive number)",
   "total_vat": "numeric VAT amount if shown, else null",
   "currency": "EUR | MAD | LKR | USD | GBP — inferred from currency symbol or country",
   "invoice_number": "invoice reference number exactly as printed (e.g. FT 2026/123, FR ATSIRE01FR/45), or null",
@@ -42,6 +46,7 @@ Rules:
 - Party/event suppliers (DJs, sound/light rental, event production, video for the Wednesday party) → location_hint=wild-wednesday, category_hint=Other.
 - "Fatura-Recibo" documents issued through the AT portal (Autoridade Tributária, recibos verdes) are freelancer receipts: category_hint=Salary, doc_type=receipt.
 - Drinks suppliers (beer, wine, coffee, soft drinks) → Drinks, never Food.
+- Nota de crédito, documento retificativo, credit note, avoir, or a number starting with NC / NCC / NCRTP / ADC → doc_type=credit_note (never invoice, never is_cancelled).
 - Bank/card statements, delivery notes, order confirmations, POS daily reports ("Sistema de MANJAR"), payslips, tax forms → doc_type=statement/report/other, never invoice.
 - Amount uses . as decimal separator and no thousand separators.
 - If a value is unreadable or absent, return null (except amount, which must be a number when any total is visible).
@@ -57,6 +62,7 @@ export interface Parsed {
   buyer_name: string | null
   buyer_nif: string | null
   description: string | null
+  credits_invoice_number?: string | null
   amount: number | null
   total_vat: number | null
   currency: string | null
@@ -66,6 +72,21 @@ export interface Parsed {
   payment_type: string | null
   category_hint: string | null
   location_hint: string | null
+}
+
+// One clear credit-note signal for every caller (18 Nov 2026): doc_type = 'credit_note', never «cancelled»,
+// amount positive (whoever stores it makes it negative). The reader used to mark a credit note as
+// is_cancelled, and mail-ingest then skipped it as «documento anulado» (12 Nov 2026).
+// deno-lint-ignore no-explicit-any
+const CN = (globalThis as any).CreditNotes
+export function isCreditNote(parsed: Parsed | null): boolean { return !!(CN && CN.isCreditNote(parsed)) }
+export function normaliseCreditNote(parsed: Parsed): Parsed {
+  if (!isCreditNote(parsed)) return parsed
+  parsed.doc_type = 'credit_note'
+  parsed.is_cancelled = false
+  if (typeof parsed.amount === 'number') parsed.amount = Math.abs(parsed.amount)
+  if (typeof parsed.total_vat === 'number') parsed.total_vat = Math.abs(parsed.total_vat)
+  return parsed
 }
 
 export function mediaTypeFor(filename: string, fallback = 'application/octet-stream'): string {
@@ -109,5 +130,6 @@ export async function parseInvoice(base64: string, mediaType: string, apiKey: st
   if (parsed.category_hint === 'Utulities') parsed.category_hint = 'Utilities'
   if (parsed.buyer_nif) parsed.buyer_nif = String(parsed.buyer_nif).replace(/\D/g, '') || null
   if (parsed.supplier_nif) parsed.supplier_nif = String(parsed.supplier_nif).replace(/\s/g, '')
+  normaliseCreditNote(parsed)
   return { parsed, usage: out.usage || null, model: PARSE_MODEL }
 }
