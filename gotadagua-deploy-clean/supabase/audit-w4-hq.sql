@@ -12,11 +12,13 @@
 --                            page (live 18 Nov: 92 → 88, the contabilista shows 88).
 --    A2 hq_my_tasks()        PRT-06 / SEAM-06 / AUT-06: the daily revenue report gets its own row
 --                            (Overdue after a day without a run; Due with the things to decide:
---                            unknown location, held rows, new partner, commission differences);
+--                            unknown location, held rows, new partner, foreign-currency amounts);
 --                            the hourly camp runs no longer hide it; one row for emailed invoices
 --                            that failed to import (30 days, the café's export_cart PDFs left out).
 --                            Live 18 Nov: «Location not recognised: Surf Camp Ahamgama · 5 commission
---                            differences»; «1 emailed invoice failed to import: Invoice-EPP24GVE-0009.pdf (22 Oct)».
+--                            differences» before this change; the commission differences repeat every day, so they
+--                            stay in the run's notes and are not a warning; «1 emailed invoice failed to import: <file> (22 Oct)».
+--                            A failed email is listed for 30 days (there is no «handled» button yet).
 --    A3 hq_bank_unmatched(), hq_bank_unmatched_co()
 --                            HQ-17: the member guards that live in the database but never reached the
 --                            repo. Identical to the live definitions read on 18 Nov (a no-op live);
@@ -195,7 +197,9 @@ begin
 
       union all
       -- Bookinglayer daily revenue report (PRT-06 / SEAM-06): last run, its error, and what it asks to decide
-      -- (a location it did not recognise, held rows, a new partner, commission differences, foreign currency).
+      -- (a location it did not recognise, held rows, a new partner, foreign currency). The commission differences
+      -- (20 % computed vs Bookinglayer's own total) repeat every day and would keep the card amber for ever:
+      -- they stay in the run's notes and are not a warning here.
       select 31, 'bl_revenue', 'water-movements', 'daily',
              null, null, r.created_at,
              case when r.status in ('error', 'refused') then coalesce(nullif(r.error, ''), r.status) end,
@@ -207,7 +211,6 @@ begin
                     then jsonb_array_length(r.changes->'held') || ' held' end,
                case when jsonb_array_length(coalesce(r.changes->'newPartners', '[]'::jsonb)) > 0
                     then 'New partner: ' || (select string_agg(coalesce(x->>'name', x#>>'{}'), ', ') from jsonb_array_elements(r.changes->'newPartners') x) end,
-               (select nullif(count(*), 0) || ' commission differences' from jsonb_array_elements_text(coalesce(r.changes->'notes', '[]'::jsonb)) n where n ilike '%commission%'),
                (select nullif(count(*), 0) || ' foreign-currency amounts to check' from jsonb_array_elements_text(coalesce(r.changes->'notes', '[]'::jsonb)) n where n ilike '%euro value%')
              ), '')
         from (select 1) one
@@ -274,7 +277,8 @@ grant execute on function public.hq_bank_unmatched_co(text, date, date) to authe
 -- B1 HQ-02 / DATA-01: Sri Lanka bookings saved as location «Unknown» by the revenue import before the
 --    «Ahamgama» spelling was recognised. 18 Nov: 16 rows (11,604.87 EUR, November 2026), package
 --    «Surf Camp Ahangama…». The one «Unknown» of January (190.00, no package) is left as it is.
---    The fixed importer only reaches these rows once the mail-ingest Edge Function is deployed.
+--    Run only if the next 08:15 revenue run (after the wave-1 deploy of mail-ingest) still leaves them «Unknown»:
+--    the fixed importer may correct them by itself.
 -- select count(*) from bookings where location = 'Unknown' and package ilike 'Surf Camp Ahangama%';   -- expect 16
 -- update bookings set location = 'Surf Camp Ahangama'
 --  where location = 'Unknown' and package ilike 'Surf Camp Ahangama%';

@@ -2042,7 +2042,8 @@ async function saveInvoice(){
   } else {
     const r = cnForm.on ? { data: await sb.from('hq_invoices').insert(payload), rows: 1, split: null } : await insertInvoiceRows(payload);
     error = r.data.error; savedRows = r.rows; splitInfo = r.split;
-    if (!error && !cnForm.on) linkErr = await linkLaunchedDebit((r.data.data || []).map(x => x.id));
+    // a line saved as a duplicate is not counted, so it never takes the debit (HQ-05)
+    if (!error && !cnForm.on && !is_duplicate) linkErr = await linkLaunchedDebit((r.data.data || []).map(x => x.id));
   }
   if (error) { toast('invToast','err',"Couldn't save: "+error.message); btn.disabled = false; return; }
   // a credit note meets its refund on the statement when there is exactly one credit of that amount (±20 days)
@@ -4490,6 +4491,9 @@ async function quickUpdateInvoice(id, field, value, el){
 
   const { error } = await sb.from('hq_invoices').update(payload).eq('id', id);
   if (error) { alert('Update failed: '+error.message); return; }
+  // the rows kept for filtering (HQ-08) carry the new value too, so the next search does not draw the old one
+  const cached = (window.__invListCache?.rows || []).find(r => r.id === id);
+  if (cached) Object.assign(cached, payload);
 
   // Green flash on the changed cell so the user sees the write landed.
   if (el && el.parentElement) {
@@ -4890,13 +4894,11 @@ async function deleteInvoice(id){
   if (uErr) alert('Archived, but its bank debit is still linked to it: ' + uErr.message);
   renderInvoiceList();
 }
-// An archived line lets go of its bank debit (audit DATA-08), so the debit shows again as «without a line» instead of
-// pointing at a line nobody sees. The audit snapshot keeps the old link for a restore.
+// An archived line no longer points at a bank debit (audit DATA-08); the audit snapshot keeps the old link.
+// The debit's own hq_invoice_id is left alone: freed, the next statement import would create a new line for it.
 async function unlinkArchivedFromBank(ids){
-  const a = await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).in('hq_invoice_id', ids);
-  if (a.error) return a.error;
-  const b = await sb.from('hq_invoices').update({ bank_movement_id: null }).in('id', ids).not('bank_movement_id', 'is', null);
-  return b.error || null;
+  const { error } = await sb.from('hq_invoices').update({ bank_movement_id: null }).in('id', ids).not('bank_movement_id', 'is', null);
+  return error || null;
 }
 
 async function restoreInvoice(id){

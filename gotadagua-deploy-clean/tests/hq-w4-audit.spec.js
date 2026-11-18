@@ -326,7 +326,7 @@ test('HQ-21 «no invoice by nature» is a prefix match, exactly like hq_doc_stat
 });
 
 // ── HQ-23 / DATA-08 ──────────────────────────────────────────────────────
-test('DATA-08 archiving a line lets go of its bank debit (both link directions); HQ-23 a receipt copy that fails is not shown as copied', async ({ page }) => {
+test('DATA-08 an archived line stops pointing at its bank debit; HQ-23 a receipt copy that fails is not shown as copied', async ({ page }) => {
   const writes = [];
   await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
     const req = route.request(); const url = decodeURIComponent(req.url()); const m = req.method();
@@ -346,7 +346,7 @@ test('DATA-08 archiving a line lets go of its bank debit (both link directions);
   page.on('dialog', d => d.accept());
   await page.evaluate(() => deleteInvoice('i9'));
   expect(writes.some(w => /^hq_invoices\?id=eq\.i9 .*deleted_at/.test(w))).toBe(true);
-  expect(writes).toContain('hq_bank_movements?hq_invoice_id=in.(i9) {"hq_invoice_id":null}');
+  expect(writes.some(w => w.startsWith('hq_bank_movements'))).toBe(false);   // the debit keeps its link: freed, the import would create a new line
   expect(writes).toContain('hq_invoices?id=in.(i9)&bank_movement_id=not.is.null {"bank_movement_id":null}');
   const shown = await page.evaluate(async () => {
     FECHO.rows = [
@@ -446,4 +446,88 @@ test('PRT-06 / SEAM-06 / AUT-06 My tasks: the revenue report has its own card (D
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.screenshot({ path: `${SHOTS}/my-tasks-w4-1280.png`, fullPage: true });
   }
+});
+
+// ── HQ-08 follow-up / HQ-05 follow-up ────────────────────────────────────
+test('HQ-08 an inline edit updates the rows kept for filtering; HQ-05 a line saved as a duplicate never takes the bank debit', async ({ page }) => {
+  const writes = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = decodeURIComponent(req.url()); const m = req.method();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_invoice_categories')) return json([{ id: 'c-eq', name: 'Equipment & maintenance', sort_order: 1, is_personal: false, active: true }]);
+    if (m === 'PATCH') { writes.push(url.replace(/^.*\/rest\/v1\//, '')); return json([]); }
+    if (url.includes('/rest/v1/hq_invoices') && m === 'POST') return json([{ id: 'new1' }]);
+    // findExistingExpense: the same invoice number is already in the app → the new line is a duplicate
+    if (url.includes('/rest/v1/hq_invoices') && url.includes('invoice_number=eq.FT')) return json([{ id: 'old1', invoice_date: '2026-09-15', company: 'leroy', amount_eur: 274.19, invoice_number: 'FT 1' }]);
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof quickUpdateInvoice === 'function');
+  const notes = await page.evaluate(async () => {
+    window.__invListCache = { key: 'k', rows: [{ id: 'a', payment_type: 'Card' }], bankByInv: new Map() };
+    await quickUpdateInvoice('a', 'payment_type', 'Cash', null);
+    return window.__invListCache.rows[0].payment_type;
+  });
+  expect(notes).toBe('Cash');
+  await page.evaluate(async () => {
+    window.__launchBankId = 'bk1'; window.__editingInvoiceId = null;
+    $('inv_location').value = 'portugal'; $('inv_payment').value = $('inv_payment').options[1].value;
+    const c = $('inv_category'); c.value = [...c.options].find(o => o.value)?.value;
+    $('inv_date').value = '2026-09-15'; $('inv_company').value = 'leroy'; $('inv_amount').value = '274.19'; $('inv_number').value = 'FT 1';
+    await saveInvoice();
+  });
+  expect(await page.evaluate(() => document.querySelector('#invToast')?.textContent || '')).toMatch(/Expense saved/);
+  expect(writes.filter(w => w.startsWith('hq_bank_movements'))).toEqual([]);
+});
+
+// ── screenshots of the visible changes (only with W4_SHOTS=<folder>) ─────
+test('w4 screenshots: «No camp set», Month close reasons, the pending-items error, the accountant page line', async ({ page }) => {
+  test.skip(!SHOTS, 'screenshots only on demand');
+  const rollup = {
+    bookings: [{ month_key: '2026-11', location: 'Portugal', slug: 'portugal', direct: true, total: 1000, net_amount: 1000, n: 1 },
+               { month_key: '2026-11', location: 'Unknown', slug: null, direct: true, total: 11604.87, net_amount: 11604.87, n: 16 }],
+    invoices: [], ledger: [],
+    pnl: [{ slug: 'portugal', month: '2026-11', rev_book: 1000, rev_ops: 0, exp_local: 0, exp_hq: 0 }, { slug: null, month: '2026-11', rev_book: 11604.87, rev_ops: 0, exp_local: 0, exp_hq: 0 }],
+  };
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json(rollup);
+    if (url.includes('/rest/v1/rpc/hq_todo')) return json({ code: 'XX000', message: 'statement timeout' }, 500);
+    if (url.includes('/rest/v1/rpc/accountant_portal')) return json({ label: 'Teste', generated_at: '2026-11-18T20:00:00Z', extrato_ate: '2026-11-17', folders: {}, months: [{ month_key: '2026-10', linhas: 220, com_doc: 190, isentas: 5, em_falta: 25, total_eur: 50000, falta_eur: 8298.58 }] });
+    if (url.includes('/rest/v1/hq_bank_movements')) return json([
+      { id: 'b1', bank: 'santander', movement_date: '2026-09-28', description: 'TRF PRESTACAO EMPRESTIMO', amount: -703.13, currency: 'EUR', kind: 'expense', notes: '[financiamento — linha COVID]' },
+      { id: 'b2', bank: 'santander', movement_date: '2026-09-10', description: 'LOTE TRF CRED SEPA+ pag mes agosto', amount: -230.12, currency: 'EUR', kind: 'expense', notes: null },
+      { id: 'b3', bank: 'santander', movement_date: '2026-09-15', description: 'COMPRA LEROY MERLIN', amount: -74.19, currency: 'EUR', kind: 'expense', notes: null },
+    ]);
+    return json([]);
+  });
+  const both = async (name, locator) => {
+    for (const [w, h] of [[390, 844], [1280, 800]]) {
+      await page.setViewportSize({ width: w, height: h });
+      if (locator) await page.locator(locator).first().scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${SHOTS}/${name}-${w}.png` });
+    }
+  };
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => /No camp set/.test(document.querySelector('#overviewBody')?.textContent || ''), null, { timeout: 15000 });
+  await both('overview-chip-error', '.health-strip');
+  await both('overview-no-camp-set', 'tr:has-text("No camp set")');
+  await page.evaluate(() => { document.querySelector('#pnlGrid')?.closest('details')?.setAttribute('open', ''); return renderPnl(); });
+  await page.waitForFunction(() => /No camp set/.test(document.querySelector('#pnlGrid')?.textContent || ''), null, { timeout: 10000 });
+  await both('pnl-no-camp-set', '#pnlGrid');
+  await page.evaluate(() => switchTab('fecho'));
+  await page.selectOption('#fecho_mes', '2026-09');
+  await page.waitForFunction(() => [...document.querySelectorAll('#fechoBanks .hq-pill')].some(x => /Santander/.test(x.textContent)), null, { timeout: 15000 });
+  await page.evaluate(() => [...document.querySelectorAll('#fechoBanks .hq-pill')].find(x => /Santander/.test(x.textContent)).click());
+  await page.waitForFunction(() => /Financing \(see note\)/.test(document.querySelector('#fechoBanks')?.textContent || ''), null, { timeout: 15000 });
+  await both('month-close-reasons', '#fechoBanks');
+  await page.goto('/contabilista/?k=test', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => /extratos do banco até/.test(document.body.textContent), null, { timeout: 15000 });
+  await both('contabilista-header', null);
 });
