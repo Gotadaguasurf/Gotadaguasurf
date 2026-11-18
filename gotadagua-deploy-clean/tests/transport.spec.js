@@ -589,6 +589,8 @@ test('trips: a transfer without flight or time has «Ask guest» — WhatsApp to
   expect(text).toContain("I'm Francisco, the manager of *Gota Dagua Surf Camp Sri Lanka*.");
   expect(text).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);                                         // no emoji (wa.me shows «?» on desktop)
   await expect(page.locator('.tr-day').first().locator('.tr-row').filter({ hasText: 'Beliz Kuyumcuoglu' })).toContainText('asked');
+  // kept in the browser's real storage, so it survives a reload (the hub shadows `localStorage` with an in-memory map — CH-13)
+  expect(await page.evaluate(() => Object.keys(JSON.parse(window.localStorage.getItem('tr-asked-v1') || '{}')).length)).toBe(1);
   expect(errors).toEqual([]);
 });
 

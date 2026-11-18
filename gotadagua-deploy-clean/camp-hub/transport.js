@@ -1099,7 +1099,9 @@
   // Opens WhatsApp to the GUEST (not the driver) with a short question. The app
   // cannot see the reply: Francisco types the answer into the trip.
   const ASK_KEY = 'tr-asked-v1';
-  function askedMap() { try { return JSON.parse(localStorage.getItem(ASK_KEY) || '{}') || {}; } catch (_) { return {}; } }
+  // The browser's real storage (window.localStorage), as cash-count.js does: the hub page shadows the global
+  // `localStorage` with an in-memory map, so the «asked <day>» mark was lost on every reload (audit CH-13).
+  function askedMap() { try { return JSON.parse(window.localStorage.getItem(ASK_KEY) || '{}') || {}; } catch (_) { return {}; } }
   function askedOn(id) { return askedMap()[id] || ''; }
   // Who signs the question to the guest (Miguel, 13 Nov). No emoji: WhatsApp's wa.me link shows
   // some of them as «?» on desktop.
@@ -1115,7 +1117,7 @@
   function ask(id) {
     const t = TR.trips.find(x => x.id === id); if (!t) return;
     window.open(GT.whatsappUrl(t.guest_phone || '', askText(t)), '_blank', 'noopener');
-    try { const m = askedMap(); m[id] = cToday(); localStorage.setItem(ASK_KEY, JSON.stringify(m)); } catch (_) {}
+    try { const m = askedMap(); m[id] = cToday(); window.localStorage.setItem(ASK_KEY, JSON.stringify(m)); } catch (_) {}
     say(t.guest_phone ? `WhatsApp opened for ${t.guest_names || 'the guest'} — type the answer into the transfer` : 'No phone for this guest — pick the chat in WhatsApp');
     render();
     try { if (window.WeekUI && typeof window.WeekUI.render === 'function') window.WeekUI.render(); } catch (_) {}
