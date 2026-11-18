@@ -9758,7 +9758,8 @@ function openExpModal(type,id=null,preset=null){
     document.getElementById('em_amount').value = entry.amountLocal || entry.amount || '';
   }
   updateCurrencyUi('em',type);
-  syncFxRateForPrefix('em');
+  // A new line takes the day rate; an existing one shows the rate it was saved with (a date change re-stamps it, CH-06).
+  if(!entry) syncFxRateForPrefix('em');
   document.getElementById('expDeleteBtn').style.display=id?'inline-flex':'none';
   document.getElementById('expSaveBtn').textContent=id?'Save changes':'Save';
   openOv('expOv');
@@ -9785,11 +9786,21 @@ async function __saveExpenseRun(){
     toast(`Choose which ${category==='Tours'?'tour':'transport item'} this is for`);
     return;
   }
-  await syncFxRateForPrefix('em');
-  let payload=buildLedgerPayload('em',expModalType,editingLedgerId||hubFailedEntryId('ledger modal save')||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
-  if(!payload){toast('Date and amount required');return;}
-  if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
-  payload=await enrichLedgerEntryFx(payload);
+  // Editing a line without touching its date, amount or currency keeps its FX rate and its euro value: a text edit
+  // used to fetch the day rate again and rewrite the EUR of hand-typed «received ÷ sent» rows (audit CH-06).
+  const _prevEntry=editingLedgerId?(S.ledger||[]).find(x=>x&&x.id===editingLedgerId):null;
+  const _sameMoney=p=>!!(_prevEntry&&p&&p.date===_prevEntry.date&&String(p.currency||'')===String(_prevEntry.currency||'')
+    &&Number(p.amountLocal||0)===Number(_prevEntry.amountLocal||0)&&Number(_prevEntry.fxRate)>0);
+  let payload=_prevEntry?buildLedgerPayload('em',expModalType,editingLedgerId):null;
+  if(_sameMoney(payload)){
+    payload=normalizeLedgerEntry({...payload,fxRate:Number(_prevEntry.fxRate),amount:Number(_prevEntry.amount)});
+  }else{
+    await syncFxRateForPrefix('em');
+    payload=buildLedgerPayload('em',expModalType,editingLedgerId||hubFailedEntryId('ledger modal save')||('e'+Date.now()+Math.random().toString(36).slice(2,6)));
+    if(!payload){toast('Date and amount required');return;}
+    if(!editingLedgerId&&!confirmNotRepeated(payload)) return;
+    payload=await enrichLedgerEntryFx(payload);
+  }
   // A cash withdrawal is ONE row ('ATM Withdrawal': bank −, cash +) — it is
   // saved like any other entry (Miguel, 11 Nov 2026). Old data may still
   // hold a withdrawal as a pair («Out of bank» + «Into cash», same day and
