@@ -165,3 +165,24 @@ test('Partners & Rates save: stored records are never reset to defaults or re-ac
   expect(errs).toEqual([]);
   await ctx.close();
 });
+
+// ── PRT-11 + the wave-4 SQL file ────────────────────────────────────────────
+test('contact names: the modal says they cannot be stored while the column is missing, and is quiet once it exists', async ({ browser }) => {
+  for (const contactCol of [false, true]) {
+    const { ctx, page } = await openPartners(browser, { tables: fixture({ contactCol }) });
+    await page.evaluate(() => window.openSettings());
+    await expect(page.locator('#contactColHint')).toBeVisible({ visible: !contactCol });
+    await ctx.close();
+  }
+});
+
+test('audit-w4-partners.sql: schema only runs, every data fix is commented with its before-count, nothing for anon/public', () => {
+  const sql = require('fs').readFileSync(require('path').join(__dirname, '..', 'supabase', 'audit-w4-partners.sql'), 'utf8');
+  const live = sql.split('\n').filter(l => !/^\s*--/.test(l)).join('\n');
+  expect(live).toMatch(/alter table public\.partners add column if not exists contact_name text;/);
+  expect(live).not.toMatch(/\b(update|delete|insert|truncate|drop)\b/i);
+  expect(live).not.toMatch(/grant[^;]*\bto\s+(anon|public)\b/i);
+  const fixes = sql.split('\n').filter(l => /^--\s+update /.test(l));
+  expect(fixes.length).toBeGreaterThanOrEqual(2);
+  expect((sql.match(/-- expect \d+/g) || []).length).toBeGreaterThanOrEqual(fixes.length);
+});

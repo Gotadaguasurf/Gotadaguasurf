@@ -305,6 +305,7 @@ body{overflow-x:hidden}
       <div class="settings-section">
         <div class="settings-section-title">Partner Commission Rates</div>
         <p style="font-size:12px;color:var(--muted);margin-bottom:14px">Edit commission % and money flow per partner. <strong style="color:var(--navy)">They pay us</strong> = partner collects from guest and sends us the net amount. <strong style="color:var(--navy)">We pay them</strong> = we collect from guest and owe them their commission.</p>
+        <p class="hint" id="contactColHint" style="display:none;font-size:12px;color:var(--amber-text);margin-bottom:10px">Contact names can't be stored yet: what you type in «Contact Name» is used until the page reloads, then lost.</p>
         <div id="partnerRatesList"></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-s" onclick="addPartnerRow(&#39;surfcamp&#39;)">Add surf camp partner</button><button class="btn btn-s" onclick="addPartnerRow(&#39;surfschool&#39;)">Add surf school partner</button></div>
       </div>
@@ -2201,6 +2202,8 @@ function renderSettingsModal() {
   ratesHTML += renderRows('kids_camp') || `<div style="font-size:12px;color:var(--muted);padding:10px 12px 18px">No kids camp partners yet.</div>`;
 
   document.getElementById('partnerRatesList').innerHTML = ratesHTML;
+  // supabase/audit-w4-partners.sql adds partners.contact_name; until then say so instead of losing it silently (PRT-11)
+  const cHint = document.getElementById('contactColHint'); if(cHint) cHint.style.display = (__cloudMode === 'cloud' && !partnersHaveContactCol) ? '' : 'none';
   document.getElementById('saveNotice').classList.remove('show');
 }
 
