@@ -171,7 +171,8 @@
   //   parse (lib/bl-report.js) → prices from /prices → planTrips (merge, never blank; Sri Lanka never touches a
   //   trip of an earlier day; a paid trip is never changed) → planGuests → the arguments of camp_trips_import.
   // Plus the window guard: future, unpaid trips of a booking that left the report while its check-out is inside the
-  // window are cancelled as «bookinglayer» (the reason an import uses, so the trip comes back if the booking returns).
+  // window are put on hold with a question (out.hold, applied by reports.ts after the import) — or, only with
+  // cancel_vanished on, cancelled as «bookinglayer» (the reason an import uses, so the trip comes back if the booking returns).
   // o = { text, fileName, slug, appTrips, appGuests, catalog, now ('YYYY-MM-DDTHH:MM' camp time), receivedYmd,
   //       cancelVanished (default false — the camp hub's import never cancels them; bl_report_settings.cancel_vanished), vanishCap }
   const LIVE = ['planned', 'sent', 'confirmed'];
@@ -218,29 +219,46 @@
     // Week asks «cancelled?» only for a stored guest whose check-out is inside the report window.
     guestPlan.wouldDrop = guestPlan.wouldDrop.filter(a => insideWindow(a.check_out, win));
     // ── Vanished bookings (window guard) ──
-    const refs = new Set(parsed.refs_active);
-    const nowMin = now.slice(11, 16);
-    const future = a => a.trip_date > today || (a.trip_date === today && (a.trip_time || '23:59') > nowMin);
-    const vanishCands = appTrips.filter(a => (a.kind === 'airport_arrival' || a.kind === 'airport_departure') && a.source === 'bookinglayer' && a.booking_ref
-      && LIVE.includes(a.status) && !a.payment_entry_id && !refs.has(a.booking_ref));
-    const vanish = vanishCands.filter(a => insideWindow(a.booking_checkout, win) && future(a));
-    const outside = vanishCands.filter(a => !insideWindow(a.booking_checkout, win) && future(a));
+    const V = vanished(appTrips, parsed.refs_active, win, now);
+    const vanish = V.inside, outside = V.outside;
     const vanishRefs = [...new Set(vanish.map(a => a.booking_ref))];
-    const cap = o.vanishCap != null ? o.vanishCap : Math.max(3, Math.ceil(refs.size * 0.15));
-    let vanishHeld = '';
-    if (o.cancelVanished !== true && vanish.length) vanishHeld = 'cancelling vanished bookings is switched off (bl_report_settings.cancel_vanished) — listed only';
-    else if (vanishRefs.length > cap) vanishHeld = `${vanishRefs.length} bookings left the report at once (more than ${cap}) — nothing cancelled, check the report`;
+    const cap = o.vanishCap != null ? o.vanishCap : vanishCap(parsed.refs_active.length);
+    // Many bookings leaving at once is a broken file, not cancellations: nothing cancelled and nothing held (a held trip
+    // stays out of «Send the whole day»). Otherwise, with cancelling switched off (the default), the trips are put on hold
+    // with a question for the camp — never cancelled automatically (audit 18 Nov 2026, WEEK-03).
+    let vanishHeld = ''; let hold = [];
+    if (vanishRefs.length > cap) vanishHeld = `${vanishRefs.length} bookings left the report at once (more than ${cap}) — nothing cancelled or held, check the report`;
+    else if (o.cancelVanished !== true && vanish.length) { vanishHeld = 'cancelling vanished bookings is switched off (bl_report_settings.cancel_vanished) — put on hold with a question'; hold = vanishHolds(vanish, today); }
     const merges = (plan.merge || []).map(m => ({ survivor: m.survivor.id, patch: m.patch, others: m.others.map(x => ({ id: x.id, needs_resend: ['sent', 'confirmed'].includes(x.status) })) }));
     const rpc = {
       p_export_date: [parsed.export_date, today].filter(Boolean).sort().pop(), p_is_preset: false,
       p_refs_present: parsed.refs_active, p_cancel_refs: [], p_trips: trips, p_guests: guestPlan.rows,
     };
     const out = { ok: true, slug, now, today, window: win, rows: M.R.rows, bookings: M.live.length, parsed, plan, guestPlan, merges, rpc,
-      vanish: vanishHeld ? [] : vanish, vanishAll: vanish, vanishHeld, vanishOutside: outside,
+      vanish: vanishHeld ? [] : vanish, vanishAll: vanish, vanishHeld, vanishOutside: outside, hold,
       warnings: B.importWarnings(text, o.fileName, GTC) };
     out.changes = summarize(out);
     return out;
   }
+  // Future, unpaid, live airport trips (from Bookinglayer) of bookings that are not in the report: inside = the booking's
+  // check-out is inside the report window (the report should have it: cancelled there?), outside = it simply is not in
+  // this report. Shared by the hourly import (planCampReport) and the camp hub's manual import (transport.js).
+  function vanished(appTrips, refsActive, win, now) {
+    const refs = new Set(refsActive || []); const today = String(now).slice(0, 10); const nowMin = String(now).slice(11, 16);
+    const future = a => a.trip_date > today || (a.trip_date === today && (a.trip_time || '23:59') > nowMin);
+    const c = (appTrips || []).filter(a => (a.kind === 'airport_arrival' || a.kind === 'airport_departure') && a.source === 'bookinglayer' && a.booking_ref
+      && LIVE.includes(a.status) && !a.payment_entry_id && !refs.has(a.booking_ref) && future(a));
+    return { inside: c.filter(a => insideWindow(a.booking_checkout, win)), outside: c.filter(a => !insideWindow(a.booking_checkout, win)) };
+  }
+  const vanishCap = nRefs => Math.max(3, Math.ceil((nRefs || 0) * 0.15));
+  // A booking that left the report keeps its trips, on hold: missing_since (out of «Send the whole day», in the chip «not in
+  // the latest Bookinglayer file») + the question below on the trip. «Still needed» in Transport answers it for good
+  // (KEPT_MARK in edited_fields); the booking back in a report clears both (camp_trips_import).
+  const GONE_FLAG = 'booking no longer in the Bookinglayer report — cancel this trip?';
+  const KEPT_MARK = 'kept:booking not in the report';
+  const vanishHolds = (trips, today) => (trips || [])
+    .filter(a => !(a.import_flags || []).includes(GONE_FLAG) && !(a.edited_fields || []).includes(KEPT_MARK))
+    .map(a => ({ id: a.id, trip: a, patch: { missing_since: a.missing_since || today, import_flags: [...(a.import_flags || []), GONE_FLAG] } }));
   function refuse(why) { return { ok: false, refused: why, changes: { refused: why } }; }
 
   // The run log (bl_report_runs.changes): counts + one short line per change, so Miguel can read a dry run.
@@ -256,7 +274,7 @@
         send: P.send.length, create: P.create.length, update: P.update.length, same: P.same.length, revive: P.revive.length, merge: (P.merge || []).length,
         replaced: P.regroupCancel.length, flagRemoved: P.flagRemoved.length, withheld: (P.withheld || []).length, untouched: P.untouched.length,
         covered: P.covered.length, past: P.past.length, fills: P.fills.length, conflicts: P.conflicts.length,
-        vanish: r.vanish.length, vanishHeld: r.vanishHeld ? r.vanishAll.length : 0, vanishOutside: r.vanishOutside.length,
+        vanish: r.vanish.length, vanishHeld: r.vanishHeld ? r.vanishAll.length : 0, vanishOutside: r.vanishOutside.length, hold: (r.hold || []).length,
         guestsNew: GP.add.length, guestsChanged: GP.change.length, guestsSame: GP.same.length, guestFills: GP.fills.length, guestKept: GP.kept.length,
         guestConflicts: GP.conflicts.length, guestStatusDue: GP.statusDue.length, guestsWouldAskCancelled: GP.wouldDrop.length,
         pastTouched: [...P.update, ...P.revive].filter(x => x.trip.date < today).length + (P.merge || []).filter(m => m.trip.date < today).length + P.regroupCancel.filter(a => a.trip_date < today).length,
@@ -276,6 +294,7 @@
         questions: cap(P.send.filter(t => t.flags.some(f => /^Different times — coming together|transfers paid, same flight/.test(f))).map(t => `${tL(t)} — ${t.flags.filter(f => /^Different times|transfers paid/.test(f)).join(' | ')}`)),
         vanish: r.vanishAll.map(a => `${tL(a)} [${a.import_key}] check-out ${a.booking_checkout}`),
         vanishHeld: r.vanishHeld || null,
+        hold: (r.hold || []).map(x => `${tL(x.trip)} [${x.trip.import_key}] check-out ${x.trip.booking_checkout} — on hold, asked`),
       },
       guests: {
         add: cap(GP.add.map(g => `${g.booking_ref} ${g.guest_name} ${g.check_in}→${g.check_out}`)),
@@ -304,5 +323,5 @@
     return { text: `Last import: ${when} ${at.slice(11, 16)} · ${who}`, amber };
   }
 
-  return { routeEmail, reportLink, safeReportUrl, unwrap, allowedRedirect, looksLikeCsv, linkForLog, fromBookinglayer, SENDER, DOWNLOAD_HOST, titleOf, norm, isPdf, isCsv, orderReports, olderThanLast, localNow, reportWindow, insideWindow, WINDOW, pricesFromCatalog, planCampReport, summarize, lastImportLine, STALE_HOURS };
+  return { routeEmail, reportLink, safeReportUrl, unwrap, allowedRedirect, looksLikeCsv, linkForLog, fromBookinglayer, SENDER, DOWNLOAD_HOST, titleOf, norm, isPdf, isCsv, orderReports, olderThanLast, localNow, reportWindow, insideWindow, WINDOW, pricesFromCatalog, planCampReport, vanished, vanishCap, vanishHolds, GONE_FLAG, KEPT_MARK, summarize, lastImportLine, STALE_HOURS };
 });

@@ -133,6 +133,17 @@ test('window guard: only future, unpaid trips of a booking that left the report 
   // off by default (the camp hub's import never cancels them) → nothing cancelled, the would-cancel list is still logged
   const off = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
   expect(off.vanish).toEqual([]); expect(off.vanishHeld).toMatch(/switched off/); expect(off.changes.trips.vanish.length).toBe(1);
+  // … and its trips go on hold with the question (WEEK-03): never cancelled, out of «Send the whole day» until answered
+  expect(off.hold.map(x => x.id)).toEqual(['t-in']);
+  expect(off.hold[0].patch).toEqual({ missing_since: '2026-11-17', import_flags: [I.GONE_FLAG] });
+  expect(off.changes.counts.hold).toBe(1); expect(off.changes.trips.hold[0]).toMatch(/^2026-200 arr 2026-11-25 .* on hold, asked$/);
+  expect(r.hold).toEqual([]);                                                      // cancel_vanished on: cancelled instead, not held
+  // asked once: a trip already held, or one the camp kept («Still needed»), is not asked again; other flags are kept
+  const again = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', catalog: MA_CAT, now: '2026-11-17T11:00', receivedYmd: '2026-11-17', appGuests: [],
+    appTrips: [appTrip('t-held', '2026-200', '2026-11-25', '2026-12-01', { missing_since: '2026-11-17', import_flags: [I.GONE_FLAG] }),
+      appTrip('t-kept', '2026-207', '2026-11-25', '2026-12-01', { edited_fields: [I.KEPT_MARK] }),
+      appTrip('t-flag', '2026-208', '2026-11-26', '2026-12-01', { import_flags: ['night arrival: lands 02:45'] })] });
+  expect(again.hold.map(x => [x.id, x.patch.import_flags])).toEqual([['t-flag', ['night arrival: lands 02:45', I.GONE_FLAG]]]);
 });
 
 test('window guard: many bookings leaving at once (a truncated file?) cancels nothing', () => {
@@ -140,6 +151,9 @@ test('window guard: many bookings leaving at once (a truncated file?) cancels no
   const app = [1, 2, 3, 4, 5].map(n => appTrip('t' + n, '2026-30' + n, '2026-11-25', '2026-12-01'));
   const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17', cancelVanished: true });
   expect(r.vanish).toEqual([]); expect(r.vanishAll.length).toBe(5); expect(r.vanishHeld).toMatch(/at once/);
+  // nor held: a broken file must not keep every driver at home
+  const off = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-17T10:00', receivedYmd: '2026-11-17' });
+  expect(off.hold).toEqual([]); expect(off.vanishHeld).toMatch(/nothing cancelled or held/);
 });
 
 test('window guard: Week asks «cancelled?» only for stored guests whose check-out is inside the window', () => {
@@ -308,7 +322,7 @@ function fakeDb(seed = {}) {
     select() { return this; }
     eq(k, v) { this.f.push(r => r[k] === v); return this; } neq(k, v) { this.f.push(r => r[k] !== v); return this; }
     not(k, op, v) { this.f.push(r => op === 'is' && v === null ? r[k] != null : r[k] !== v); return this; }
-    in(k, vs) { this.f.push(r => vs.includes(r[k])); return this; } gte(k, v) { this.f.push(r => String(r[k]) >= v); return this; }
+    in(k, vs) { this.f.push(r => vs.includes(r[k])); return this; } is(k, v) { this.f.push(r => (r[k] == null ? null : r[k]) === v); return this; } gte(k, v) { this.f.push(r => String(r[k]) >= v); return this; }
     order(k, o) { this.ord = this.ord || [k, !!(o && o.ascending === false)]; return this; } limit(n) { this.lim = n; return this; } range(a, b) { this.rng = [a, b]; return this; }
     insert(o) { this.op = 'insert'; this.payload = o; return this; } update(o) { this.op = 'update'; this.payload = o; return this; } delete() { this.op = 'delete'; return this; }
     maybeSingle() { this.one = 'maybe'; return this; } single() { this.one = 'single'; return this; }
@@ -476,6 +490,29 @@ test('reports.ts: report files older than 30 days are removed from the bucket', 
   await runReports(db, g.deps);
   expect([...db.files.keys()].some(k => k.includes('2020-01-01'))).toBe(false);
   expect(db.files.has(`bl-reports/${today}/camp-morocco-new.csv.gz`)).toBe(true);
+});
+
+test('reports.ts: a booking that left the report — its future trips are put on hold with the question after the import, never cancelled (WEEK-03)', async () => {
+  const db = fakeDb();
+  Object.assign(db.T.bl_report_settings[0], { dry_run_camp: false });
+  // the report is sent «now» (the camp's today): the trips must be in the future and the check-out inside its window
+  const today = I.localNow('Africa/Casablanca').slice(0, 10); const add = n => new Date(Date.parse(today) + n * 864e5).toISOString().slice(0, 10);
+  db.T.camp_trips = [
+    appTrip('t-gone', '2026-300', add(5), add(9), { location_id: 'L-MA' }),
+    appTrip('t-paid', '2026-301', add(5), add(9), { location_id: 'L-MA', payment_entry_id: 'pay1' }),
+    appTrip('t-other', '2026-302', add(5), add(9), { location_id: 'L-SL' }),
+  ];
+  const g = mailbox([rep('m20', new Date().toISOString(), MA_SUBJ, ['2026-100'])]);
+  await runReports(db, g.deps);
+  expect(db.rpcCalls.map(c => c[0])).toEqual(['bl_report_camp_apply']);
+  expect(db.rpcCalls[0][1].p_vanish).toEqual([]);                                     // nothing cancelled
+  const t = id => db.T.camp_trips.find(x => x.id === id);
+  expect(t('t-gone')).toMatchObject({ status: 'planned', missing_since: today, import_flags: [I.GONE_FLAG] });
+  expect(t('t-paid').missing_since).toBeUndefined();
+  expect(t('t-other').missing_since).toBeUndefined();
+  const run = db.T.bl_report_runs.find(r => r.message_id === 'm20');
+  expect(run).toMatchObject({ status: 'imported' }); expect(run.error).toBeUndefined();
+  expect(run.changes.counts.hold).toBe(1);
 });
 
 test('reports.ts: without bl_report_settings (SQL not run) nothing happens', async () => {
