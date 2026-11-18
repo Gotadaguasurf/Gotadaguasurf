@@ -191,7 +191,8 @@ table (HQ members read, nobody writes directly) — which answers new / changed 
 («October: 431 invoices · 6 credit notes · 0 gaps · 2 to check») and a list only when something is wrong: numbering gaps per
 type + series, credit notes whose invoice is not in the register, cancelled invoices with no new invoice to the same
 InvoiceXpress customer within 15 days, and Partners ↔ file both ways on the normalised number (nothing is created on
-Partners). `sales_documents_month()` returns the facts (the month, the month before, 15 days after); the rules are
+Partners). `sales_documents_month()` returns the facts (the month, the month before, 15 days after, the last number before the month
+per series so a gap shows even in a quiet series, and the register documents matching the month's Partners invoices); the rules are
 `Saft.monthSummary`. The accountant Excel gets a «Vendas» sheet and the totals (invoices − credit notes, cancelled left out) in
 «Resumo» when the period has rows. Water Movements only; `company` is there for Manjar on `/suk/` later. Before the SQL has run
 the card says «Not switched on yet» and everything else works as before.

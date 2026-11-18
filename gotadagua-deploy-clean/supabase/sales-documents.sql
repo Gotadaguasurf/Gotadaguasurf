@@ -12,9 +12,11 @@
 --    sales_documents_import(rows, file)    the ONLY way in: upsert by (company, doc_no),
 --                                          returns {new, changed, unchanged}. HQ members.
 --    sales_documents_month(month)          the facts the Month close card needs (the month,
---                                          the month before and 15 days after, which
+--                                          the month before and 15 days after, the last
+--                                          number before the month per series, which
 --                                          credit-note references exist, the Partners
---                                          invoices, the customers known to be partners).
+--                                          invoices and the register documents matching
+--                                          them, the customers known to be partners).
 --                                          The rules themselves live in lib/saft.js
 --                                          (Saft.monthSummary) so they are tested.
 --
@@ -141,10 +143,16 @@ language sql stable set search_path = public as $$
                                                   else to_jsonb(array_remove(array[d.credits_doc_no], null)) end) as r(ref)
      where d.doc_type = 'NC' and d.doc_date between w.m_from and w.m_to
   ), pk as (
-    -- Partners invoice numbers with spaces dropped: «FT IN2/16809» → «FTIN2/16809»
-    select distinct upper(regexp_replace(pi.invoice_number, '\s', '', 'g')) as k
+    -- Partners invoice numbers with spaces and leading zeros dropped: «FT IN2/016809» → «FTIN2/16809»
+    select distinct upper(regexp_replace(regexp_replace(pi.invoice_number, '\s', '', 'g'), '/0+(\d)', '/\1')) as k,
+           pi.invoice_date
       from partner_invoices pi
      where p_company = 'water-movements'
+  ), lo as (
+    -- the lowest number of each type + series in the month
+    select d.doc_type, d.series, min(d.number) as lo
+      from docs d, w where d.doc_date between w.m_from and w.m_to
+     group by d.doc_type, d.series
   )
   select json_build_object(
     'month', p_month,
@@ -158,11 +166,25 @@ language sql stable set search_path = public as $$
                 'customer_id', d.customer_id, 'customer_name', d.customer_name, 'customer_tax_id', d.customer_tax_id,
                 'gross', d.gross, 'credits_doc_no', d.credits_doc_no, 'refs', d.raw -> 'references')
                 order by d.doc_date, d.doc_type, d.series, d.number) from docs d), '[]'::json),
+    -- per type + series, the last number the register holds before the month: a gap is seen
+    -- even when the series had nothing last month (credit notes are rare)
+    'anchors', coalesce((select json_agg(json_build_object('doc_no', a.doc_no, 'doc_type', a.doc_type, 'series', a.series,
+                  'number', a.number, 'doc_date', a.doc_date, 'status', a.status))
+                  from (select distinct on (lo.doc_type, lo.series) s.doc_no, s.doc_type, s.series, s.number, s.doc_date, s.status
+                          from lo join sales_documents s on s.company = p_company and s.doc_type = lo.doc_type and s.series = lo.series and s.number < lo.lo
+                         order by lo.doc_type, lo.series, s.number desc) a), '[]'::json),
     'known_refs', coalesce((select json_agg(s.doc_no) from sales_documents s
                              where s.company = p_company and s.doc_no in (select ref from refs)), '[]'::json),
     'partner_invoices', coalesce((select json_agg(json_build_object('invoice_number', pi.invoice_number, 'partner_name', pi.partner_name,
                                     'invoice_date', pi.invoice_date, 'amount', pi.amount) order by pi.invoice_date, pi.invoice_number)
                                     from partner_invoices pi where p_company = 'water-movements'), '[]'::json),
+    -- the register documents that match this month's Partners invoices, whatever their date
+    'partner_docs', coalesce((select json_agg(json_build_object('doc_no', s.doc_no, 'doc_type', s.doc_type, 'series', s.series,
+                       'number', s.number, 'doc_date', s.doc_date, 'status', s.status))
+                       from sales_documents s
+                      where s.company = p_company
+                        and exists (select 1 from pk, w where pk.invoice_date between w.m_from and w.m_to
+                                       and (pk.k = upper(replace(s.doc_no, ' ', '')) or (s.doc_type = 'FT' and pk.k = upper(s.series || '/' || s.number))))), '[]'::json),
     -- customers that already have an invoice on Partners (matched on the number, with or without «FT»)
     'partner_customers', coalesce((select json_agg(c.customer_id) from (
                               select s.customer_id from sales_documents s join pk on pk.k = upper(replace(s.doc_no, ' ', ''))

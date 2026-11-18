@@ -2867,11 +2867,11 @@ async function salesDocsFileChosen(inp){
       saved += batch.length;
       ['new','changed','unchanged'].forEach(k => { tot[k] += Number(data?.[k] || 0); });
     }
-    const period = out.period.from && out.period.to ? ` (${fmtDia(out.period.from)} – ${fmtDia(out.period.to)} ${String(out.period.to).slice(0,4)})` : '';
-    // a file of another month than the one on screen: say which month to pick
+    const period = out.period.from && out.period.to ? `, ${fmtDia(out.period.from)} – ${fmtDia(out.period.to)} ${String(out.period.to).slice(0,4)}` : '';
+    // numbers first; a file of another month than the one on screen says which month to pick; the file name last
     const shown = $('fecho_mes')?.value, months = Object.keys(out.months).sort();
-    const elsewhere = shown && !out.months[shown] ? ` · its documents are in ${months.map(fechoMonthLabel).join(', ')} — pick that month above` : '';
-    salesDocsSay('ok', `${file.name}${period}: ${out.documents.length} documents — ${tot.new} new · ${tot.changed} changed · ${tot.unchanged} unchanged · ${out.payments} receipts in the file${out.declared && out.declared !== out.documents.length ? ` · the file says ${out.declared} documents` : ''}${elsewhere}`);
+    const elsewhere = shown && !out.months[shown] ? ` — pick ${months.map(fechoMonthLabel).join(', ')} above to see them` : '';
+    salesDocsSay('ok', `${out.documents.length} documents: ${tot.new} new · ${tot.changed} changed · ${tot.unchanged} unchanged · ${out.payments} receipts${out.declared && out.declared !== out.documents.length ? ` · the file says ${out.declared} documents` : ''}${elsewhere}. File: ${file.name}${period}`);
   } catch (e) {
     const why = salesDocsNotSetUp(e) ? 'the sales register is not switched on yet (run supabase/sales-documents.sql once).' : (e.message || e.code || String(e));
     salesDocsSay('err', `${saved ? `Stopped after ${saved} documents (safe to import the same file again): ` : 'Not imported: '}${why}`);

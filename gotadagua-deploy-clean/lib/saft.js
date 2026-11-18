@@ -172,8 +172,9 @@
   function gapLabel(g) { return g.count === 1 ? `${g.doc_type} ${g.series}/${g.from}` : `${g.doc_type} ${g.series}/${g.from}–${g.to} (${g.count} numbers)`; }
 
   // facts = sales_documents_month(): the month's documents plus the month before and
-  // 15 days after, which credit-note references exist, the Partners invoices and the
-  // customers known to be partners.
+  // 15 days after, the last number before the month per series (anchors), which
+  // credit-note references exist, the Partners invoices, the register documents that
+  // match them (partner_docs) and the customers known to be partners.
   function monthSummary(facts, month) {
     const f = (facts && !Array.isArray(facts) && typeof facts === 'object') ? facts : {};
     const docs = Array.isArray(f.docs) ? f.docs : [];
@@ -181,7 +182,11 @@
     const invoices = mine.filter(d => !isCredit(d) && isLive(d));
     const credits = mine.filter(d => isCredit(d) && isLive(d));
     const cancelled = mine.filter(d => !isLive(d));
-    const gaps = numberingGaps(docs).filter(g => g.month === month);
+    // gaps: the window plus, per type + series, the last number the register holds before the month
+    // (`anchors`), so a series with nothing last month (credit notes) still shows its gap
+    const byNo = new Map(docs.map(d => [d.doc_no, d]));
+    (Array.isArray(f.anchors) ? f.anchors : []).forEach(a => { if (a && a.doc_no && !byNo.has(a.doc_no)) byNo.set(a.doc_no, a); });
+    const gaps = numberingGaps([...byNo.values()]).filter(g => g.month === month);
 
     // credit notes whose invoice the register does not hold
     const known = new Set(docs.map(d => d.doc_no).concat(f.known_refs || []));
@@ -203,7 +208,9 @@
     // Partners ↔ file, both ways, on the normalised number
     const partnerByKey = new Map();
     (f.partner_invoices || []).forEach(p => { const k = docKey(p.invoice_number); if (k) partnerByKey.set(k, p); });
-    const fileByKey = new Map(docs.map(d => [docKey(d.doc_no), d]));
+    // the window plus the register documents that match this month's Partners invoices (`partner_docs`),
+    // so an invoice issued earlier and logged on Partners this month is still found
+    const fileByKey = new Map((Array.isArray(f.partner_docs) ? f.partner_docs : []).concat(docs).map(d => [docKey(d.doc_no), d]));
     const seriesOf = (k) => (k ? k.slice(0, k.indexOf('/')) : '');
     const seriesInFile = new Set([...fileByKey.keys()].map(seriesOf));
     const partnerCustomers = new Set(f.partner_customers || []);

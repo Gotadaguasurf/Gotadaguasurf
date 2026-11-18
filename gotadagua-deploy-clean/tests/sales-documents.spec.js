@@ -30,14 +30,21 @@ function factsFrom(register, month, partnerInvoices = []) {
   const refs = new Set(docs.filter(d => d.doc_type === 'NC' && d.doc_date >= mFrom && d.doc_date <= mTo).flatMap(d => (d.raw && d.raw.references) || (d.credits_doc_no ? [d.credits_doc_no] : [])));
   const pk = new Set(partnerInvoices.map(p => String(p.invoice_number).toUpperCase().replace(/\s/g, '')));
   const last = register.slice().sort((a, b) => String(b.imported_at || '').localeCompare(String(a.imported_at || '')))[0];
+  const lo = new Map();
+  docs.filter(d => d.doc_date >= mFrom && d.doc_date <= mTo).forEach(d => { const k = `${d.doc_type} ${d.series}`; lo.set(k, Math.min(lo.has(k) ? lo.get(k) : Infinity, d.number)); });
+  const anchors = [...lo].map(([k, n]) => register.filter(d => `${d.doc_type} ${d.series}` === k && d.number < n).sort((a, b) => b.number - a.number)[0]).filter(Boolean);
+  const pkMonth = new Set(partnerInvoices.filter(p => p.invoice_date >= mFrom && p.invoice_date <= mTo).map(p => String(p.invoice_number).toUpperCase().replace(/\s/g, '')));
+  const pick = (d) => ({ doc_no: d.doc_no, doc_type: d.doc_type, series: d.series, number: d.number, doc_date: d.doc_date, status: d.status });
   return {
     month, company: 'water-movements', total: register.length,
     covered_until: register.map(d => d.doc_date).sort().pop() || null,
     last_import: last ? { file: last.source_file, at: last.imported_at } : null,
     docs: docs.map(d => ({ doc_no: d.doc_no, doc_type: d.doc_type, series: d.series, number: d.number, doc_date: d.doc_date, status: d.status, customer_id: d.customer_id,
       customer_name: d.customer_name, customer_tax_id: d.customer_tax_id, gross: d.gross, credits_doc_no: d.credits_doc_no, refs: (d.raw && d.raw.references) || null })),
+    anchors: anchors.map(pick),
     known_refs: register.filter(d => refs.has(d.doc_no)).map(d => d.doc_no),
     partner_invoices: partnerInvoices,
+    partner_docs: register.filter(d => pkMonth.has(d.doc_no.toUpperCase().replace(/\s/g, '')) || (d.doc_type === 'FT' && pkMonth.has(`${d.series}/${d.number}`.toUpperCase()))).map(pick),
     partner_customers: [...new Set(register.filter(d => d.customer_id && (pk.has(d.doc_no.toUpperCase().replace(/\s/g, '')) || (d.doc_type === 'FT' && pk.has(`${d.series}/${d.number}`.toUpperCase())))).map(d => d.customer_id))],
   };
 }
@@ -208,6 +215,30 @@ test('saft rules: gaps count per type and series, never from 1, a cancelled docu
   expect(oct.creditNotes).toBe(2);
   expect(oct.cancelled).toBe(1);
   expect(Saft.monthSummary({ docs, covered_until: '2026-11-30' }, '2026-11').gaps.map(Saft.gapLabel)).toEqual(['FT A/106–109 (4 numbers)']);
+});
+
+test('saft rules: a series with nothing last month still shows its gap (the server sends the last number before the month)', () => {
+  // credit notes are rare: NC A/370 in August, NC A/375 in October — 371–374 are missing in October
+  const docs = [D('NC A/375', '2026-10-12', 'c1', { doc_type: 'NC', credits_doc_no: 'FT A/1' }), D('FT A/1', '2026-10-01', 'c1')];
+  const anchors = [{ doc_no: 'NC A/370', doc_type: 'NC', series: 'A', number: 370, doc_date: '2026-08-20', status: 'N' }];
+  expect(Saft.monthSummary({ docs, covered_until: '2026-11-30' }, '2026-10').gaps).toEqual([]);         // without it nothing can be seen
+  const s = Saft.monthSummary({ docs, anchors, covered_until: '2026-11-30' }, '2026-10');
+  expect(s.gaps.map(Saft.gapLabel)).toEqual(['NC A/371–374 (4 numbers)']);
+  expect(s.creditNotes).toBe(1);                                                                          // the anchor is not counted as October's
+  // an anchor that is also in the window is counted once
+  const both = Saft.monthSummary({ docs: docs.concat([D('NC A/374', '2026-09-30', 'c2', { doc_type: 'NC' })]), anchors: [{ ...anchors[0], doc_no: 'NC A/374', number: 374, doc_date: '2026-09-30' }], covered_until: '2026-11-30' }, '2026-10');
+  expect(both.gaps).toEqual([]);
+});
+
+test('saft rules: a Partners invoice dated this month but issued earlier is found in the register (the server sends the matches)', () => {
+  const docs = [D('FT A/60', '2026-10-03', 'P-1')];
+  const partner_invoices = [
+    { invoice_number: 'FT A/50', partner_name: 'Blue Tribe', invoice_date: '2026-10-02', amount: 100 },   // issued in July, logged on Partners in October
+    { invoice_number: 'FT A/51', partner_name: 'North Coast', invoice_date: '2026-10-02', amount: 100 },  // issued in July, cancelled since
+  ];
+  const partner_docs = [{ doc_no: 'FT A/50', doc_type: 'FT', series: 'A', number: 50, status: 'N' }, { doc_no: 'FT A/51', doc_type: 'FT', series: 'A', number: 51, status: 'A' }];
+  const s = Saft.monthSummary({ docs, partner_invoices, partner_docs, covered_until: '2026-10-31' }, '2026-10');
+  expect(s.notInFile.map(p => [p.invoice_number, p.why])).toEqual([['FT A/51', 'cancelled in InvoiceXpress']]);
 });
 
 test('saft rules: a credit note is fine when every invoice it references is in the register', () => {
@@ -384,10 +415,10 @@ test('month close: one line of facts, and the list only when something is wrong 
   expect(await noSidewaysScroll(page)).toBe(true);
   const card = page.locator('#fechoSales');
   await card.scrollIntoViewIfNeeded();
-  if (SHOTS) { await card.screenshot({ path: path.join(SHOTS, 'sales-documents-390.png') }); await page.screenshot({ path: path.join(SHOTS, 'month-close-390.png'), fullPage: true }); }
+  if (SHOTS) { await card.screenshot({ path: path.join(SHOTS, 'sales-documents-390.png') }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.join(SHOTS, 'month-close-390.png'), fullPage: true }); }
   await page.setViewportSize({ width: 1280, height: 900 });
   expect(await noSidewaysScroll(page)).toBe(true);
-  if (SHOTS) { await card.screenshot({ path: path.join(SHOTS, 'sales-documents-1280.png') }); await page.screenshot({ path: path.join(SHOTS, 'month-close-1280.png'), fullPage: true }); }
+  if (SHOTS) { await card.screenshot({ path: path.join(SHOTS, 'sales-documents-1280.png') }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.join(SHOTS, 'month-close-1280.png'), fullPage: true }); }
   // another month with nothing imported goes back to the quiet sentence
   await page.selectOption('#fecho_mes', '2026-08');
   await expect(page.locator('#sd_body')).toContainText('No sales file imported for August');
@@ -411,7 +442,7 @@ test('month close: importing the SAF-T saves in batches of 500, says what change
   await fakeSession(page);
   const errs = await openMonthClose(page);
   await page.locator('#sd_file').setInputFiles({ name: 'saft-2026-10.xml', mimeType: 'text/xml', buffer: Buffer.from(bigSaft(1201), 'utf8') });
-  await expect(page.locator('#sd_msg')).toHaveText('saft-2026-10.xml (01 Oct – 31 Oct 2026): 1201 documents — 1201 new · 0 changed · 0 unchanged · 0 receipts in the file');
+  await expect(page.locator('#sd_msg')).toHaveText('1201 documents: 1201 new · 0 changed · 0 unchanged · 0 receipts. File: saft-2026-10.xml, 01 Oct – 31 Oct 2026');
   expect(calls.map(c => c.rows)).toEqual([500, 500, 201]);
   expect(calls.every(c => c.file === 'saft-2026-10.xml')).toBe(true);
   expect(Object.keys(calls[0].first).sort()).toEqual(['credits_doc_no', 'customer_country', 'customer_id', 'customer_name', 'customer_tax_id', 'doc_date', 'doc_no', 'doc_type', 'gross', 'net', 'number', 'raw', 'series', 'status', 'tax']);
@@ -420,7 +451,7 @@ test('month close: importing the SAF-T saves in batches of 500, says what change
   await page.locator('#sd_file').setInputFiles({ name: 'saft-2026-10.xml', mimeType: 'text/xml', buffer: Buffer.from(bigSaft(1201), 'utf8') });
   await expect(page.locator('#sd_msg')).toContainText('0 new · 0 changed · 1201 unchanged');
   await page.locator('#sd_file').setInputFiles({ name: 'sample.xml', mimeType: 'text/xml', buffer: Buffer.from(SAMPLE.replace('encoding="UTF-8"', 'encoding="windows-1252"'), 'latin1') });
-  await expect(page.locator('#sd_msg')).toContainText('sample.xml (01 Oct – 31 Oct 2026): 10 documents — 10 new · 0 changed · 0 unchanged · 2 receipts in the file');
+  await expect(page.locator('#sd_msg')).toContainText('10 documents: 10 new · 0 changed · 0 unchanged · 2 receipts. File: sample.xml, 01 Oct – 31 Oct 2026');
   expect(register.find(d => d.doc_no === 'FT T1/2').customer_name).toBe('João Açaí Example');
   // and the accountant Excel gets its «Vendas» sheet, with the totals in the summary
   const pack = await page.evaluate(async () => {
@@ -457,8 +488,8 @@ test('month close 390: a long file name and a file of another month — the mess
   const name = 'SAFT-PT_515059927_2026-09-01_2026-09-30_WaterMovementsLda_export-final.xml';
   const september = bigSaft(40).replace(/2026-10-/g, '2026-09-').replace('2026-09-31', '2026-09-30');
   await page.locator('#sd_file').setInputFiles({ name, mimeType: 'text/xml', buffer: Buffer.from(september, 'utf8') });
-  await expect(page.locator('#sd_msg')).toContainText(`${name} (01 Sep – 30 Sep 2026): 40 documents — 40 new · 0 changed · 0 unchanged`);
-  await expect(page.locator('#sd_msg')).toContainText('its documents are in September 2026 — pick that month above');
+  await expect(page.locator('#sd_msg')).toContainText(`40 documents: 40 new · 0 changed · 0 unchanged · 0 receipts — pick September 2026 above to see them. File: ${name}, 01 Sep – 30 Sep 2026`);
+  await expect(page.locator('#sd_msg')).toContainText('pick September 2026 above');
   await expect(page.locator('#sd_body')).toContainText('No sales file imported for October');
   expect(page.viewportSize().width).toBe(390);
   expect(await noSidewaysScroll(page)).toBe(true);
