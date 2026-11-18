@@ -448,3 +448,22 @@ test('month close: a file from another company, or one that is not a SAF-T, is r
   expect(calls).toEqual([]);
   expect(await noSidewaysScroll(page)).toBe(true);
 });
+
+test('month close 390: a long file name and a file of another month — the message wraps and says which month to pick', async ({ page }) => {
+  const calls = [];
+  await stubHq(page, { calls });
+  await fakeSession(page);
+  await openMonthClose(page);
+  const name = 'SAFT-PT_515059927_2026-09-01_2026-09-30_WaterMovementsLda_export-final.xml';
+  const september = bigSaft(40).replace(/2026-10-/g, '2026-09-').replace('2026-09-31', '2026-09-30');
+  await page.locator('#sd_file').setInputFiles({ name, mimeType: 'text/xml', buffer: Buffer.from(september, 'utf8') });
+  await expect(page.locator('#sd_msg')).toContainText(`${name} (01 Sep – 30 Sep 2026): 40 documents — 40 new · 0 changed · 0 unchanged`);
+  await expect(page.locator('#sd_msg')).toContainText('its documents are in September 2026 — pick that month above');
+  await expect(page.locator('#sd_body')).toContainText('No sales file imported for October');
+  expect(page.viewportSize().width).toBe(390);
+  expect(await noSidewaysScroll(page)).toBe(true);
+  expect(await page.evaluate(() => { const m = document.querySelector('#sd_msg .status-msg'); return m.scrollWidth <= m.clientWidth + 1; })).toBe(true);
+  if (SHOTS) await page.locator('#fechoSales').screenshot({ path: path.join(SHOTS, 'sales-documents-imported-390.png') });
+  await page.selectOption('#fecho_mes', '2026-09');
+  await expect(page.locator('#sd_line')).toHaveText('September: 40 invoices · 0 credit notes · 0 gaps · 0 to check');
+});
