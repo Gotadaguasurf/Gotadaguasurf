@@ -270,7 +270,7 @@ table.tbl tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168
 .hero-today-eyebrow{font-size:11px;letter-spacing:.15em;text-transform:uppercase;font-weight:700;color:#7aabcc;margin-bottom:8px}
 .hero-today-title{font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff;line-height:1.15;margin-bottom:6px}
 .hero-today-sub{font-size:13.5px;color:#bdd4e8;margin-bottom:18px;font-weight:500}
-.hero-today-list{display:grid;gap:8px}
+.hero-today-list{display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}
 .hero-task{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;transition:all .18s}
 .hero-task:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.25);transform:translateY(-1px)}
 .hero-task-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
@@ -317,6 +317,7 @@ table.tbl tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168
     grid-template-areas:
       "check  name    status"
       "check  meta    meta"
+      "check  seg     seg"
       "check  bottom  bottom";
     column-gap:10px;
     row-gap:4px;
@@ -337,15 +338,15 @@ table.tbl tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168
   .table-wrap tbody tr[data-id] td:nth-child(2) .cname{font-size:14.5px}
   /* Status pill goes in the top-right of the card. */
   .table-wrap tbody tr[data-id] td:nth-child(5){grid-area:status;justify-self:end;align-self:center}
-  /* Country/segment join into one meta line right under the name. */
+  /* Country/city, then segment, each on its own short line under the name
+     (crm-16: grid children are blocks, so «inline» on one shared area printed
+     the two on top of each other). */
   .table-wrap tbody tr[data-id] td:nth-child(3),
-  .table-wrap tbody tr[data-id] td:nth-child(4){
-    grid-area:meta; display:inline; font-size:11.5px; color:var(--muted)
-  }
+  .table-wrap tbody tr[data-id] td:nth-child(4){font-size:11.5px; color:var(--muted); min-width:0}
+  .table-wrap tbody tr[data-id] td:nth-child(3){grid-area:meta}
+  .table-wrap tbody tr[data-id] td:nth-child(4){grid-area:seg}
   .table-wrap tbody tr[data-id] td:nth-child(3):empty,
   .table-wrap tbody tr[data-id] td:nth-child(4):empty{display:none}
-  .table-wrap tbody tr[data-id] td:nth-child(3)::after{content:" · "; color:#bcc8d3}
-  .table-wrap tbody tr[data-id] td:nth-child(3):empty::after{content:""}
   /* Last contacted + Follow-up share the bottom row with small inline labels. */
   .table-wrap tbody tr[data-id] td:nth-child(6){grid-area:bottom;font-size:11.5px;color:var(--muted);margin-top:4px;padding-top:6px;border-top:1px dashed #eef3f8}
   .table-wrap tbody tr[data-id] td:nth-child(6)::before{content:"Last contacted "; color:#94a3b8; font-weight:700; font-size:10px; text-transform:uppercase; letter-spacing:.06em; margin-right:4px}
@@ -374,6 +375,12 @@ table.tbl tbody tr.row-selected{background:linear-gradient(90deg,rgba(30,111,168
 .dash-card-title{font-size:var(--fs-card);font-weight:700;color:var(--navy);margin-bottom:14px;display:flex;align-items:center;gap:6px}
 .followup-item{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid #eef3f8;gap:10px}
 .followup-item:last-child{border-bottom:none}
+/* «Silent 60+ days» on a phone (crm-16): the buttons drop under the name
+   instead of pushing the page 227 px wider than the screen. */
+@media (max-width:700px){
+  #coldList .followup-item{flex-wrap:wrap}
+  #coldList .followup-item .fi-name{flex:1 1 100% !important}
+}
 .fi-name{font-weight:700;color:var(--navy);font-size:13.5px;flex:1;cursor:pointer}
 .fi-name:hover{color:var(--ocean)}
 .fi-due{font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap}
@@ -503,6 +510,17 @@ body.dark .ed-input{background:var(--card)}
 .inbox-n{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--muted);background:#eef3f8;border:1px solid var(--border);border-radius:999px;padding:0 6px;font-family:'Outfit',sans-serif;vertical-align:1px}
 .inbox-todo{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:2px 8px;font-family:'Outfit',sans-serif}
 @media (max-width:700px){ .inbox-co{flex-basis:104px} }
+/* Phones (audit crm-16): the subject gets its own full line under the sender
+   instead of one letter between the name, badge and date. */
+@media (max-width:700px){
+  .inbox-row{flex-wrap:wrap;row-gap:4px}
+  .inbox-co{flex:1 1 0;min-width:0}
+  .inbox-main{order:10;flex:1 1 100%;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
+/* Header on a laptop (UXC-08): seven tabs and five buttons wrapped into two
+   rows at 1280. «Get new replies» and «Open in Gmail» live in the Inbox tab
+   (and the phone menu); the header keeps + Task, Settings and Log out. */
+#navActions #gmailSyncBtn, #navActions #checkInboxBtn{display:none !important}
 
 /* ── MEETINGS (panel section + dashboard card) ───────────────────── */
 .meeting-row{display:flex;gap:10px;align-items:center;padding:8px 10px;background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;font-size:12.5px;cursor:pointer}
@@ -589,7 +607,7 @@ body.dark .ed-input{background:var(--card)}
     <button class="nav-action-btn" id="gmailSyncBtn" title="Pull new replies from Gmail into the CRM" style="display:none">Get new replies</button>
     <button class="nav-action-btn" id="checkInboxBtn" title="Open Gmail filtered by every CRM contact in the last 7 days">Open in Gmail</button>
     <button class="nav-action-btn" id="settingsBtn" title="Settings / Gmail integration">Settings</button>
-    <button class="nav-action-btn" id="signOutBtn">Sign out</button>
+    <button class="nav-action-btn" id="signOutBtn">Log out</button>
   </div>
   <button class="nav-hamburger" onclick="toggleMobileNav()" aria-label="Open menu">☰</button>
 </nav>
@@ -748,9 +766,10 @@ body.dark .ed-input{background:var(--card)}
   <div id="page-inbox" class="hidden">
     <div class="section-head">
       <div class="section-title">Inbox</div>
-      <div style="display:flex;gap:10px;align-items:center">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-p" id="inboxSyncBtn">Get new replies</button>
         <button class="btn btn-s" id="inboxMarkAllBtn">Mark all as read</button>
+        <button class="btn btn-s" id="inboxOpenGmailBtn" title="Open Gmail filtered by every CRM contact in the last 7 days" onclick="document.getElementById('checkInboxBtn').click()">Open in Gmail</button>
       </div>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
@@ -813,6 +832,7 @@ body.dark .ed-input{background:var(--card)}
          the page header so it never scrolls out of reach during a sweep. -->
     <div id="bulkBar" class="bulk-bar hidden">
       <div class="bulk-count"><span id="bulkCount">0</span> selected</div>
+      <button type="button" class="btn btn-s" id="bulkSelectAllMatch" style="display:none"></button>
       <select id="bulkStatus" class="filter-select">
         <option value="">Set status…</option>
         <option value="not_started">Not started</option>
@@ -1493,10 +1513,10 @@ let PIPELINE_FILTER = {
 };
 let TEMPLATES = [];
 
-// Legacy fallback when the multi-user setup isn't seeded yet or
-// session/CURRENT_TEAM_USER hasn't loaded. Once team_users is in
-// place, gmailAuthuser() returns the current user's email so each
-// person sends from their own account.
+// gmailAuthuser() is the signed-in person (who am I, CC lists).
+// GMAIL_AUTHUSER is the shared mailbox every CRM thread lives in: every
+// «open in Gmail» / «Check Gmail» / compose-in-Gmail link uses it, so the
+// link opens where the thread is whoever is logged in (audit crm-21).
 const GMAIL_AUTHUSER_FALLBACK = 'groups@gotadaguasurf.com';
 function gmailAuthuser(){
   return CURRENT_TEAM_USER?.email || GMAIL_AUTHUSER_FALLBACK;
@@ -1811,71 +1831,7 @@ function disconnectGmail(){
   refreshGmailUi();
 }
 
-// Builds the same (from:@domain OR from:specific) query the "Check
-// inbox" button uses, but scoped to the last syncDays days.
-function buildGmailSyncQuery(syncDays = 7){
-  const allEmails = new Set();
-  CONTACTS.forEach(c => { if(c.email) allEmails.add(c.email.trim().toLowerCase()); });
-  PEOPLE.forEach(p => { if(p.email) allEmails.add(p.email.trim().toLowerCase()); });
-  const domains = new Set();
-  const specific = [];
-  allEmails.forEach(e => {
-    const at = e.lastIndexOf('@');
-    if(at < 0) return;
-    const d = e.slice(at + 1);
-    if(FREE_EMAIL_DOMAINS.has(d)) specific.push(e);
-    else                          domains.add(d);
-  });
-  // Same 100-clause cap as the manual button to keep URL length sane.
-  const ENTRY_CAP = 100;
-  const dList = Array.from(domains).slice(0, ENTRY_CAP);
-  const pList = specific.slice(0, Math.max(0, ENTRY_CAP - dList.length));
-  const clauses = [
-    ...dList.map(d => `from:@${d}`),
-    ...pList.map(e => `from:${e}`),
-  ];
-  if(clauses.length === 0) return null;
-  return `(${clauses.join(' OR ')}) newer_than:${syncDays}d`;
-}
 
-// Resolve a Gmail From: address to a CRM company id. Tries exact
-// email match first (cheap), then domain-only fallback. Returns
-// null if no match — caller drops the message.
-function matchSenderToCompany(fromHeader){
-  if(!fromHeader) return null;
-  // From header is "Name <email>" or just "email"; extract email.
-  const m = fromHeader.match(/<([^>]+)>/);
-  const email = (m ? m[1] : fromHeader).trim().toLowerCase();
-  if(!email.includes('@')) return null;
-  // OWN-domain emails are never tracked as inbound replies — they're
-  // internal notes, system invites, miguel→miguel reminders, etc.
-  // Without this filter every team-internal email got falsely attached
-  // to whatever contact happens to share the domain.
-  const at = email.lastIndexOf('@');
-  const domain = email.slice(at + 1);
-  if(ownDomains().has(domain)) return null;
-  // Exact match against People or CONTACTS.
-  const person = PEOPLE.find(p => (p.email||'').toLowerCase() === email);
-  if(person) return { companyId: person.company_id, contactId: person.id, email };
-  const company = CONTACTS.find(c => (c.email||'').toLowerCase() === email);
-  if(company) return { companyId: company.id, contactId: null, email };
-  // Domain fallback — pick the first company on that domain that
-  // ISN'T on a free provider (otherwise gmail.com would match all
-  // your personal emails to the first random gmail-using lead).
-  if(FREE_EMAIL_DOMAINS.has(domain)) return null;
-  const domainCompany = CONTACTS.find(c => {
-    const ce = (c.email||'').toLowerCase();
-    return ce.endsWith('@' + domain);
-  });
-  if(domainCompany) return { companyId: domainCompany.id, contactId: null, email };
-  return null;
-}
-
-// Pulls last 7d of replies from Gmail, matches each to a company,
-// inserts new ones into email_messages, logs replied_marked
-// activity. Dedup is via the email_messages.provider_msg_id index
-// (we read the existing ids once before insert so the DB doesn't
-// reject the batch on conflict).
 // Reply-detected status advancement. Moves a company into
 // in_conversation when they were in an outbound stage or had been
 // flagged no_reply (a revival). Skips when already past
@@ -1984,31 +1940,6 @@ async function syncGmailInbox(opts = {}){
 // modal as each lands.
 let BATCH_STATE = { recipients: [], inProgress: false };
 
-// Build the RFC 2822 message string for a single recipient, then
-// base64url-encode it the way Gmail API expects in messages.send.
-// Subject is Q-encoded (=?utf-8?B?…?=) so accents survive the
-// headers; body is UTF-8 plain text.
-function buildGmailRawMessage({ to, subject, body, fromAuthuser, cc }){
-  const toUtf8 = (s) => unescape(encodeURIComponent(s || ''));
-  const subjB64 = btoa(toUtf8(subject || ''));
-  const headerLines = [
-    `From: ${fromAuthuser}`,
-    `To: ${to}`,
-  ];
-  if(cc && cc.length) headerLines.push(`Cc: ${cc.join(', ')}`);
-  headerLines.push(
-    `Subject: =?utf-8?B?${subjB64}?=`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: 8bit',
-  );
-  const headers = headerLines.join('\r\n');
-  const message = headers + '\r\n\r\n' + (body || '');
-  // base64url: standard base64 with +→-, /→_, strip trailing =.
-  const utf8 = toUtf8(message);
-  const b64 = btoa(utf8);
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
 
 // Put the caret at the top of a contenteditable — you write above the
 // quoted trail, not below it.
@@ -2150,7 +2081,7 @@ const ATTACH_MAX_MB = 25;   // o limite do bucket crm-assets
 const PENDING_ATTACH = { composePreview: [], replyBody: [] };
 function attachNoteText(boxId){
   const n = (PENDING_ATTACH[boxId] || []).length;
-  return n ? `${n} ficheiro${n>1?'s':''} em anexo: ` + PENDING_ATTACH[boxId].map(f => f.name).join(', ')
+  return n ? `${n} file${n>1?'s':''} attached: ` + PENDING_ATTACH[boxId].map(f => f.name).join(', ')
            : 'Photos show inside the email; other files go as a real attachment.';
 }
 
@@ -2164,7 +2095,7 @@ async function handleComposeAttach(files, ids){
   // mais vale dize-lo aqui.
   const grandes = files.filter(f => f.size > ATTACH_MAX_MB * 1024 * 1024);
   if(grandes.length){
-    toast(`${grandes[0].name} tem ${(grandes[0].size/1048576).toFixed(1)}MB — o limite sao ${ATTACH_MAX_MB}MB`);
+    toast(`${grandes[0].name} is ${(grandes[0].size/1048576).toFixed(1)} MB — the limit is ${ATTACH_MAX_MB} MB`, 'err');
     files = files.filter(f => f.size <= ATTACH_MAX_MB * 1024 * 1024);
     if(!files.length) return;
   }
@@ -2193,8 +2124,8 @@ async function handleComposeAttach(files, ids){
   }
   if(note) note.textContent = attachNoteText(boxId);
   const partes = [];
-  if(fotos.length) partes.push(`${fotos.length} foto${fotos.length>1?'s':''} no corpo`);
-  if(docs.length)  partes.push(`${docs.length} anexo${docs.length>1?'s':''}`);
+  if(fotos.length) partes.push(`${fotos.length} photo${fotos.length>1?'s':''} in the body`);
+  if(docs.length)  partes.push(`${docs.length} attachment${docs.length>1?'s':''}`);
   toast(partes.join(' + '));
 }
 
@@ -2316,20 +2247,15 @@ async function gmailSendOne({ to, subject, body, html, companyId, contactId, sen
     throw new Error(`gmail-send HTTP ${resp.status}: ${errTxt.slice(0,200)}`);
   }
   const j = await resp.json();
-  // Adapt to the { id, threadId } shape recordOutboundEmail + callers
-  // expect from the legacy direct-API response.
+  // Adapt to the { id, threadId } shape the callers expect.
   // A funcao salta um ficheiro que nao consiga ir buscar ou que estoire o
   // limite total. Sem isto o email seguia sem ele e ninguem dava por nada.
   if(Array.isArray(j.skipped) && j.skipped.length){
-    toast(`Enviado, mas sem ${j.skipped.length} anexo${j.skipped.length>1?'s':''}: ${j.skipped.join(', ')}`);
+    toast(`Sent, but without ${j.skipped.length} attachment${j.skipped.length>1?'s':''}: ${j.skipped.join(', ')}`, 'err');
   }
   return { id: j.message_id, threadId: j.thread_id, fromDisplay: j.from_display, skipped: j.skipped || [] };
 }
 
-// No-op since the gmail-send Edge Function inserts the email_messages
-// row itself (with sender_user_id stamped, which only the server can do
-// authoritatively). Kept as a stub so call sites don't need to change.
-async function recordOutboundEmail(_args){ /* server-side now */ }
 
 // Picks the recipient email for a contact — primary person if set,
 // else the company-level email. Returns null if neither exists.
@@ -3227,6 +3153,9 @@ function computeGroupKpis(){
 // re-render of the contacts list, so toggling a filter doesn't blow away
 // the user's selection.
 const SELECTED = new Set();
+// Every id the current filters match, also past the 500 rows on screen —
+// «Select all N that match» uses it (crm-20).
+let LAST_FILTERED_IDS = [];
 
 // Richer partnership pipeline — 9 stages instead of 7.
 // Flat icon library — same style as the management hub (stroke 1.8,
@@ -3320,10 +3249,15 @@ const LEGACY_STATUS = {
 };
 function normalizeStatus(s){ return LEGACY_STATUS[s] || s; }
 
-function toast(msg){
+// An error stays readable (audit 18 Nov 2026, UXC-15): red and 6 s, instead
+// of the same 2.4 s grey as «Saved». kind 'err' or the words of a failure.
+const TOAST_ERR_RE = /\b(fail(ed|s)?|error|could ?n[o']t|cannot|can't|refused|not allowed|denied)\b/i;
+function toast(msg, kind){
   const el=document.getElementById('toast');
-  el.textContent=msg; el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'), 2400);
+  const err = kind === 'err' || (kind !== 'ok' && TOAST_ERR_RE.test(String(msg || '')));
+  el.textContent=msg; el.classList.add('show'); el.classList.toggle('err', err);
+  clearTimeout(el._t);
+  el._t = setTimeout(()=>el.classList.remove('show'), err ? 6000 : 2400);
 }
 
 function getClient(){
@@ -4322,8 +4256,26 @@ function renderDashboard(){
     .filter(c => (c.status === 'first_email' || c.status === 'follow_up') && c.last_contacted_at && c.last_contacted_at.slice(0,10) < addDays(today,-14) && companyBelongsToScope(c))
     .sort((a,b)=>(a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
 
+  // The day's real work leads (audit crm-15): replies still waiting for an
+  // answer (the Inbox «Needs reply» rule, one line per company), and hot
+  // leads with no next step (in conversation / meeting / proposal, no
+  // follow-up date and no open task).
+  const replyRows = [];
+  const repliedCos = new Set();
+  inboxThreads().filter(t => needsReply(t.latest)).forEach(t => {
+    const c = CONTACTS.find(x => x.id === t.latest.company_id);
+    if(!c || repliedCos.has(c.id) || !companyBelongsToScope(c)) return;
+    repliedCos.add(c.id); replyRows.push({ c, m: t.latest });
+  });
+  const HOT = new Set(['in_conversation','meeting','proposal_sent']);
+  const withOpenTask = new Set(TASKS.filter(t => !t.done_at).map(t => t.company_id));
+  const hotNoNext = CONTACTS
+    .filter(c => HOT.has(c.status) && !c.follow_up_at && !withOpenTask.has(c.id) && !repliedCos.has(c.id) && companyBelongsToScope(c))
+    .sort((a,b) => (a.last_contacted_at||'').localeCompare(b.last_contacted_at||''));
+
   const tasks = [];
-  // Explicit user TODOs first — they win over derived signals.
+  replyRows.slice(0, 3).forEach(({ c, m }) => tasks.push({c, kind:'reply', icon:'mail', actionLabel:'Reply', actionClass:'overdue', meta:`Replied ${fmtDate(m.sent_at || m.created_at)}: ${m.subject || '(no subject)'}`}));
+  // Explicit user TODOs next — they win over derived signals.
   overdueTaskRows.forEach(t => {
     const c = CONTACTS.find(x => x.id === t.company_id);
     if(!c) return;
@@ -4341,6 +4293,7 @@ function renderDashboard(){
     const label = d < 0 ? `expired ${Math.abs(d)}d ago` : (d === 0 ? 'Ends today' : `ends in ${d}d`);
     tasks.push({c, kind:'contract', icon:'flag', actionLabel: label, actionClass: d <= 0 ? 'overdue' : '', meta:`Contract ends ${fmtDate(c.contract_end)}`});
   });
+  hotNoNext.slice(0, 3).forEach(c => tasks.push({c, kind:'hot', icon:'flag', actionLabel:'No next step', actionClass:'', meta:`${STATUS_LABELS[c.status]||c.status}${c.last_contacted_at ? ` · last contact ${fmtDate(c.last_contacted_at)}` : ''}`}));
   stale.slice(0, 5).forEach(c => tasks.push({c, kind:'stale', icon:'moon', actionLabel:`${daysBetween(c.last_contacted_at.slice(0,10), today)}d silent`, actionClass:'', meta:`No reply since ${fmtDate(c.last_contacted_at)}`}));
 
   // Fall back to "needs first touch" if nothing urgent today.
@@ -4355,10 +4308,12 @@ function renderDashboard(){
   const heroList = document.getElementById('heroTodayList');
 
   const explicitTodos = overdueTaskRows.length + todayTaskRows.length;
-  const totalUrgent = explicitTodos + overdueFollowups.length + todayFollowups.length + endingSoon.length;
+  const totalUrgent = replyRows.length + explicitTodos + overdueFollowups.length + todayFollowups.length + endingSoon.length + hotNoNext.length;
   if(totalUrgent > 0){
     heroTitle.textContent = `You have ${totalUrgent} thing${totalUrgent>1?'s':''} to handle today`;
     const parts = [];
+    if(replyRows.length) parts.push(`${replyRows.length} repl${replyRows.length>1?'ies':'y'} to answer`);
+    if(hotNoNext.length) parts.push(`${hotNoNext.length} hot lead${hotNoNext.length>1?'s':''} with no next step`);
     if(overdueTaskRows.length) parts.push(`${overdueTaskRows.length} overdue task${overdueTaskRows.length>1?'s':''}`);
     if(todayTaskRows.length)   parts.push(`${todayTaskRows.length} task${todayTaskRows.length>1?'s':''} due today`);
     if(overdueFollowups.length) parts.push(`${overdueFollowups.length} overdue follow-up${overdueFollowups.length>1?'s':''}`);
@@ -4374,7 +4329,7 @@ function renderDashboard(){
     heroSub.textContent = 'Quick nudge today could turn one of these into a reply';
   } else {
     const remaining = CONTACTS.filter(c=>c.status==='not_started' && c.email).length;
-    heroTitle.textContent = remaining > 0 ? `Nothing pending — start outreach to a fresh contact` : `All caught up! 🎉`;
+    heroTitle.textContent = remaining > 0 ? `Nothing pending — start outreach to a fresh contact` : `All caught up`;
     heroSub.textContent = remaining > 0 ? `${remaining} contacts still need a first email` : 'Every contact has been touched at least once';
   }
 
@@ -4488,7 +4443,7 @@ function renderDashboard(){
       <div class="fi-due overdue" style="flex-shrink:0">${days}d silent</div>
       <button data-followup-id="${c.id}" title="Add a 'Follow up' task due tomorrow" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">+ Follow-up</button>
     </div>`;
-  }).join('') + (stale.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stale.length-15} more</div>` : '') : '<div class="empty-state">All sent emails within the 14-day window. 🎉</div>';
+  }).join('') + (stale.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stale.length-15} more</div>` : '') : '<div class="empty-state">All sent emails within the 14-day window.</div>';
   nEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
   // + Follow-up: identical flow to the cold-accounts re-engage, but
   // the trigger here is "they didn't reply to OUR outbound", so the
@@ -4572,7 +4527,7 @@ function renderDashboard(){
       <button data-reengage-id="${c.id}" title="Add a 'Re-engage' task due tomorrow" style="background:transparent;color:var(--ocean);border:1px solid var(--ocean);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">+ Re-engage</button>
       <button data-snooze-id="${c.id}" title="Hide for 30 days — reappears here if still untouched then" style="background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;flex-shrink:0">Snooze 30d</button>
     </div>`;
-  }).join('') + (cold.length>20 ? `<div class="empty-state" style="padding:10px">+ ${cold.length-20} more</div>` : '') : '<div class="empty-state">No cold accounts — every active deal had movement in the last 60 days. 🎉</div>';
+  }).join('') + (cold.length>20 ? `<div class="empty-state" style="padding:10px">+ ${cold.length-20} more</div>` : '') : '<div class="empty-state">No cold accounts — every active deal had movement in the last 60 days.</div>';
   coldEl.querySelectorAll('.fi-name').forEach(el=>el.addEventListener('click', ()=>openContact(el.dataset.id)));
   coldEl.querySelectorAll('[data-reengage-id]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -4690,7 +4645,7 @@ function renderDashboard(){
         ${pushBtn}
       </div>`;
     }).join('') + (stuck.length>15 ? `<div class="empty-state" style="padding:10px">+ ${stuck.length-15} more</div>` : '') :
-      '<div class="empty-state">Nothing stuck — every active deal moved within the last 30 days. 🎉</div>';
+      '<div class="empty-state">Nothing stuck — every active deal moved within the last 30 days.</div>';
     stuckEl.querySelectorAll('.fi-name').forEach(el => el.addEventListener('click', () => openContact(el.dataset.id)));
 
     // ── Contracts expiring (next 60 days) ─────────────────────────────
@@ -4940,8 +4895,15 @@ let CURRENT_PRESET = localStorage.getItem('crmContactsPreset') || 'all';
 // localStorage and travels with saved views via filters.ownerScope.
 let CONTACTS_OWNER_SCOPE = localStorage.getItem('crmContactsOwnerScope') || 'all';
 
-['filterStatus','filterCountry','filterSegment','filterSearch'].forEach(id=>{
+['filterStatus','filterCountry','filterSegment'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderContacts);
+});
+// Typing waits 200 ms before redrawing 500 rows (crm-20): one redraw per
+// pause, not one per letter.
+let _filterSearchTimer = null;
+document.getElementById('filterSearch').addEventListener('input', () => {
+  clearTimeout(_filterSearchTimer);
+  _filterSearchTimer = setTimeout(renderContacts, 200);
 });
 
 // The HTML marks "All" active; the filter itself comes back from
@@ -5107,6 +5069,7 @@ function renderContacts(){
       if(check) check.checked = true;
     }
   });
+  LAST_FILTERED_IDS = filtered.map(c => c.id);
   updateBulkBar();
 
   if(filtered.length > 500){
@@ -5226,6 +5189,13 @@ function updateBulkBar(){
   const count = SELECTED.size;
   document.getElementById('bulkCount').textContent = count;
   bar.classList.toggle('hidden', count === 0);
+  const allMatch = document.getElementById('bulkSelectAllMatch');
+  if(allMatch){
+    const n = LAST_FILTERED_IDS.length;
+    const more = n > 500 && document.getElementById('selectAll')?.checked && LAST_FILTERED_IDS.some(id => !SELECTED.has(id));
+    allMatch.style.display = more ? '' : 'none';
+    allMatch.textContent = `Select all ${n} that match`;
+  }
   // Re-populate the Reassign dropdown each time the bar surfaces so
   // newly-added team members show up without a reload. Hidden when
   // the team is solo (no one to reassign TO).
@@ -5276,6 +5246,10 @@ document.getElementById('selectAll').addEventListener('change', (e)=>{
   updateBulkBar();
 });
 document.getElementById('bulkClear').addEventListener('click', clearSelection);
+document.getElementById('bulkSelectAllMatch').addEventListener('click', () => {
+  LAST_FILTERED_IDS.forEach(id => SELECTED.add(id));
+  updateBulkBar();
+});
 
 // Bulk delete — destructive, so requires confirming the COUNT by typing it.
 // Catches "I clicked the wrong button" much better than a yes/no prompt
@@ -6488,8 +6462,8 @@ async function logInstagramReply(c){
 
 function activityLabel(a){
   switch(a.action){
-    case 'status_changed': return `Status: ${STATUS_LABELS[a.old_value]||a.old_value||'—'} → ${STATUS_LABELS[a.new_value]||a.new_value||'—'}`;
-    case 'email_sent': return `${uiIcon('mail')} Sent "${a.meta?.template_name||'email'}"`;
+    case 'status_changed': return `Status: ${escHtml(STATUS_LABELS[a.old_value]||a.old_value||'—')} → ${escHtml(STATUS_LABELS[a.new_value]||a.new_value||'—')}`;
+    case 'email_sent': return `${uiIcon('mail')} Sent "${escHtml(a.meta?.template_name||'email')}"`;
     case 'replied_marked': return `${uiIcon('check')} Marked as replied`;
     case 'email_inbound': {
       const subj = a.meta?.subject || '(no subject)';
@@ -6497,7 +6471,7 @@ function activityLabel(a){
       const fullBody = a.meta?.body || a.meta?.snippet || '';
       const bodyBlock = fullBody ? `<div class="email-body" data-emrow="${a.id}" style="margin-top:8px;padding:10px 12px;background:#fafdff;border:1px solid var(--border);border-radius:8px;font-size:12.5px;color:var(--ink);white-space:pre-wrap;max-height:120px;overflow:hidden;position:relative;cursor:pointer" title="Click to expand"><div data-emrow-fade style="position:absolute;left:0;right:0;bottom:0;height:30px;background:linear-gradient(to bottom,transparent,#fafdff);pointer-events:none"></div>${escHtml(fullBody)}</div>` : '';
       const threadLink = a.meta?.thread_id
-        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(gmailAuthuser())}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
+        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(GMAIL_AUTHUSER)}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
         : '';
       const replyBtn = `<button data-em-reply="${a.id}" style="margin-top:8px;background:var(--ocean);color:#fff;border:0;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Outfit',sans-serif">↩ Reply</button>`;
       return `${uiIcon('mail')} <b>Reply received:</b> "${escHtml(subj)}"${from}${threadLink}${bodyBlock}<div style="margin-top:4px">${replyBtn}</div>`;
@@ -6510,11 +6484,11 @@ function activityLabel(a){
         ? ` <span style="color:var(--green-text);background:var(--green-bg);padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700;margin-left:6px">✓ Replied ${fmtDate(a.meta.replied_at)}</span>`
         : '';
       const threadLink = a.meta?.thread_id
-        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(gmailAuthuser())}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
+        ? ` · <a href="https://mail.google.com/mail/?authuser=${encodeURIComponent(GMAIL_AUTHUSER)}#all/${encodeURIComponent(a.meta.thread_id)}" target="_blank" style="color:var(--ocean);text-decoration:none;font-weight:600">open in Gmail →</a>`
         : '';
       return `${uiIcon('mail')} Sent: "${escHtml(subj)}"${repliedBadge}${threadLink}${bodyBlock}`;
     }
-    case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${a.new_value||'cleared'}`;
+    case 'follow_up_set': return `${uiIcon('calendar')} Follow-up: ${escHtml(a.new_value||'cleared')}`;
     case 'note_added': return `${uiIcon('note')} Note added`;
     case 'dm_sent': return `${uiIcon('chat')} Instagram DM sent${a.new_value ? ` to @${escHtml(a.new_value)}` : ''}`;
     case 'dm_reply': return `${uiIcon('chat')} Replied on Instagram`;
@@ -6524,12 +6498,13 @@ function activityLabel(a){
       return `${uiIcon('note')} ${escHtml(f)} set to ${to}`;
     }
     case 'imported': return `Imported from xlsx`;
-    case 'group_added': return `${uiIcon('people')} Group added: "${a.meta?.title||'untitled'}"${a.meta?.stage?` (${GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage})`:''}`;
-    case 'group_updated': return `${uiIcon('people')} Group updated: "${a.meta?.title||'untitled'}"`;
+    case 'group_added': return `${uiIcon('people')} Group added: "${escHtml(a.meta?.title||'untitled')}"${a.meta?.stage?` (${escHtml(GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage)})`:''}`;
+    case 'group_updated': return `${uiIcon('people')} Group updated: "${escHtml(a.meta?.title||'untitled')}"`;
     case 'email_bounced': return `${uiIcon('warning')} Email bounced${a.meta?.email ? ` — ${escHtml(a.meta.email)} cannot receive mail` : ''}`;
     case 'unsubscribed': return `${uiIcon('flag')} Asked to unsubscribe — no more emails`;
-    case 'group_stage': return `${uiIcon('people')} Group stage: ${GROUP_STAGE_LABELS[a.old_value]||a.old_value||'—'} → ${GROUP_STAGE_LABELS[a.new_value]||a.new_value||'—'}${a.meta?.title?` (${a.meta.title})`:''}`;
-    default: return a.action;
+    case 'group_stage': return `${uiIcon('people')} Group stage: ${escHtml(GROUP_STAGE_LABELS[a.old_value]||a.old_value||'—')} → ${escHtml(GROUP_STAGE_LABELS[a.new_value]||a.new_value||'—')}${a.meta?.title?` (${escHtml(a.meta.title)})`:''}`;
+    // an action this page has no words for: readable, never the raw code (crm-24)
+    default: { const t = String(a.action || 'activity').replace(/[_-]+/g, ' ').trim(); return escHtml(t.charAt(0).toUpperCase() + t.slice(1)); }
   }
 }
 
@@ -6666,7 +6641,7 @@ document.getElementById('checkInboxBtn').addEventListener('click', () => {
   // Per-company Check Gmail uses 90d for history; this global view
   // is a recent-activity scan, so 30 is the sweet spot.
   const query = `(${clauses.join(' OR ')}) newer_than:30d`;
-  const url = `https://mail.google.com/mail/?authuser=${gmailAuthuser()}#search/` + encodeURIComponent(query);
+  const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(GMAIL_AUTHUSER)}#search/` + encodeURIComponent(query);
   window.open(url, '_blank');
   const truncated = totalEntries < totalAvailable;
   toast(`Opening Gmail · ${totalEntries} source${totalEntries>1?'s':''}${truncated?` (capped from ${totalAvailable})`:''} · last 30d`);
@@ -6692,7 +6667,7 @@ document.getElementById('checkGmailBtn').addEventListener('click', ()=>{
   const clauses = [];
   emails.forEach(e => { clauses.push(`from:${e}`); clauses.push(`to:${e}`); });
   const query = `(${clauses.join(' OR ')}) newer_than:90d`;
-  const url = `https://mail.google.com/mail/?authuser=${gmailAuthuser()}#search/` + encodeURIComponent(query);
+  const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(GMAIL_AUTHUSER)}#search/` + encodeURIComponent(query);
   window.open(url, '_blank');
   toast(`Opening Gmail · ${emails.size} address${emails.size>1?'es':''}`);
 });
@@ -7000,7 +6975,7 @@ document.getElementById('composeOpen').addEventListener('click', async ()=>{
   // ignores empty params.
   const cc = buildCcList().join(',');
   const ccPart = cc ? `&cc=${encodeURIComponent(cc)}` : '';
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&authuser=${gmailAuthuser()}&to=`
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&authuser=${encodeURIComponent(GMAIL_AUTHUSER)}&to=`
     + encodeURIComponent(recipient)
     + ccPart
     + '&su=' + encodeURIComponent(subj)
@@ -7865,8 +7840,8 @@ function renderDashboardAnalytics(){
   ];
   tableEl.innerHTML = stages.map(([label,n])=>{
     const pct = total>0 ? ((n/total)*100).toFixed(1) : '0.0';
-    const bar = '█'.repeat(Math.max(1, Math.round(pct/2)));
-    return `<div><span style="color:var(--muted);display:inline-block;width:160px">${label}</span><span style="color:var(--ocean)">${bar}</span> <span style="color:var(--navy)">${n} (${pct}%)</span></div>`;
+    // A real bar (it was up to 50 «█» characters: 46 px past a phone's edge, crm-16).
+    return `<div style="display:flex;align-items:center;gap:8px"><span style="color:var(--muted);flex:0 1 160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span><span style="flex:1 1 60px;min-width:40px"><span style="display:block;height:10px;border-radius:3px;background:var(--ocean);width:${Math.max(1, Number(pct))}%"></span></span><span style="color:var(--navy);white-space:nowrap">${n} (${pct}%)</span></div>`;
   }).join('');
 
   // Charts need Chart.js (CDN) — if it failed to load, the table above
@@ -8745,7 +8720,7 @@ function updateNavTasksCount(){
   }
   // Tab title gets the same number — prefixed so it's still
   // "Gota CRM" when scanning the tab strip but stands out when N>0.
-  document.title = n > 0 ? `(${n}) Gota CRM` : 'Gota CRM';
+  document.title = n > 0 ? `(${n}) Gota Dagua — CRM` : 'Gota Dagua — CRM';
 }
 
 function renderTasksTab(){
