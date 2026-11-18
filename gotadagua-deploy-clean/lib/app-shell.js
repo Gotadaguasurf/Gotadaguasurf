@@ -3,8 +3,10 @@
    (22 Oct 2026, Miguel: «o header devia ser sempre igual… preciso de
    consistência… tudo homogéneo»).
 
-   APPS            the single list of apps every menu shows (order matters)
+   APPS            the single list of apps (order matters); each person's menu shows only the ones they can open
    AppShell.menu(current)        html of the app-switch menu
+   AppShell.setAccess(uid, areas) the areas (Settings → Team pills) this person holds; the hub calls it after login
+   AppShell.clearAccess()        forget them (sign-out)
    AppShell.mountMenus(current)  fills every <nav class="app-switch-menu" data-app-menu>
                                  (runs by itself on DOMContentLoaded)
    AppShell.nav(opts)            html of the whole header: { app, title, sub,
@@ -63,11 +65,101 @@
     return hit ? hit.slug : null;
   }
   function appOf(slug){ return APPS.find(a => a.slug === slug) || null; }
+
+  // ── Each person sees only the apps they can open (audit 18 Nov 2026, SA-05 / SA-06) ──
+  // An «area» is a pill of Settings → Team (= a workspace slug). APP_AREAS says which areas open each app and
+  // where each one lands, so a Morocco-only person gets «Camp hub» → Morocco, not the Sri Lanka default.
+  // This only tidies the menu: every page and the database still check access themselves.
+  const APP_AREAS = {
+    'hq':          { 'hq': '/hq/' },
+    'camp-hub':    { 'sri-lanka': '/camp-hub/', 'portugal': '/camp-hub/?location=portugal', 'junior': '/camp-hub/?location=junior-camp', 'morocco': '/camp-hub/?location=morocco', 'surf-school': '/camp-hub/?location=surf-school' },
+    'prices':      { 'prices-sri-lanka': '/prices/', 'prices-portugal': '/prices/?location=portugal', 'prices-junior': '/prices/?location=junior-camp', 'prices-morocco': '/prices/?location=morocco', 'prices-surf-school': '/prices/?location=surf-school' },
+    'surf-school': { 'surf-school': '/surf-school/' },
+    'partners':    { 'partners': '/partners/' },
+    'crm':         { 'crm': '/crm/' },
+    'instructors': { 'instructors': '/instructors/' },
+    'wild':        { 'wild-wednesday': '/wild/' },
+    'suk':         { 'the-suk': '/suk/' },
+    'diploria':    { 'diploria': '/diploria/' },
+  };
+  const ALL_AREAS = [...new Set(Object.values(APP_AREAS).flatMap(m => Object.keys(m)))];
+  const ownerEmails = () => new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
+  // The hub's rule (canAccessWorkspace in /index.html), kept identical here — tests/app-access.spec.js compares the two:
+  //   platform owner (owner list / super_admin) → everything; role «owner» → everything except HQ and Dipløria,
+  //   which always need their own pill; everyone else → the areas they hold.
+  function areasFor({ email, role, slugs }){
+    const mine = new Set((slugs || []).map(String));
+    const r = String(role || '').toLowerCase();
+    if (r === 'super_admin' || ownerEmails().has(String(email || '').toLowerCase())) return ALL_AREAS.slice();
+    return ALL_AREAS.filter(a => mine.has(a) || (r === 'owner' && a !== 'hq' && a !== 'diploria'));
+  }
+  // Who is signed in on this device, read from the Supabase session the page's own client keeps (no second client).
+  function sessionInfo(){
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!/^sb-.+-auth-token$/.test(k)) continue;
+        const v = JSON.parse(localStorage.getItem(k) || 'null');
+        if (v && v.user && v.user.id) return { uid: v.user.id, email: v.user.email || '', token: v.access_token || '', exp: Number(v.expires_at) || 0 };
+      }
+    } catch (e) { /* private mode / corrupt entry → unknown */ }
+    return null;
+  }
+  const ACCESS_KEY = 'gd_app_access_v1';
+  const ACCESS_FRESH_MS = 6 * 3600 * 1000;
+  function setAccess(uid, areas){
+    if (!uid || !Array.isArray(areas)) return;
+    try { localStorage.setItem(ACCESS_KEY, JSON.stringify({ uid, areas, at: Date.now() })); } catch (e) { /* the menu stays complete */ }
+    mountMenus();
+  }
+  function clearAccess(){ try { localStorage.removeItem(ACCESS_KEY); } catch (e) {} }
+  let accessAsked = false;
+  // null = not known → the whole list, as before (never an empty menu because of a failed read)
+  function allowedAreas(){
+    const me = sessionInfo();
+    if (!me || ownerEmails().has(me.email.toLowerCase())) return null;
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(ACCESS_KEY) || 'null'); } catch (e) {}
+    const mine = saved && saved.uid === me.uid && Array.isArray(saved.areas) ? saved : null;
+    // Someone who opens an app straight from a bookmark never passes by the hub: ask once per page load
+    // (also when the saved list is older than 6 hours, so a new pill shows up without a visit to Home).
+    // After the page's scripts have run, so /supabase-config.js is loaded whatever the order of the script tags.
+    if ((!mine || Date.now() - (mine.at || 0) > ACCESS_FRESH_MS) && !accessAsked) {
+      accessAsked = true;
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => fetchAccess(me), { once: true }); else fetchAccess(me);
+    }
+    return mine ? mine.areas : null;
+  }
+  async function fetchAccess(me){
+    try {
+      const cfg = window.__SUPABASE_CONFIG;
+      if (!cfg || !cfg.url || !cfg.anonKey || !me.token || (me.exp && me.exp * 1000 < Date.now() + 5000)) return;
+      const get = (q) => fetch(`${cfg.url}/rest/v1/${q}`, { headers: { apikey: cfg.anonKey, Authorization: 'Bearer ' + me.token } }).then(r => r.ok ? r.json() : null);
+      const [prof, mem] = await Promise.all([
+        get(`platform_profiles?select=platform_role&id=eq.${me.uid}`),
+        get(`workspace_memberships?select=workspaces(slug)&user_id=eq.${me.uid}&active=eq.true`),
+      ]);
+      if (!Array.isArray(prof) || !prof.length || !Array.isArray(mem)) return;          // not known → keep the whole list
+      const slugs = mem.map(m => m && m.workspaces && m.workspaces.slug).filter(Boolean);
+      if (mem.length && !slugs.length) return;
+      setAccess(me.uid, areasFor({ email: me.email, role: prof[0].platform_role, slugs }));
+    } catch (e) { /* offline → keep the whole list */ }
+  }
   function menu(current){
     current = current || currentSlug();
-    return APPS.map(a => a.group
-      ? `<div class="app-switch-group">${esc(a.group)}</div>`
-      : `<a href="${a.href}"${a.slug === current ? ' class="is-current"' : ''}><span>${esc(a.label)}</span><small>${esc(a.sub)}</small></a>`).join('');
+    const areas = allowedAreas();
+    // an app is listed when the person holds one of its areas; Home always; the page they are on always
+    const hrefOf = (a) => {
+      if (!areas || !APP_AREAS[a.slug]) return a.href;
+      const held = Object.keys(APP_AREAS[a.slug]).filter(k => areas.includes(k));
+      return held.length ? APP_AREAS[a.slug][held[0]] : (a.slug === current ? a.href : null);
+    };
+    const items = APPS.map(a => a.group ? a : { ...a, go: hrefOf(a) }).filter(a => a.group || a.go);
+    const html = items.map((a, i) => a.group
+      ? (items.slice(i + 1).some(n => !n.group) ? `<div class="app-switch-group">${esc(a.group)}</div>` : '')
+      : `<a href="${a.go}"${a.slug === current ? ' class="is-current"' : ''}><span>${esc(a.label)}</span><small>${esc(a.sub)}</small></a>`).join('');
+    const others = items.filter(a => !a.group && a.slug !== 'hub' && a.slug !== current).length;
+    return html + (areas && !others ? `<div class="app-switch-empty">No other apps on this account yet. Ask Miguel for access.</div>` : '');
   }
   function mountMenus(current){
     document.querySelectorAll('[data-app-menu]').forEach(el => { el.innerHTML = menu(el.getAttribute('data-app-menu') || current); });
@@ -196,6 +288,7 @@
   async function signOut(client){
     try { const c = typeof client === 'function' ? await client() : client; if (c && c.auth) await c.auth.signOut({ scope: 'local' }); }
     catch (e) { console.warn('[AppShell] signOut', e); }
+    clearAccess();
     location.href = '/';
   }
   // the name is read when the drawer opens (pages fill their user chip after boot)
@@ -328,7 +421,7 @@
     new MutationObserver(() => { clearTimeout(flattenTimer); flattenTimer = setTimeout(() => flattenEmoji(), 120); }).observe(document.body, { childList: true, subtree: true });
   }
 
-  const api = { APPS, LOGO, menu, mountMenus, nav, mount, toggleMobile, setTab, setUser, setAccount, signOut, mountLogo, splash, toast, esc, $, eur, eur0, fetchAll, currentSlug, icon, flattenEmoji };
+  const api = { APPS, APP_AREAS, LOGO, menu, mountMenus, areasFor, setAccess, clearAccess, nav, mount, toggleMobile, setTab, setUser, setAccount, signOut, mountLogo, splash, toast, esc, $, eur, eur0, fetchAll, currentSlug, icon, flattenEmoji };
   window.AppShell = api;
   window.BusinessShell = api;
   const auto = () => { mountMenus(); if (document.body) watchEmoji(); };

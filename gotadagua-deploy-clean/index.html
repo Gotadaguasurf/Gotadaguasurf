@@ -162,27 +162,6 @@
     .card-arrow{display:inline-flex;color:var(--muted-2);flex-shrink:0;transition:color .15s,transform .15s}
     .card-arrow .ic{width:16px;height:16px}
     .workspace-card:hover .card-arrow{color:var(--ocean);transform:translateX(2px)}
-    .workspace-card.disabled{
-      background:var(--surface-2);
-      border-color:var(--border);
-      box-shadow:none;
-    }
-    .workspace-card.disabled:hover{box-shadow:none;border-color:var(--border)}
-    .workspace-card.disabled .card-title{color:var(--muted)}
-    .workspace-card.disabled .card-arrow{display:none}
-    .workspace-link.disabled{cursor:pointer}
-    .workspace-lock{
-      display:inline-flex;
-      align-items:center;
-      gap:5px;
-      padding:0 18px 12px;
-      font-size:11px;
-      font-weight:600;
-      letter-spacing:.04em;
-      text-transform:uppercase;
-      color:var(--muted-2);
-    }
-    .workspace-lock .ic{width:12px;height:12px}
 
     /* ── Settings ──────────────────────────────────────────────────────── */
     .access-grid{
@@ -359,6 +338,8 @@
 
     <div class="page active" id="page-hub">
       <div class="container">
+        <div id="hubPreviewNote" class="status-msg status-info" style="display:none;margin-bottom:16px"></div>
+        <div id="hubEmpty" class="status-msg status-info" style="display:none;margin-bottom:16px">No apps on this account yet. Ask Miguel for access.</div>
         <div class="section">
           <div class="section-head">
             <div>
@@ -1301,11 +1282,10 @@
     }
 
     function renderWorkspaceCard(item){
-      const allowed = canAccessWorkspace(item.key);
       return `
-        <div class="workspace-card ${allowed ? '' : 'disabled'}">
+        <div class="workspace-card">
           <div class="card-top">
-            <button class="workspace-link ${allowed ? '' : 'disabled'}" onclick="openWorkspace('${item.key}')">
+            <button class="workspace-link" onclick="openWorkspace('${item.key}')">
               <span class="workspace-text">
                 <span class="card-title">${item.title}</span>
                 ${item.subtitle ? `<span class="card-subtitle">${item.subtitle}</span>` : ``}
@@ -1313,22 +1293,34 @@
               <span class="card-arrow">${AppShell.icon('chevron-right')}</span>
             </button>
           </div>
-          ${allowed ? `` : `<div class="workspace-lock">${AppShell.icon('lock')} Ask Miguel for access</div>`}
         </div>
       `;
     }
 
+    // The home page shows only the cards this person can open (audit 18 Nov 2026, SA-05: a bar person had
+    // 17 locked cards out of 18 and three phone screens to scroll). A section with no card is hidden with its
+    // title; with no card at all, one line says what to do. The owner sees everything, as before.
     function renderHub(){
-      document.getElementById('campGrid').innerHTML = WORKSPACES.filter(x=>x.type==='camp').map(renderWorkspaceCard).join('');
-      const businessGrid = document.getElementById('businessGrid');
-      if (businessGrid) businessGrid.innerHTML = WORKSPACES.filter(x=>x.type==='business').map(renderWorkspaceCard).join('');
-      // Pricing Catalog row — one card per camp. Lives between Surf Camps
-      // and Management on the workspace home. Phase 1 is owner-only on
-      // the prices/ page itself; cards remain visible to non-owners so
-      // they understand the structure (clicking shows a "Restricted" page).
-      const pricesGrid = document.getElementById('pricesGrid');
-      if (pricesGrid) pricesGrid.innerHTML = WORKSPACES.filter(x=>x.type==='pricing').map(renderWorkspaceCard).join('');
-      document.getElementById('opsGrid').innerHTML = WORKSPACES.filter(x=>x.type==='ops').map(renderWorkspaceCard).join('');
+      let shown = 0;
+      [['campGrid','camp'],['businessGrid','business'],['pricesGrid','pricing'],['opsGrid','ops']].forEach(([gridId, type]) => {
+        const grid = document.getElementById(gridId);
+        if(!grid) return;
+        const cards = WORKSPACES.filter(x => x.type === type && canAccessWorkspace(x.key));
+        grid.innerHTML = cards.map(renderWorkspaceCard).join('');
+        const section = grid.closest('.section');
+        if(section) section.style.display = cards.length ? '' : 'none';
+        shown += cards.length;
+      });
+      const empty = document.getElementById('hubEmpty');
+      if(empty) empty.style.display = shown ? 'none' : '';
+      // «View as» (Settings → Team): say whose home page this is and give the way back
+      const note = document.getElementById('hubPreviewNote');
+      const myEmail = String(__currentProfile?.email || '').toLowerCase();
+      const previewing = !!currentPreviewUser && !!myEmail && currentPreviewUser.toLowerCase() !== myEmail;
+      if(note){
+        note.style.display = previewing ? '' : 'none';
+        note.innerHTML = previewing ? `Home page as <b>${escapeHtml(currentPreviewUser)}</b> sees it. <button class="btn btn-s" type="button" style="margin-left:8px" onclick="setPreviewAccess('${escapeAttr(__currentProfile.email)}')">Back to my view</button>` : '';
+      }
     }
 
     function renderAreaPills(){
@@ -2021,7 +2013,7 @@
       const item = WORKSPACES.find(x=>x.key===key);
       if(!item) return;
       if(!canAccessWorkspace(key)){
-        showToast('This area is not allowed for the selected user.');
+        showToast('This account has no access to that area. Ask Miguel.');
         return;
       }
       const workspaceRole = getCurrentWorkspaceRole(key);
@@ -2475,6 +2467,7 @@
       __currentAccessRows = [];
       currentPreviewUser = '';
       accessUsers = [];
+      try{ AppShell.clearAccess(); }catch(_e){}
       showLoggedOutUI();
       document.getElementById('loginEmail').value='';
       document.getElementById('loginPassword').value='';
@@ -2493,6 +2486,7 @@
         const client = getSupabaseClient();
         await client.auth.signOut();
       }catch(_error){}
+      try{ AppShell.clearAccess(); }catch(_e){}
       __currentProfile = null;
       __currentAccessRows = [];
       currentPreviewUser = '';
@@ -2864,6 +2858,9 @@
       renderAccessSettings();
       renderTeamAccessModeNotice();
       renderHub();
+      // The app switcher of every page lists the same apps as these cards (lib/app-shell.js). Read here, while
+      // the cards are the person's own (not a «View as» preview).
+      try{ AppShell.setAccess(userId, WORKSPACES.filter(w => canAccessWorkspace(w.key)).map(w => w.key)); }catch(_e){}
       // Wire up live multi-device sync for the Settings/Team page so an
       // invite sent / accepted / a member removed on one admin's browser
       // updates every other admin's open window without manual refresh.
