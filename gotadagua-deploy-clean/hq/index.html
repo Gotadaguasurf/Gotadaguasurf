@@ -758,8 +758,12 @@ async function renderOverview(){
       (todo.bank_unlinked || []).filter(b => b.company === 'water-movements' && b.n).forEach(b => healthChips.push({label:`${b.n} ${BANK_LABEL[b.bank] || b.bank} debits without a line`, onclick:"switchTab('fecho')"}));
       const pw = (todo.no_pdf || []).find(x => x.company === 'water-movements');
       if (pw && pw.n) healthChips.push({label:`${pw.n} without PDF since Sept`, onclick:"goToInvoicesFilter('nopdf')"});
+      // Same rule as the «Who owes us» card on the Partners page (supabase/partners-open-invoices.sql)
+      if (todo.partner_error) console.warn('[HQ] partner chips not counted:', todo.partner_error);
       const pti = todo.partner_to_issue || [];
-      if (pti.length) healthChips.push({label:`${pti.length} partner invoices to issue`, onclick:"window.open('/partners/','_self')"});
+      if (pti.length) healthChips.push({label:`${pti.length} partner invoice${pti.length === 1 ? '' : 's'} to issue`, onclick:"window.open('/partners/','_self')"});
+      const pw60 = todo.partner_waiting_60 || [];
+      if (pw60.length) healthChips.push({label:`${pw60.length} partner invoice${pw60.length === 1 ? '' : 's'} waiting > 60 days`, onclick:"window.open('/partners/','_self')"});
       if (!tasksOk) (todo.bank_last || []).filter(b => b.company === 'water-movements' && b.days >= 7).forEach(b => healthChips.push({label:`${BANK_LABEL[b.bank] || b.bank} statement ${b.days}d old`, onclick:"switchTab('fecho')"}));
       const { count: mailReview } = await sb.from('mail_ingest_items').select('id', { count:'exact', head:true }).eq('status', 'review');
       if (mailReview) healthChips.push({label:`${mailReview} emailed invoices to decide`, onclick:"switchTab('fecho')"});
