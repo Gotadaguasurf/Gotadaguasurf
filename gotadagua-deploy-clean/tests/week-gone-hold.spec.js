@@ -85,3 +85,12 @@ test('manual import of an older camp report holds nothing (it does not have the 
   await page.waitForTimeout(300);
   expect(st.calls.filter(c => c.t === 'trip_update')).toEqual([]);
 });
+
+test('the import card says the camp report comes by itself every hour, and what the old Guests export cannot do (WEEK-05)', async ({ page }) => {
+  await H.openWeek(page, { now: NOW, guests: F.guests(), trips: [] });
+  await page.click('#weekRoot button:has-text("Import Guests file")');
+  const hint = page.locator('#weekRoot .tr-import .card-hint');
+  await expect(hint).toContainText("Bookinglayer's camp report is imported automatically every hour");
+  await expect(hint).toContainText('cannot tell one transfer leg from two');
+  expect(await H.noOverflow(page)).toBe(true);
+});

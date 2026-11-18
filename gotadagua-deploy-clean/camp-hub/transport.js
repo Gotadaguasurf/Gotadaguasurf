@@ -2343,7 +2343,7 @@
     const ws = nextWeekStart(), we = GT.addDaysIso(ws, 6);
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
-      <div class="card-hint">Download the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset and drop it here. Importing again during the week updates the trips — nothing is duplicated.</div></div></div>
+      <div class="card-hint">Bookinglayer's camp report is imported automatically every hour. To import by hand, drop the camp report here (the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset still works, but it cannot tell one transfer leg from two). Importing again updates the trips — nothing is duplicated.</div></div></div>
       <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
