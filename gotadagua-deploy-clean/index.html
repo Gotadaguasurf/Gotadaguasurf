@@ -3572,10 +3572,10 @@
           pax: r.pax,
           accommodation: r.package || '',
           nights: r.nights,
-          // Extra fields used by the partners view + future analytics
-          partner: r.partner,
-          commission_pct: r.commissionPct,
-          gross: r.gross,
+          // Dates and guests only. This copy sits in location_state_store, which every member of the camp can
+          // read (Camp Tab-only staff included), so it must never carry the amount, the partner or the commission
+          // («quem não tem o botão HQ não pode ver os números», 9 Sep 2026; audit 18 Nov 2026, CH-01). The camp hub
+          // never read those three fields; the money lives in the `bookings` table, which is scoped by role.
           location_code: code,
           location_name: locName
         }));
