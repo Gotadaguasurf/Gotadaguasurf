@@ -2999,7 +2999,15 @@
       renderCsvManageTable();
     }
 
-    async function loadCsvManageData(){
+    // One rule for «the bookings of a month and location», used by the count in the confirm AND by the delete,
+    // so the number shown is always the number removed. A booking saved without a location carries the text
+    // 'Unknown' (the importer writes it; 17 rows on 18 Nov 2026), an older one NULL — the bucket covers both.
+    function csvBucketFilter(q, month, location){
+      q = month==='(no date)' ? q.is('month_key', null) : q.eq('month_key', month);
+      return location==='Unknown' ? q.or('location.is.null,location.eq.Unknown') : q.eq('location', location);
+    }
+
+    async function loadCsvManageData(doneNote){
       const status=document.getElementById('csvManageStatus');
       const wrap=document.getElementById('csvManageTableWrap');
       status.textContent = 'Loading…';
@@ -3007,17 +3015,28 @@
       const client = getSupabaseClient();
       if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
       try{
-        // raw_payload included so we can read the real Bookinglayer status (paid/confirmed/
-        // deposit_paid/draft/etc.) without needing a schema change.
-        const { data, error } = await client
-          .from('bookings')
-          .select('booking_ref,booker,check_in_on,month_key,total,location,partner_name,booking_type,raw_payload')
-          .order('check_in_on',{ascending:false})
-          .limit(20000);
-        if(error) throw error;
-        __csvManageRows = (data || []).map(r => ({
+        // Every booking, 1000 at a time: the server never answers more than 1000 rows per request, so one
+        // read with a big limit showed only the newest 1000 of ~4000 (audit 18 Nov 2026, UXC-03).
+        // Only the five raw_payload fields this screen shows are asked for (the real Bookinglayer status,
+        // booker email, paid amount, country, check-out), not the whole payload.
+        const PAGE = 1000;
+        const data = [];
+        for(let from = 0; from < 200 * PAGE; from += PAGE){
+          const { data: chunk, error } = await client
+            .from('bookings')
+            .select('booking_ref,booker,check_in_on,month_key,total,location,partner_name,booking_type,status:raw_payload->>status,bookerEmail:raw_payload->>bookerEmail,paidAmount:raw_payload->>paidAmount,country:raw_payload->>country,checkoutMs:raw_payload->>checkoutMs')
+            .order('check_in_on',{ascending:false})
+            .order('booking_ref',{ascending:true})   // tiebreak, so no booking is skipped or repeated between pages
+            .range(from, from + PAGE - 1);
+          if(error) throw error;
+          data.push(...(chunk || []));
+          if(!chunk || chunk.length < PAGE) break;
+          status.textContent = `Loading… ${data.length}`;
+        }
+        __csvManageRows = data.map(({ bookerEmail, paidAmount, country, checkoutMs, ...r }) => ({
           ...r,
-          status: (r.raw_payload && r.raw_payload.status) || 'unknown'
+          status: r.status || 'unknown',
+          raw_payload: { status: r.status || 'unknown', bookerEmail: bookerEmail || '', paidAmount: paidAmount == null ? null : Number(paidAmount), country: country || '', checkoutMs: Number(checkoutMs) || null }
         }));
         window.__csvManageLoaded = true;
         // Populate filters
@@ -3033,7 +3052,7 @@
         if(statusSel){
           statusSel.innerHTML='<option value="all">All statuses</option>'+statuses.map(s=>`<option value="${escapeAttr(s)}" ${curStatus===s?'selected':''}>${escapeHtml(s)}</option>`).join('');
         }
-        status.textContent = `${__csvManageRows.length} booking${__csvManageRows.length===1?'':'s'} imported`;
+        status.textContent = `${doneNote ? doneNote + ' · ' : ''}${__csvManageRows.length} booking${__csvManageRows.length===1?'':'s'} imported`;
         renderCsvManageTable();
       }catch(e){
         wrap.innerHTML = `<div style="padding:20px;color:#c43c3c;font-size:13px">Could not load: ${escapeHtml(e?.message||'unknown')}</div>`;
@@ -3215,22 +3234,46 @@
       const client = getSupabaseClient();
       if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
       try{
-        const { error } = await client.from('bookings').delete().eq('booking_ref', bookingRef);
+        const { error, count: removed } = await client.from('bookings').delete({ count:'exact' }).eq('booking_ref', bookingRef);
         if(error) throw error;
-        status.textContent = `Deleted booking ${bookingRef}.`;
-        await loadCsvManageData();
+        if(!removed){ status.textContent = CSV_NOT_DELETED_MSG; return; }
+        await loadCsvManageData(`Deleted booking ${bookingRef}`);
       }catch(e){
         status.textContent = "Couldn't delete — "+(e?.message||'unknown error');
       }
     }
 
-    async function deleteCsvBucket(month, location, count, scope){
+    // Only a global admin may delete bookings (database rule). Any other account gets «0 rows» without an error.
+    const CSV_NOT_DELETED_MSG = "Nothing was deleted — this account can't delete bookings. Ask Miguel.";
+
+    // `shown` is the number in the row on screen; it can be smaller than the truth when the Status filter is on.
+    // The delete always removes the WHOLE month and location, so the confirm asks the server how many that is.
+    async function deleteCsvBucket(month, location, shown, scope){
       const status=document.getElementById('csvManageStatus');
+      const client = getSupabaseClient();
+      if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
+      status.textContent = 'Counting…';
+      let count = null;
+      try{
+        const res = await csvBucketFilter(client.from('bookings').select('booking_ref', { count:'exact', head:true }), month, location);
+        if(res.error) throw res.error;
+        count = res.count;
+      }catch(e){
+        status.textContent = "Nothing deleted — couldn't count the bookings ("+(e?.message||'no connection')+').';
+        return;
+      }
+      if(count == null){ status.textContent = "Nothing deleted — couldn't count the bookings."; return; }
+      if(count === 0){ await loadCsvManageData('Nothing to delete there any more'); return; }   // the list on screen was out of date
+      status.textContent = '';
       const plural = count===1 ? '' : 's';
+      const statusFilter = document.getElementById('csvManageStatusF')?.value || 'all';
+      const filterNote = (statusFilter !== 'all' || Number(shown) !== count)
+        ? `\nThe list shows ${shown}${statusFilter !== 'all' ? ` (status «${statusFilter}»)` : ''}, but this deletes ALL ${count} of that month and location, whatever the status.\n`
+        : '';
       if(!scope){
         // One Delete… button per month and location: ask where to delete from.
         const answer = window.prompt(
-          `Delete ${count} booking${plural} for ${location} in ${month}?\n\n` +
+          `Delete ${count} booking${plural} for ${location} in ${month}?\n${filterNote}\n` +
           `Delete from where? Type 1, 2 or 3:\n` +
           `1 = Camp hub and Partners\n` +
           `2 = Partners only (the camp hub keeps them)\n` +
@@ -3243,21 +3286,18 @@
         const scopeLabel = scope==='all' ? 'camp hub and Partners'
                          : scope==='partners' ? 'Partners only (the camp hub keeps them)'
                          : 'camp hub only (Partners keeps them)';
-        if(!confirm(`Delete ${count} booking${plural} for ${location} in ${month}?\n\nFrom: ${scopeLabel}.\nThe CSV file is not changed — you can re-import any time.`)) return;
+        if(!confirm(`Delete ${count} booking${plural} for ${location} in ${month}?\n${filterNote}\nFrom: ${scopeLabel}.\nThe CSV file is not changed — you can re-import any time.`)) return;
       }
       status.textContent = 'Deleting…';
-      const client = getSupabaseClient();
-      if(!client){ status.textContent='No connection — check your internet and try again.'; return; }
+      let removedPartners = 0, removedCampHub = 0;
       try{
         // 1) Delete from global bookings (partners view) when scope includes partners
         if(scope==='all' || scope==='partners'){
-          let q = client.from('bookings').delete();
-          if(month==='(no date)'){ q = q.is('month_key', null); }
-          else { q = q.eq('month_key', month); }
-          if(location==='Unknown'){ q = q.is('location', null); }
-          else { q = q.eq('location', location); }
-          const { error } = await q;
+          const { error, count: removed } = await csvBucketFilter(client.from('bookings').delete({ count:'exact' }), month, location);
           if(error) throw error;
+          removedPartners = removed || 0;
+          // 0 rows without an error = the database refused (only a global admin deletes bookings): stop before touching the camp hub
+          if(count > 0 && !removedPartners){ status.textContent = CSV_NOT_DELETED_MSG; return; }
         }
         // 2) Clean matching camp hub state_store entries when scope includes camphub
         if(scope==='all' || scope==='camphub'){
@@ -3274,19 +3314,26 @@
                   const monthKey = ci ? ci.toISOString().slice(0,7) : '(no date)';
                   return monthKey !== month;
                 });
-                await client.from('location_state_store').upsert({
-                  location_id: locRow.id,
-                  state_key: 'camphub_ov_bookings_v3',
-                  state_json: kept,
-                  updated_at: new Date().toISOString()
-                }, { onConflict: 'location_id,state_key' });
+                if(kept.length !== ssRow.state_json.length){
+                  const { error: hubErr } = await client.from('location_state_store').upsert({
+                    location_id: locRow.id,
+                    state_key: 'camphub_ov_bookings_v3',
+                    state_json: kept,
+                    updated_at: new Date().toISOString()
+                  }, { onConflict: 'location_id,state_key' });
+                  if(hubErr) throw hubErr;
+                  removedCampHub = ssRow.state_json.length - kept.length;
+                }
               }
             }
           }
         }
-        status.textContent = `Deleted ${count} booking${count===1?'':'s'} from ${scope==='all' ? 'the camp hub and Partners' : scope==='partners' ? 'Partners' : 'the camp hub'}.`;
-        // Reload the manage view
-        await loadCsvManageData();
+        // What was really removed (the numbers the database answered), kept on screen after the list reloads
+        const n = (x) => `${x} booking${x===1?'':'s'}`;
+        const done = scope==='all' ? `Deleted ${n(removedPartners)} from Partners and ${n(removedCampHub)} from the camp hub`
+                   : scope==='partners' ? `Deleted ${n(removedPartners)} from Partners`
+                   : `Deleted ${n(removedCampHub)} from the camp hub`;
+        await loadCsvManageData(done);
       }catch(e){
         status.textContent = "Couldn't delete — "+(e?.message||'unknown error');
       }
