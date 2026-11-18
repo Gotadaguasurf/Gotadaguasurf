@@ -1362,25 +1362,8 @@ const FX_FALLBACK_PER_EUR = {
 const FX_FALLBACK_THIS_LOC = FX_FALLBACK_PER_EUR[__HUB_LOCATION_SLUG] ?? 330;
 let LOCAL_PER_EUR = (parseFloat(localStorage.getItem(FX_KEY)||'') || FX_FALLBACK_THIS_LOC);
 let DEFAULT_LKR_PER_EUR=LOCAL_PER_EUR;
-const FIXED_MONTHLY_DEFAULTS=[
-  {name:'Staff House Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:150000,description:'Staff house rent',enabled:true},
-  {name:'Surf Camp Rent',type:'expense',category:'Rent',businessArea:'Utilities',paymentMethod:'Bank Transfer',amountLocal:500000,description:'Surf camp rent',enabled:true},
-  {name:'Pool Maintenance',type:'expense',category:'Services',businessArea:'Utilities',paymentMethod:'Cash',amountLocal:10000,description:'Pool maintenance',enabled:true}
-];
-const SALARY_PROFILE_DEFAULTS=[
-  {name:'Ashan Dilruk',type:'seasonal',seasonAmount:120000,offSeasonAmount:30000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Dilshan de Silva',type:'seasonal',seasonAmount:120000,offSeasonAmount:30000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Vihamga Sandeepa',type:'seasonal',seasonAmount:30000,offSeasonAmount:10000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Michael Sampath',type:'seasonal',seasonAmount:110000,offSeasonAmount:75000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Anushka Botheju',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Chinthaka Ramanayaka',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Bar - Jude Rohan',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Nadith',type:'seasonal',seasonAmount:100000,offSeasonAmount:75000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Dilip Kumara',type:'seasonal',seasonAmount:60000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Sahan Wellage',type:'seasonal',seasonAmount:50000,offSeasonAmount:40000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Shenal de Almeida',type:'fixed',fixedAmount:35000,paymentMethod:'Bank Transfer',enabled:true},
-  {name:'Francisco Guimarães',type:'fixed',fixedAmount:155000,paymentMethod:'Bank Transfer',enabled:true}
-];
+// The old monthly defaults (rents, and staff names with salaries) are gone from the page source: the monthly
+// automation was removed on 28 Oct 2026 and they were sent to every browser (audit CH-10).
 function defS(){return{weeks:[],ledger:[],recurring:[],salaryProfiles:[],salaryMode:'season'};}
 function inferArea(type,category,linkedItem=''){
   if(type==='transfer') return 'General';
@@ -1682,21 +1665,7 @@ window.addEventListener('beforeunload',e=>{
 ensureRecurringDefaults();
 function refreshStateFromStorage(){S=loadS();}
 function ensureRecurringDefaults(){
-  return; // monthly automation removed 28 Oct 2026
-  // Sri Lanka is the only location these defaults belong to (the rents and
-  // staff names are Sri-Lanka-specific). Skip seeding entirely on every
-  // other location so Morocco / Portugal / Junior Camp start clean and
-  // pull their real data from Supabase only.
-  if(__HUB_LOCATION_SLUG !== 'sri-lanka') return;
-  if(localStorage.getItem(RECURRING_DEFAULTS_VERSION_KEY)==='2026-04-sri-lanka-recurring-v1') return;
-  const existingRecurringNames=new Set((S.recurring||[]).map(rule=>String(rule.name||'').trim().toLowerCase()));
-  FIXED_MONTHLY_DEFAULTS.forEach(rule=>{
-    if(existingRecurringNames.has(rule.name.toLowerCase())) return;
-    S.recurring.push(normalizeRecurringRule(rule));
-  });
-  if(!S.salaryMode) S.salaryMode='season';
-  save();
-  localStorage.setItem(RECURRING_DEFAULTS_VERSION_KEY,'2026-04-sri-lanka-recurring-v1');
+  // monthly automation removed 28 Oct 2026 (nothing is seeded)
 }
 function migrateCampTabToursMenu(){
   const existingMenu=readJsonStorage(CAMPTAB_MENU_KEY,{})||{};
@@ -3124,83 +3093,13 @@ async function fetchMonthlyProfilesFromSupabase(){
 // flag) so a future delete by the user doesn't get undone.
 const MONTHLY_PROFILES_PUSH_VERSION_KEY='camphub_monthly_profiles_push_v1'+__HUB_LOC_SUFFIX;
 async function backfillLocalMonthlyProfilesToSupabase(){
-  return; // monthly automation removed 28 Oct 2026
-  if(localStorage.getItem(MONTHLY_PROFILES_PUSH_VERSION_KEY)==='done') return;
-  const client=getHubSupabaseClient();
-  const locationId=await ensureHubLocationId();
-  if(!client||!locationId){
-    // Try again next bootstrap; don't burn the version flag.
-    return;
-  }
-  try{
-    const existing=await fetchMonthlyProfilesFromSupabase();
-    const existingKeys=new Set(existing.map(row=>monthlyProfileKey(row.profile_type,row.name)));
-    const inserts=[];
-    (S.salaryProfiles||[]).forEach(profile=>{
-      if(!profile?.name) return;
-      const key=monthlyProfileKey('salary',profile.name);
-      if(existingKeys.has(key)) return;
-      inserts.push(salaryProfileToMonthlyCostRow(profile,locationId));
-    });
-    (S.recurring||[]).forEach(rule=>{
-      if(!rule?.name) return;
-      const key=monthlyProfileKey('fixed_cost',rule.name);
-      if(existingKeys.has(key)) return;
-      inserts.push(recurringRuleToMonthlyCostRow(rule,locationId));
-    });
-    if(inserts.length){
-      console.log('[Hub] backfilling',inserts.length,'monthly profiles that exist locally but not in Supabase');
-      const { error } = await client.from('monthly_cost_profiles').insert(inserts);
-      if(error) throw error;
-      window.__hubMonthlyBackfill={count:inserts.length,names:inserts.map(r=>r.name),at:new Date().toISOString()};
-      toast('Saved.');
-    }
-    localStorage.setItem(MONTHLY_PROFILES_PUSH_VERSION_KEY,'done');
-  }catch(e){
-    console.warn('[Hub] backfillLocalMonthlyProfilesToSupabase failed',e);
-    // Don't set the flag — let the next bootstrap retry.
-  }
+  // monthly automation removed 28 Oct 2026 (nothing is pushed)
 }
 
 async function hydrateMonthlyProfilesFromSupabase({mergeLocal=true}={}){
   // Monthly automation removed 28 Oct 2026: salaries and fixed costs are
   // added by hand, so nothing is loaded and nothing is applied at month end.
   S.salaryProfiles=[];S.recurring=[];
-  return true;
-  const client=getHubSupabaseClient();
-  const locationId=await ensureHubLocationId();
-  if(!client||!locationId) return false;
-  let existing=await fetchMonthlyProfilesFromSupabase();
-  if(mergeLocal){
-    const existingKeys=new Set(existing.map(row=>monthlyProfileKey(row.profile_type,row.name)));
-    const inserts=[];
-    (S.salaryProfiles||[]).forEach(profile=>{
-      const key=monthlyProfileKey('salary',profile.name);
-      if(existingKeys.has(key)||!profile?.name) return;
-      inserts.push(salaryProfileToMonthlyCostRow(profile,locationId));
-    });
-    (S.recurring||[]).forEach(rule=>{
-      const key=monthlyProfileKey('fixed_cost',rule.name);
-      if(existingKeys.has(key)||!rule?.name) return;
-      inserts.push(recurringRuleToMonthlyCostRow(rule,locationId));
-    });
-    if(inserts.length){
-      const { error } = await client.from('monthly_cost_profiles').insert(inserts);
-      if(error) throw error;
-      existing=await fetchMonthlyProfilesFromSupabase();
-    }
-  }
-  const salaries=[];
-  const recurring=[];
-  existing.forEach(row=>{
-    const mapped=monthlyCostRowToLocal(row);
-    if(!mapped?.profile) return;
-    if(mapped.kind==='salary') return;
-    recurring.push(mapped.profile);
-  });
-  S.salaryProfiles=salaries;
-  S.recurring=recurring;
-  save();
   return true;
 }
 async function upsertMonthlyCostRow(row,context='monthly profile save failed'){
