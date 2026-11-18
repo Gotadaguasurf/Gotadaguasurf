@@ -4,10 +4,22 @@
 //  GET/POST .../gmail-sync   → triggers an incremental pull. Returns
 //                              { ok, fetched, newInbound, matched, advanced }.
 //
-//  Designed to be safe to call from:
-//   - The CRM's manual "Sync inbox" button (browser fetch — no auth needed
-//     because we deploy with --no-verify-jwt; worst case is an extra poll)
-//   - pg_cron / supabase scheduled trigger every ~5 minutes
+//  Called by:
+//   - pg_cron every 5 minutes (header x-cron-secret once CRM_CRON_SECRET is set)
+//   - the CRM's «Get new replies» button (the signed-in user's JWT)
+//
+//  Who may call (audit 18 Nov 2026, crm-05 / SEC-04). Deployed with
+//  --no-verify-jwt, and until ENFORCE_CRON_SECRET=true it still answers
+//  anyone, exactly as before, so the cron cannot be cut off by a deploy.
+//  With ENFORCE_CRON_SECRET=true it answers only the shared secret or a
+//  CRM / HQ user. ?debug=1 and ?days=N are for those two from now on,
+//  whatever the flag says: debug returns sender addresses.
+//
+//  What was already looked at (crm-03). A message that matches no contact
+//  is never stored in email_messages, so it used to be downloaded in full
+//  again on every run for a week — all at once. Now its id is remembered in
+//  gmail_sync_seen (supabase/audit-w3-crm.sql; until that runs, in this
+//  instance's memory only) and downloads go 5 at a time.
 //
 //  Mirrors the browser-side sync logic but reads from groups@ via the
 //  shared refresh token in gmail_account. Inbound rows land in
@@ -19,6 +31,12 @@
 //    GOOGLE_OAUTH_CLIENT_SECRET
 //    SUPABASE_URL                (set by Supabase)
 //    SUPABASE_SERVICE_ROLE_KEY   (set by Supabase)
+//    SUPABASE_ANON_KEY           (set by Supabase)
+//  Optional:
+//    CRM_CRON_SECRET             shared with email-dispatch and the two cron jobs
+//    ENFORCE_CRON_SECRET         'true' = refuse callers without the secret or a CRM login
+//
+//  Deploy:  supabase functions deploy gmail-sync --no-verify-jwt
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -27,6 +45,16 @@ const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+const ANON_KEY      = Deno.env.get('SUPABASE_ANON_KEY') || ''
+const CRON_SECRET   = Deno.env.get('CRM_CRON_SECRET') || ''
+const ENFORCE       = Deno.env.get('ENFORCE_CRON_SECRET') === 'true'
+
+// How many Gmail downloads may be in flight at once. Google answered
+// «429 Too many concurrent requests for user» to 200+ at a time.
+const FETCH_POOL = 5
+// Fallback memory of looked-at ids while gmail_sync_seen does not exist.
+// Lives only as long as this function instance stays warm.
+const seenMem = new Map<string, string | null>()
 
 // Hard-coded list of free providers we MUST NOT match by domain — a
 // reply from a personal gmail would otherwise stick to the first random
@@ -190,13 +218,61 @@ function isUnsubscribe(body: string): { hit: boolean; keyword?: string } {
   return m ? { hit: true, keyword: m[1] } : { hit: false }
 }
 
+// Who is calling: 'cron' (shared secret), a CRM / HQ user's email (their
+// JWT), or '' for anyone else.
+async function callerOf(req: Request): Promise<string> {
+  if (CRON_SECRET && (req.headers.get('x-cron-secret') || '') === CRON_SECRET) return 'cron'
+  const jwt = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
+  if (!jwt || jwt === ANON_KEY || jwt === SERVICE_KEY) return ''
+  try {
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: `Bearer ${jwt}` } } })
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) return ''
+    const [hq, crm] = await Promise.all([
+      userClient.rpc('is_hq_member'),
+      userClient.rpc('is_workspace_member', { p_slug: 'crm' }),
+    ])
+    return (hq.data || crm.data) ? (user.email || user.id) : ''
+  } catch { return '' }
+}
+
+// Full payload of each id, FETCH_POOL at a time. A 429/403 from Google
+// stops the run where it is: what was not fetched stays null and is tried
+// again on the next run.
+async function fetchMessages(token: string, ids: string[]) {
+  const msgs: any[] = new Array(ids.length).fill(null)
+  let next = 0
+  let throttled = false
+  const worker = async () => {
+    while (!throttled) {
+      const i = next++
+      if (i >= ids.length) return
+      const r = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ids[i]}?format=full`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      if (r.status === 429 || r.status === 403) { throttled = true; return }
+      msgs[i] = r.ok ? await r.json() : null
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(FETCH_POOL, ids.length) }, worker))
+  return { msgs, throttled }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   // ?debug=1 returns the built query + raw Gmail list response so we
   // can see WHY a sync returned 0 messages without redeploying with logs.
+  // ?days=N widens the window for a one-off backfill. Both only for the
+  // cron secret or a CRM / HQ login.
   const url = new URL(req.url)
-  const debug = url.searchParams.get('debug') === '1'
+  const wantsDebug = url.searchParams.get('debug') === '1'
+  const wantsDays = url.searchParams.has('days')
+  const who = (ENFORCE || wantsDebug || wantsDays) ? await callerOf(req) : ''
+  if (ENFORCE && !CRON_SECRET) return json({ ok: false, error: 'ENFORCE_CRON_SECRET is on but CRM_CRON_SECRET is not set' }, 500)
+  if (ENFORCE && !who) return json({ ok: false, error: 'Not authorised: x-cron-secret or a CRM login is required' }, 401)
+  const debug = wantsDebug && !!who
   const dbg: Record<string, unknown> = {}
 
   const supa = createClient(SUPABASE_URL, SERVICE_KEY)
@@ -254,7 +330,7 @@ Deno.serve(async (req) => {
     // sync to import our own sent mail, when months of replies typed in
     // Gmail are missing from the conversation panels. Capped at a year;
     // the id list is capped at 500 by the Gmail call below either way.
-    const days = Math.min(365, Math.max(1, Number(url.searchParams.get('days')) || 7))
+    const days = who ? Math.min(365, Math.max(1, Number(url.searchParams.get('days')) || 7)) : 7
     const query = buildInboxQuery(days)
     dbg.contactsCount = contacts?.length || 0
     dbg.peopleCount = people?.length || 0
@@ -285,34 +361,6 @@ Deno.serve(async (req) => {
       return json({ ok: true, fetched: 0, newInbound: 0, matched: 0, advanced: 0, ...(debug ? { dbg } : {}) })
     }
 
-    // 3. Dedup against existing rows so re-runs are cheap.
-    const { data: existing } = await supa.from('email_messages')
-      .select('provider_msg_id').in('provider_msg_id', ids)
-    const seenIds = new Set((existing || []).map((r: any) => r.provider_msg_id))
-    const newIds = ids.filter(id => !seenIds.has(id))
-    if (newIds.length === 0) {
-      return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, note: 'all already in DB' })
-    }
-
-    // 4. Fetch FULL payload for each new id so we capture the body —
-    //    the CRM's conversation panel renders the full email text, not
-    //    just the snippet. format=full returns the MIME tree; we walk
-    //    it to extract a usable plain-text body.
-    const detailResps = await Promise.all(newIds.map(id =>
-      fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      ).then(r => r.ok ? r.json() : null)
-    ))
-
-    // 5. Match each message to a contact and build insert rows.
-    const inserts: any[] = []
-    const touchedCompanies = new Set<string>()
-    const unmatched: { from: string; reason: string }[] = []
-    // Suppression candidates collected during the sync pass; processed
-    // after the upsert (they need their own DB lookups).
-    const bounceCandidates: { threadId: string; subject: string }[] = []
-    const unsubCandidates: { email: string; companyId: string; keyword: string }[] = []
     // Resolve an address to a contact: exact person, then exact company,
     // then company domain (never for free providers, where the domain says
     // nothing about who someone works for).
@@ -333,19 +381,65 @@ Deno.serve(async (req) => {
       return { companyId, contactId, domain }
     }
 
+
+    // 3. What is new? Not what is already stored, and not what an earlier
+    //    run looked at and left out. One exception: a message left out only
+    //    because nobody in the CRM had that address is looked at again once
+    //    somebody does, so adding the contact still brings their email in.
+    const { data: existing } = await supa.from('email_messages')
+      .select('provider_msg_id').in('provider_msg_id', ids)
+    const stored = new Set((existing || []).map((r: any) => r.provider_msg_id))
+    const seenRes = await supa.from('gmail_sync_seen')
+      .select('provider_msg_id, addr').in('provider_msg_id', ids)
+    const haveSeenTable = !seenRes.error
+    const seen: Map<string, string | null> = haveSeenTable
+      ? new Map((seenRes.data || []).map((r: any) => [r.provider_msg_id, r.addr]))
+      : seenMem
+    const newIds = ids.filter(id => {
+      if (stored.has(id)) return false
+      if (!seen.has(id)) return true
+      const addr = seen.get(id)
+      return !!addr && !!resolveContact(addr).companyId
+    })
+    if (newIds.length === 0) {
+      return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, note: 'all already in DB' })
+    }
+
+    // 4. Fetch FULL payload for each new id so we capture the body —
+    //    the CRM's conversation panel renders the full email text, not
+    //    just the snippet. format=full returns the MIME tree; we walk
+    //    it to extract a usable plain-text body.
+    const { msgs: detailResps, throttled } = await fetchMessages(token, newIds)
+
+    // 5. Match each message to a contact and build insert rows.
+    const inserts: any[] = []
+    const touchedCompanies = new Set<string>()
+    const unmatched: { from: string; reason: string }[] = []
+    // Suppression candidates collected during the sync pass; processed
+    // after the upsert (they need their own DB lookups).
+    const bounceCandidates: { id: string; threadId: string; subject: string; old: boolean }[] = []
+    // Looked at and left out of email_messages → remembered, so the next
+    // run does not download it again. Never a failed download.
+    const leftOut: { provider_msg_id: string; reason: string; addr: string | null }[] = []
+    const leaveOut = (id: string, reason: string, addr: string | null = null) => leftOut.push({ provider_msg_id: id, reason, addr })
+    const unsubCandidates: { email: string; companyId: string; keyword: string }[] = []
     detailResps.forEach((msg: any, i: number) => {
       if (!msg) { unmatched.push({ from: '(metadata fetch failed)', reason: 'no msg' }); return }
       const headers: Record<string, string> = Object.fromEntries(
         (msg.payload?.headers || []).map((h: any) => [h.name.toLowerCase(), h.value]),
       )
       const fromEmail = parseEmail(headers.from)
-      if (!fromEmail) { unmatched.push({ from: headers.from || '?', reason: 'no email parsed' }); return }
+      if (!fromEmail) { unmatched.push({ from: headers.from || '?', reason: 'no email parsed' }); leaveOut(newIds[i], 'no sender'); return }
       // Bounce? These come from mailer-daemon@googlemail.com et al. and
       // would otherwise fall through as "no contact matched" and be lost.
       // The DSN threads with the original outbound, so threadId is enough
       // to recover WHO we failed to reach — resolved after this loop.
       if (isBounce(fromEmail, headers.subject || '')) {
-        if (msg.threadId) bounceCandidates.push({ threadId: msg.threadId, subject: headers.subject || '' })
+        // A bounce whose original we cannot find yet (it may be imported by
+        // this very run) is retried for a day, then left alone.
+        const old = Date.now() - Number(msg.internalDate || 0) > 24 * 60 * 60 * 1000
+        if (msg.threadId) bounceCandidates.push({ id: newIds[i], threadId: msg.threadId, subject: headers.subject || '', old })
+        else leaveOut(newIds[i], 'bounce, no thread')
         unmatched.push({ from: fromEmail, reason: 'bounce (queued for suppression)' })
         return
       }
@@ -358,11 +452,12 @@ Deno.serve(async (req) => {
       const isOwn = (msg.labelIds || []).includes('SENT') ||
         ownDomains.has(domain) || ownEmails.has(fromEmail)
       const toEmail = isOwn ? parseEmail(headers.to) : ''
-      if (isOwn && !toEmail) { unmatched.push({ from: fromEmail, reason: 'sent, no recipient parsed' }); return }
+      if (isOwn && !toEmail) { unmatched.push({ from: fromEmail, reason: 'sent, no recipient parsed' }); leaveOut(newIds[i], 'sent, no recipient'); return }
       const subject = isOwn ? toEmail : fromEmail
       const { companyId, contactId } = resolveContact(subject)
       if (!companyId) {
         unmatched.push({ from: subject, reason: isOwn ? 'sent, no contact matched' : 'no contact matched' })
+        leaveOut(newIds[i], 'no contact', subject)
         return
       }
       const fullBody = extractBody(msg.payload) || msg.snippet || null
@@ -405,20 +500,29 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle()
       const deadEmail = (outbound?.to_addr || '').toLowerCase().trim()
-      if (!deadEmail || !deadEmail.includes('@')) continue
-      const { error: supErr } = await supa.from('email_suppression').upsert({
+      if (!deadEmail || !deadEmail.includes('@')) {
+        if (b.old) leaveOut(b.id, 'bounce, original not in the CRM')
+        continue
+      }
+      // .select() returns the row only when it was really inserted, so the
+      // same bounce seen again (the notice sits in the inbox for a week)
+      // suppresses nothing twice and logs nothing twice. This used to write
+      // one activity row per run: 11,425 rows for 89 contacts.
+      const { data: created, error: supErr } = await supa.from('email_suppression').upsert({
         email: deadEmail,
         reason: 'bounce',
         detail: b.subject.slice(0, 200),
         company_id: outbound?.company_id || null,
         created_by: 'gmail-sync-server',
-      }, { onConflict: 'email', ignoreDuplicates: true })
+      }, { onConflict: 'email', ignoreDuplicates: true }).select('id')
       if (supErr) { console.warn('bounce suppress failed', supErr.message); continue }
+      leaveOut(b.id, 'bounce')
       // Cancel anything still queued to the dead address.
       await supa.from('email_queue')
         .update({ status: 'cancelled', error: 'suppressed: bounce' })
         .eq('status', 'pending')
         .ilike('to_email', deadEmail)
+      if (!created?.length) continue      // already on the suppression list
       if (outbound?.company_id) {
         await supa.from('outreach_activity').insert({
           contact_id: outbound.company_id,
@@ -430,9 +534,25 @@ Deno.serve(async (req) => {
       bouncesSuppressed++
     }
 
+    // 5c. Remember what was looked at and left out (crm-03). Best effort:
+    //     without the table (SQL not run yet) the upsert fails quietly and
+    //     this instance's memory does a smaller part of the job.
+    if (leftOut.length) {
+      if (seenMem.size > 5000) seenMem.clear()
+      leftOut.forEach(r => seenMem.set(r.provider_msg_id, r.addr))
+      if (haveSeenTable) {
+        const { error: seenErr } = await supa.from('gmail_sync_seen')
+          .upsert(leftOut, { onConflict: 'provider_msg_id', ignoreDuplicates: true })
+        if (seenErr) console.warn('gmail_sync_seen write failed', seenErr.message)
+        // The window is 7 days (a year at most on a backfill): older ids never come back.
+        await supa.from('gmail_sync_seen').delete()
+          .lt('seen_at', new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString())
+      }
+    }
+
     if (inserts.length === 0) {
       dbg.unmatched = unmatched.slice(0, 20)
-      return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, bouncesSuppressed, note: 'no inbound matched a contact', ...(debug ? { dbg } : {}) })
+      return json({ ok: true, fetched: ids.length, newInbound: 0, matched: 0, advanced: 0, bouncesSuppressed, downloaded: newIds.length, ...(throttled ? { throttled } : {}), note: 'no inbound matched a contact', ...(debug ? { dbg } : {}) })
     }
     dbg.unmatched = unmatched.slice(0, 20)
 
@@ -546,6 +666,8 @@ Deno.serve(async (req) => {
       sequencesStopped,
       bouncesSuppressed,
       unsubsSuppressed,
+      downloaded: newIds.length,
+      ...(throttled ? { throttled } : {}),
       ...(debug ? { dbg } : {}),
     })
   } catch (e) {

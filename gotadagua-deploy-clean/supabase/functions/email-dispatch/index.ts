@@ -14,15 +14,27 @@
 //    3. Campaign cap  — campaign.daily_cap sent today for that campaign
 //    4. Stop-on-reply — inbound email from the same company since the
 //                       campaign started → row skipped, not sent
+//    5. One per address — the same ADDRESS already emailed by this campaign,
+//                       or by anything in the last 24 h → row skipped. The
+//                       same address sits on two company rows 31 times, and
+//                       the per-company check let four of them get the same
+//                       campaign twice (audit 18 Nov 2026, crm-06).
 //
 //  After each send: email_messages row (audit), outreach_contacts status
 //  auto-advance (not_started → first_email → follow_up), outreach_activity
 //  log — identical bookkeeping to the old client-side batch, minus the
 //  fragility.
 //
+//  Who may call (crm-05 / SEC-04): deployed with --no-verify-jwt. Until
+//  ENFORCE_CRON_SECRET=true it answers anyone, as before, so the cron cannot
+//  be cut off by a deploy; with it, only a call carrying the shared secret in
+//  the x-cron-secret header (the cron job) is served.
+//
 //  Deploy:  supabase functions deploy email-dispatch --no-verify-jwt
 //  Secrets: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET (already set
 //           for gmail-send; shared here).
+//           CRM_CRON_SECRET (optional; shared with gmail-sync and the cron
+//           jobs), ENFORCE_CRON_SECRET ('true' = refuse callers without it).
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -35,6 +47,8 @@ const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') || ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+const CRON_SECRET   = Deno.env.get('CRM_CRON_SECRET') || ''
+const ENFORCE       = Deno.env.get('ENFORCE_CRON_SECRET') === 'true'
 
 // How many emails one cron run may send, across all campaigns. 3 per
 // 5-min run ≈ 36/hour max — human-plausible pacing.
@@ -100,6 +114,25 @@ function insideWindow(campaign: { window_start: string; window_end: string; time
 
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms))
 
+// An address as typed in a queue row → comparable form.
+const addrOf = (s: string | null | undefined) => (s || '').trim().toLowerCase()
+// Every address in a To header: 'Ana <a@x.org>, b@y.org' → ['a@x.org', 'b@y.org'].
+const addrsIn = (s: string | null | undefined) =>
+  ((s || '').toLowerCase().match(/[^\s<>,;:"'()]+@[^\s<>,;:"'()]+/g) || [])
+
+// Every row of a query, a page at a time (PostgREST stops at 1000 a request).
+// `build` returns a fresh query ordered by something unique.
+// deno-lint-ignore no-explicit-any
+async function allRows(build: () => any): Promise<{ rows: any[]; error: string | null }> {
+  const rows: unknown[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().range(from, from + 999)
+    if (error) return { rows, error: error.message || String(error) }
+    rows.push(...(data || []))
+    if (!data || data.length < 1000) return { rows, error: null }
+  }
+}
+
 // A follow-up row carries the Gmail thread of the company's earlier email
 // (email_queue.thread_id, set by the CRM at queue time). Gmail groups the
 // send on our side from threadId alone, but the RECIPIENT's mail client
@@ -126,6 +159,10 @@ async function threadHeaders(token: string, threadId: string): Promise<{ inReply
 
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405)
+  if (ENFORCE) {
+    if (!CRON_SECRET) return json({ error: 'ENFORCE_CRON_SECRET is on but CRM_CRON_SECRET is not set' }, 500)
+    if ((req.headers.get('x-cron-secret') || '') !== CRON_SECRET) return json({ error: 'Not authorised: x-cron-secret is required' }, 401)
+  }
   const supa = createClient(SUPABASE_URL, SERVICE_KEY)
   const summary = { sent: 0, skipped: 0, failed: 0, reason: '' }
 
@@ -150,6 +187,23 @@ Deno.serve(async (req) => {
   }
   let budget = Math.min(PER_RUN, GLOBAL_DAILY_CAP - (sentToday ?? 0))
 
+  // 1b. Every address emailed in the last 24 h, by a campaign or by hand.
+  //     Cannot be read → send nothing this run; the next one tries again.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const [queued, mailed] = await Promise.all([
+    allRows(() => supa.from('email_queue').select('to_email')
+      .eq('status', 'sent').gte('sent_at', since).order('id')),
+    allRows(() => supa.from('email_messages').select('to_addr')
+      .eq('direction', 'outbound').gte('sent_at', since).order('id')),
+  ])
+  if (queued.error || mailed.error) {
+    return json({ ...summary, reason: `could not read recent sends: ${queued.error || mailed.error}` })
+  }
+  const recentAddr = new Set<string>([
+    ...queued.rows.map(r => addrOf(r.to_email)),
+    ...mailed.rows.flatMap(r => addrsIn(r.to_addr)),
+  ])
+
   for (const campaign of campaigns) {
     if (budget <= 0) break
     if (!insideWindow(campaign)) { continue }
@@ -171,6 +225,7 @@ Deno.serve(async (req) => {
       .eq('campaign_id', campaign.id)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })   // rows queued together share created_at; the CRM's Resume preview uses this order
       .limit(campBudget)
     if (!rows?.length) {
       // Nothing pending → campaign is finished.
@@ -178,6 +233,12 @@ Deno.serve(async (req) => {
         .update({ status: 'done' }).eq('id', campaign.id).eq('status', 'running')
       continue
     }
+
+    // Addresses this campaign has already emailed, whenever that was.
+    const sentHere = await allRows(() => supa.from('email_queue').select('to_email')
+      .eq('campaign_id', campaign.id).eq('status', 'sent').order('id'))
+    if (sentHere.error) continue
+    const campaignAddr = new Set<string>(sentHere.rows.map(r => addrOf(r.to_email)))
 
     // 3b. Suppression check — one query for this batch's addresses.
     //     Suppressed rows are skipped, never sent: unsubscribed people
@@ -246,6 +307,21 @@ Deno.serve(async (req) => {
           await supa.from('email_queue').update({
             status: 'skipped',
             error: `already emailed ${new Date(lastMs).toISOString()} — duplicate blocked`,
+          }).eq('id', row.id)
+          summary.skipped++
+          continue
+        }
+      }
+
+      // 4c. One email per ADDRESS. 4b looks at the company row; the same
+      //     address on another company row slipped past it.
+      {
+        const addr = addrOf(row.to_email)
+        const why = campaignAddr.has(addr) ? 'this campaign already emailed this address'
+          : recentAddr.has(addr) ? 'this address was emailed in the last 24 h' : ''
+        if (why) {
+          await supa.from('email_queue').update({
+            status: 'skipped', error: `${why} — duplicate blocked`,
           }).eq('id', row.id)
           summary.skipped++
           continue
@@ -323,6 +399,8 @@ Deno.serve(async (req) => {
           })
         }
 
+        campaignAddr.add(addrOf(row.to_email))
+        recentAddr.add(addrOf(row.to_email))
         summary.sent++
         budget--
         campBudget--
