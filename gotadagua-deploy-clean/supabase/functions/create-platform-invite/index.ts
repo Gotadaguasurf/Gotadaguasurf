@@ -126,6 +126,8 @@ Deno.serve(async (req) => {
       const problem = inviteRuleProblem({
         callerRole, callerEmail: String(caller.email || ''), targetEmail: lowerEmail, role: String(role),
         requestedSlugs: (wsRows || []).map((w: { slug: string }) => w.slug), heldSlugs, targetRole: target?.platform_role ?? null,
+        rowRoles: rows.map((r) => String(r.member_role || '')).filter(Boolean),
+        rowManageTeam: rows.some((r) => r.can_manage_team === true),
       });
       if (problem && refuseOrLog('create-platform-invite', problem, 'ENFORCE_INVITE_RULES')) return json({ ok: false, error: problem }, 403);
     }

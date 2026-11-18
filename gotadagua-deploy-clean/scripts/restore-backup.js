@@ -93,7 +93,7 @@ const HELPER = `-- the restore helper: lives only in this session (pg_temp), gon
 create or replace function pg_temp.gota_restore(p_table text, p_rows jsonb, p_replace boolean)
 returns bigint language plpgsql as $fn$
 declare
-  v_keys text[]; v_cols text; v_set text; v_ident boolean; v_n bigint;
+  v_keys text[]; v_cols text; v_set text; v_ident boolean; v_n bigint; v_seq text;
 begin
   select array_agg(distinct k) into v_keys from jsonb_array_elements(p_rows) e, jsonb_object_keys(e) k;
   select string_agg(quote_ident(c.column_name), ', ' order by c.ordinal_position),
@@ -109,6 +109,14 @@ begin
                  case when p_replace and v_set is not null then format('on conflict (id) do update set %s', v_set) else 'on conflict do nothing' end)
     using p_rows;
   get diagnostics v_n = row_count;
+  -- a numeric id with a counter (identity / serial): move the counter past the restored ids,
+  -- so the next row the app adds does not collide with one that came back from the backup
+  if 'id' = any (v_keys) then
+    v_seq := pg_get_serial_sequence(format('public.%I', p_table), 'id');
+    if v_seq is not null then
+      execute format('select setval(%L, greatest((select coalesce(max(id), 1) from public.%I), (select last_value from %s)))', v_seq, p_table, v_seq);
+    end if;
+  end if;
   raise notice 'restore: % — % rows written', p_table, v_n;
   return v_n;
 end $fn$;`;

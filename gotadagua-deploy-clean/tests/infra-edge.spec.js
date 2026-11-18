@@ -165,6 +165,13 @@ test('invite rule: the same answers as the Settings form', async () => {
   expect(inviteRuleProblem({ ...base, role: 'god' })).toContain('Unknown role');
   expect(inviteRuleProblem({ ...base, callerRole: 'super_admin', role: 'owner', requestedSlugs: ['hq', 'settings'] })).toBe('');
   expect(inviteRuleProblem({ ...base, callerRole: 'admin', callerEmail: 'miguel@gotadaguasurf.com', requestedSlugs: ['hq'] })).toBe('');
+  // a hand-made call: the top-level role says viewer, the access rows say otherwise (review 18 Nov)
+  expect(inviteRuleProblem({ ...base, rowRoles: ['owner'] })).toBe('Only Miguel can make someone Owner.');
+  expect(inviteRuleProblem({ ...base, rowRoles: ['viewer'], rowManageTeam: true })).toBe('Only Miguel can let someone manage the team.');
+  expect(inviteRuleProblem({ ...base, rowRoles: ['god'] })).toContain('Unknown role');
+  // what the form really sends for an existing Admin: rows with the same role and can_manage_team
+  expect(inviteRuleProblem({ ...base, role: 'admin', targetRole: 'admin', rowRoles: ['admin'], rowManageTeam: true })).toBe('');
+  expect(inviteRuleProblem({ ...base, callerRole: 'super_admin', rowRoles: ['owner'], rowManageTeam: true })).toBe('');
 });
 
 test('create-platform-invite: a manager giving HQ is refused once ENFORCE_INVITE_RULES is on, and only logged before', async () => {
@@ -251,7 +258,7 @@ test('mail-ingest: a CV, cover letter or catalogue is not sent to the reader; an
   const { notAnInvoiceByName } = loadModule('mail-ingest/route.ts');
   for (const n of ['CV_Joana_Silva.pdf', 'Curriculum Vitae - Tom.pdf', 'Resume 2026.pdf', 'résumé.pdf', 'Cover letter.pdf', 'Catálogo 2027.pdf', 'portfolio-surf.pdf', 'Carta de apresentação.pdf'])
     expect(notAnInvoiceByName(n), n).toBe(true);
-  for (const n of ['FT 2026-123.pdf', 'Fatura CV-2026-7.pdf', 'invoice-catalogue-printing.pdf', 'Recibo.pdf', 'MyCV-supplies.pdf', 'scan0001.pdf', 'EDP_Nov.pdf'])
+  for (const n of ['FT 2026-123.pdf', 'Fatura CV-2026-7.pdf', 'invoice-catalogue-printing.pdf', 'Recibo.pdf', 'MyCV-supplies.pdf', 'scan0001.pdf', 'EDP_Nov.pdf', 'FT_2026_17_CV.pdf', 'FR 348 catalogo.pdf', 'Catalogo NC-2026-4.pdf'])
     expect(notAnInvoiceByName(n), n).toBe(false);
 });
 
@@ -311,13 +318,14 @@ test('every Edge Function has a caller check, or is public by design and says wh
   const dir = path.join(__dirname, '..', 'supabase', 'functions');
   const PUBLIC = { 'accept-invite': 'the invitee has no login yet; the invitation token is the proof',
     'send-password-reset': 'the person is logged out; answers the same for any address', 'gmail-oauth': 'Google consent; only the SHARED_GMAIL_ADDRESS mailbox is stored' };
-  const CHECK = /getUser|isServiceKey|userOf|x-[a-z-]+-secret|CRON_SECRET|SYNC_SECRET|MAIL_INGEST_SECRET|MONTH_END_SECRET|SERVICE_KEY/;
+  const CHECK = /getUser|isServiceKey|userOf|x-[a-z-]+-secret|CRON_SECRET|SYNC_SECRET|MAIL_INGEST_SECRET|MONTH_END_SECRET/;   // not «SERVICE_KEY»: every function holds that one
   const missing = [];
   for (const name of fs.readdirSync(dir)) {
     const f = path.join(dir, name, 'index.ts');
     if (name.startsWith('_') || !fs.existsSync(f)) continue;
     if (PUBLIC[name]) continue;
-    if (!CHECK.test(fs.readFileSync(f, 'utf8'))) missing.push(name);
+    const code = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');   // a comment is not a check
+    if (!CHECK.test(code)) missing.push(name);
   }
   expect(missing).toEqual([]);
 });

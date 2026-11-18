@@ -215,7 +215,8 @@ tables, only the first 1,000 rows (audit AUT-01) — check the manifest's `table
    By default it only ADDS rows that are missing (`on conflict do nothing`); `--replace` overwrites
    existing rows with the backup (tables with an `id` column only). Triggers are off for the restore
    (`session_replication_role = replica`) so ledger mirrors and audit lines are not written twice;
-   `--keep-triggers` leaves them on.
+   `--keep-triggers` leaves them on. Tables with a numeric `id` counter get the counter moved past the
+   restored rows, so the next new row does not collide.
 3. Read `restore.sql`. Run it first on a scratch project (Option B), check the rows, then in the
    production SQL editor. It is one transaction: an error changes nothing.
 

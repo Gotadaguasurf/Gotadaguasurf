@@ -108,13 +108,21 @@ export function ownerEmails(): string[] {
 export function inviteRuleProblem(a: {
   callerRole: string; callerEmail: string; targetEmail: string; role: string;
   requestedSlugs: string[]; heldSlugs: string[]; targetRole: string | null;
+  // what each access row carries (the function writes row.member_role || role and row.can_manage_team):
+  // a hand-made call could send role 'viewer' with rows saying 'owner' / can_manage_team true
+  rowRoles?: string[]; rowManageTeam?: boolean;
 }): string {
-  if (!INVITE_ROLES.includes(a.role)) return `Unknown role «${a.role}».`
+  const roles = [a.role, ...(a.rowRoles || []).filter(Boolean)]
+  const unknown = roles.find(r => !INVITE_ROLES.includes(r))
+  if (unknown !== undefined) return `Unknown role «${unknown}».`
   if (a.callerRole === 'super_admin' || ownerEmails().includes(String(a.callerEmail || '').toLowerCase())) return ''
   if (a.callerEmail && a.targetEmail.toLowerCase() === a.callerEmail.toLowerCase()) return "You can't change your own access here — ask Miguel."
   const held = new Set(a.heldSlugs)
   const newly = Object.keys(GUARDED_AREAS).filter(s => a.requestedSlugs.includes(s) && !held.has(s))
   if (newly.length) return `Only Miguel can give ${newly.map(s => GUARDED_AREAS[s]).join(' or ')} access.`
-  if (ROLE_LABEL[a.role] && a.targetRole !== a.role) return `Only Miguel can make someone ${ROLE_LABEL[a.role]}.`
+  const raised = roles.find(r => ROLE_LABEL[r] && a.targetRole !== r)
+  if (raised) return `Only Miguel can make someone ${ROLE_LABEL[raised]}.`
+  // the form sets can_manage_team only for Owner / Admin (already checked above)
+  if (a.rowManageTeam && !ROLE_LABEL[a.role]) return 'Only Miguel can let someone manage the team.'
   return ''
 }

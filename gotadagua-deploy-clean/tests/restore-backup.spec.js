@@ -37,6 +37,7 @@ test('restore: a day folder becomes one SQL transaction that only adds missing r
   expect(sql).toContain('create or replace function pg_temp.gota_restore');
   expect(sql).toContain("c.is_generated <> 'ALWAYS'");                                            // never a generated column
   expect(sql).toContain('overriding system value');
+  expect(sql).toContain("pg_get_serial_sequence(format('public.%I', p_table), 'id')");          // the id counter moves past restored rows
   expect(sql).not.toContain("gota_restore('audit_log'");                                           // nothing to restore
   expect(sql).toContain('$gota1$');                                                                 // the data held «$gota$»: another tag
   expect(sql).toContain('-- WARNING audit_log: only the last 35 days are in this file');
