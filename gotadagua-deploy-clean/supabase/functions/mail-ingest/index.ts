@@ -27,8 +27,13 @@
 //  Rules encoded (from the daily-routine SKILL):
 //    buyer NIF 515059927 → Water (Drive + line) · 502379723 → Manjar (Drive of
 //    Manjar + line on /suk/) · personal NIFs → never touched · cancelled /
-//    credit notes / statements / reports → skipped · sales invoices FT IN2 →
+//    statements / reports → skipped · sales invoices FT IN2 →
 //    left to the routine (partner_invoices) · unknown buyer → review.
+//    Credit notes (18 Nov 2026): never skipped and never booked by the harvester
+//    (Miguel, 30 Oct 2026). They go to «to decide» with the NEGATIVE line they
+//    propose; a person confirms it in the HQ Month close, and only then the PDF is
+//    filed and the line created (doc_type credit_note, linked to the invoice it
+//    cancels when that is certain — lib/credit-notes.js, supabase/credit-notes.sql).
 //    Never duplicate: same invoice number, or same NIF+amount ±7 d, or same
 //    amount ±10 d with similar supplier / a «[do extrato» line → the existing
 //    line gets the PDF; a line that already has a PDF is left alone.
@@ -40,8 +45,9 @@
 //  redirect URIs; deploy with --no-verify-jwt.
 // ════════════════════════════════════════════════════════════════════════════
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { parseInvoice, bytesToBase64, mediaTypeFor, type Parsed } from '../_shared/invoice-parse.ts'
+import { parseInvoice, bytesToBase64, mediaTypeFor, isCreditNote, type Parsed } from '../_shared/invoice-parse.ts'
 import { runReports, REPORT_ACCOUNT } from './reports.ts'
+import { routeByBuyer, findExisting, creditedInvoice, queueCreditNote, writeLine, type Outcome } from './route.ts'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
@@ -51,8 +57,6 @@ const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') || ''
 const ANON_KEY      = Deno.env.get('SUPABASE_ANON_KEY') || ''
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 
-const WATER_NIF = '515059927', MANJAR_NIF = '502379723'
-const PERSONAL_NIFS = new Set(['268990719', '231351224'])
 const MAX_ATTACHMENTS_PER_RUN = 12
 const MAX_BYTES = 15 * 1024 * 1024
 const GMAIL_QUERY = 'has:attachment newer_than:14d -in:spam -in:trash -"Sistema de MANJAR"'
@@ -173,8 +177,11 @@ async function driveUpload(token: string, folder: string, name: string, mime: st
 function driveName(parsed: Parsed): string {
   const sup = String(parsed.company || 'fornecedor').replace(/[\\/:*?"<>|]/g, ' ').trim().replace(/\b\w/g, c => c.toUpperCase()).slice(0, 60)
   const [y, m] = String(parsed.invoice_date).split('-').map(Number)
-  const amount = Number(parsed.amount || 0).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const cn = isCreditNote(parsed)
+  const amount = (cn ? Math.abs(Number(parsed.amount || 0)) : Number(parsed.amount || 0)).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const cur = (parsed.currency || 'EUR').toUpperCase()
+  // a credit note is filed like the ones filed by hand: «Supplier - Outubro 2026 - -120,00€ (NC 2026/77).pdf»
+  if (cn) return `${sup} - ${MONTHS_PT[m - 1]} ${y} - -${amount}${cur === 'EUR' ? '€' : ' ' + cur} (${String(parsed.invoice_number || 'nota de crédito').replace(/[\\/:*?"<>|]/g, '-').slice(0, 40)}).pdf`
   return `${sup} - ${MONTHS_PT[m - 1]} ${y} - ${amount}${cur === 'EUR' ? '€' : ' ' + cur}.pdf`
 }
 
@@ -191,49 +198,17 @@ async function fxToEur(currency: string, date: string): Promise<number | null> {
 
 // ── The pipeline for one document ────────────────────────────────────────
 interface Ctx { db: Db; account: string; messageId: string; attachmentId: string; filename: string; sha: string; receivedAt: string | null; from: string; subject: string; gmailLink: string; backfill?: boolean }
-interface Outcome { status: 'inserted' | 'linked' | 'skipped' | 'review' | 'error'; reason: string; company?: string | null; hq_invoice_id?: string | null; bank_movement_id?: string | null; drive_file_id?: string | null; drive_link?: string | null }
-
-function firstToken(s: string): string { return String(s || '').toLowerCase().replace(/[^a-z0-9àáâãçéêíóôõú ]/g, ' ').trim().split(/\s+/)[0] || '' }
 
 async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, company: string, forcedLocation?: string | null): Promise<Outcome> {
   const { db } = ctx
   if (!parsed.invoice_date || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.invoice_date) || parsed.amount == null) return { status: 'review', reason: 'sem data ou valor legível', company }
-  const amount = Number(parsed.amount)
+  // a credit note is stored negative whatever sign was read (only reached after a person confirmed it — see queueCreditNote)
+  const creditNote = isCreditNote(parsed)
+  const amount = creditNote ? -Math.abs(Number(parsed.amount)) : Number(parsed.amount)
   const ym = parsed.invoice_date.slice(0, 7)
   const payingCompany = company
   // 1. an existing line? (never duplicate)
-  const base = db.from('hq_invoices').select('id, drive_link, invoice_number, supplier_nif, company, amount_eur, invoice_date, notes').eq('paying_company', payingCompany).is('deleted_at', null)
-  let existing: Record<string, unknown> | null = null
-  if (parsed.invoice_number) {
-    // a number is only unique per supplier: every freelancer's Portal das Finanças receipt is «FR ATSIRE01FR/<n>»,
-    // so FR/36 of Heitor (Oct) is not FR/36 of Alexandre (Jan) — same NIF, or the same name when a NIF is missing
-    const { data } = await base.ilike('invoice_number', parsed.invoice_number.trim()).limit(20)
-    const nif = String(parsed.supplier_nif || '').replace(/\s/g, ''), tok = firstToken(parsed.company || '')
-    existing = (data || []).find(r => {
-      const rn = String(r.supplier_nif || '').replace(/\s/g, '')
-      if (nif && rn) return nif === rn
-      return tok.length >= 3 && String(r.company || '').toLowerCase().startsWith(tok)
-    }) || null
-  }
-  if (!existing) {
-    // backfill of old mail: a supplier is often paid weeks after the invoice date (direct debits, «pag referencia»)
-    const lo = new Date(parsed.invoice_date); lo.setDate(lo.getDate() - 10)
-    const hi = new Date(parsed.invoice_date); hi.setDate(hi.getDate() + (ctx.backfill ? 45 : 10))
-    const { data } = await db.from('hq_invoices').select('id, drive_link, invoice_number, supplier_nif, company, amount_eur, amount, currency, invoice_date, notes')
-      .eq('paying_company', payingCompany).is('deleted_at', null).gte('invoice_date', lo.toISOString().slice(0, 10)).lte('invoice_date', hi.toISOString().slice(0, 10))
-    const tok = firstToken(parsed.company || '')
-    const cands = (data || []).filter(r => {
-      const sameAmt = Math.abs(Number(r.amount_eur ?? r.amount) - amount) < 0.011 || (r.currency && r.currency === parsed.currency && Math.abs(Number(r.amount) - amount) < 0.011)
-      if (!sameAmt) return false
-      // SKILL rule 8: a different invoice number is a different document (two e-tickets of the same price, two Chubb policies…)
-      if (parsed.invoice_number && r.invoice_number && String(r.invoice_number).trim().toLowerCase() !== parsed.invoice_number.trim().toLowerCase()) return false
-      if (parsed.supplier_nif && r.supplier_nif && String(r.supplier_nif).replace(/\s/g, '') === parsed.supplier_nif) return true
-      if (tok.length >= 4 && String(r.company || '').toLowerCase().startsWith(tok)) return true
-      if (String(r.notes || '').includes('[do extrato')) return true
-      return false
-    })
-    if (cands.length) existing = cands.sort((a, b) => Math.abs(new Date(String(a.invoice_date)).getTime() - new Date(parsed.invoice_date!).getTime()) - Math.abs(new Date(String(b.invoice_date)).getTime() - new Date(parsed.invoice_date!).getTime()))[0]
-  }
+  const existing = await findExisting(db, parsed, payingCompany, amount, !!ctx.backfill)
   if (existing && existing.drive_link) return { status: 'skipped', reason: `já na app com PDF (linha ${String(existing.id).slice(0, 8)}, ${existing.invoice_number || 'sem nº'})`, company, hq_invoice_id: String(existing.id) }
   // backfill never creates lines: old documents only complete the lines the bank already made
   // recorded as skipped, not review: the «to decide» buttons would create a line and duplicate the bank's
@@ -251,7 +226,8 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     if (!existing.invoice_number && parsed.invoice_number) patch.invoice_number = parsed.invoice_number
     if (!existing.supplier_nif && parsed.supplier_nif) patch.supplier_nif = parsed.supplier_nif
     patch.notes = `${String(existing.notes || '').trim()} [PDF do email ${ctx.account} ${(ctx.receivedAt || '').slice(0, 10)}]`.trim()
-    const { error } = await db.from('hq_invoices').update(patch).eq('id', existing.id)
+    if (creditNote) patch.doc_type = 'credit_note'
+    const { error } = await writeLine((row) => db.from('hq_invoices').update(row).eq('id', existing.id), patch)
     if (error) return { status: 'error', reason: 'update falhou: ' + error.message, company, drive_file_id: up.id, drive_link: up.link }
     const { data: bm } = await db.rpc('hq_invoice_to_bank', { p_invoice: existing.id })
     return { status: 'linked', reason: `PDF ligado à linha existente${bm ? ' · débito do banco ligado' : ''}`, company, hq_invoice_id: String(existing.id), bank_movement_id: bm || null, drive_file_id: up.id, drive_link: up.link }
@@ -264,8 +240,10 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     : (parsed.location_hint && WATER_LOCATIONS.has(parsed.location_hint)) ? parsed.location_hint : 'general'
   const notes = [`[do email ${ctx.account} ${(ctx.receivedAt || '').slice(0, 10)} · "${ctx.subject.slice(0, 70)}" · de ${ctx.from.slice(0, 60)}]`,
     cat ? '' : '[categoria por decidir]', fx == null ? '[câmbio por confirmar]' : '',
-    ['Cash', 'Card', 'Bank Transfer', 'Other'].includes(String(parsed.payment_type)) ? '' : '[forma de pagamento por confirmar]', parsed.service_month ? `[serviço: ${parsed.service_month}]` : '', parsed.atcud ? `[ATCUD ${parsed.atcud}]` : ''].filter(Boolean).join(' ')
-  const row = {
+    ['Cash', 'Card', 'Bank Transfer', 'Other'].includes(String(parsed.payment_type)) ? '' : '[forma de pagamento por confirmar]', parsed.service_month ? `[serviço: ${parsed.service_month}]` : '', parsed.atcud ? `[ATCUD ${parsed.atcud}]` : '',
+    creditNote ? `[nota de crédito${parsed.credits_invoice_number ? ' · anula ' + parsed.credits_invoice_number : ''}]` : ''].filter(Boolean).join(' ')
+  const creditsId = creditNote ? await creditedInvoice(db, parsed, payingCompany) : null
+  const row: Record<string, unknown> = {
     location_slug: location, paying_company: payingCompany, invoice_date: parsed.invoice_date,
     company: String(parsed.company || 'fornecedor').toLowerCase().slice(0, 120), supplier_nif: parsed.supplier_nif, description: parsed.description,
     amount, currency: (parsed.currency || 'EUR').toUpperCase(), fx_rate: fx ?? 1, amount_eur: fx == null ? amount : Math.round(amount * fx * 100) / 100,
@@ -274,24 +252,12 @@ async function placeDocument(ctx: Ctx, parsed: Parsed, bytes: Uint8Array, compan
     invoice_number: parsed.invoice_number, category_id: cat?.id || null, category_name: cat?.name || null,
     needs_review: !cat || fx == null, drive_link: up.link, file_name: fileName, notes,
   }
-  const { data: ins, error } = await db.from('hq_invoices').insert(row).select('id').single()
+  if (creditNote) { row.doc_type = 'credit_note'; row.credits_invoice_id = creditsId }
+  const { data: ins, error } = await writeLine((r) => db.from('hq_invoices').insert(r).select('id').single(), row)
   if (error) return { status: 'error', reason: 'insert falhou: ' + error.message, company, drive_file_id: up.id, drive_link: up.link }
   const { data: bm } = await db.rpc('hq_invoice_to_bank', { p_invoice: ins.id })
+  if (creditNote) return { status: 'inserted', reason: `nota de crédito lançada a negativo (${amount} ${row.currency}, ${location}${cat ? ', ' + cat.name : ', sem categoria'})${creditsId ? ' · ligada à fatura que anula' : ' · fatura que anula por escolher'}${bm ? ' · reembolso do banco ligado' : ''}`, company, hq_invoice_id: ins.id, bank_movement_id: bm || null, drive_file_id: up.id, drive_link: up.link }
   return { status: 'inserted', reason: `linha criada (${location}${cat ? ', ' + cat.name : ', sem categoria'})${bm ? ' · débito do banco ligado' : ''}`, company, hq_invoice_id: ins.id, bank_movement_id: bm || null, drive_file_id: up.id, drive_link: up.link }
-}
-
-function routeByBuyer(parsed: Parsed): { company: string | null; outcome?: Outcome } {
-  const dt = String(parsed.doc_type || 'other')
-  if (parsed.is_cancelled) return { company: null, outcome: { status: 'skipped', reason: 'documento anulado / sem efeito' } }
-  if (!['invoice', 'receipt'].includes(dt)) return { company: null, outcome: { status: 'skipped', reason: `não é fatura (${dt})` } }
-  const nif = parsed.buyer_nif || ''
-  if (PERSONAL_NIFS.has(nif)) return { company: null, outcome: { status: 'skipped', reason: 'documento pessoal' } }
-  if (nif === WATER_NIF) return { company: 'water-movements' }
-  if (nif === MANJAR_NIF) return { company: 'manjar' }
-  const buyer = String(parsed.buyer_name || '').toLowerCase()
-  if (/water\s*movements|gota\s*d.?\s*[aá]gua|gotadagua/.test(buyer)) return { company: 'water-movements' }   // partners invoice us as «Gota Dagua Camps»
-  if (/manjar/.test(buyer)) return { company: 'manjar' }
-  return { company: null, outcome: { status: 'review', reason: nif ? `comprador desconhecido (NIF ${nif}${buyer ? ', ' + buyer : ''})` : 'comprador não identificado' } }
 }
 
 async function record(ctx: Ctx, o: Outcome, parsed: Parsed | null) {
@@ -365,6 +331,7 @@ async function run(db: Db, opts: RunOpts = {}) {
             const route = routeByBuyer(parsed)
             let outcome: Outcome
             if (route.outcome) outcome = route.outcome
+            else if (isCreditNote(parsed)) outcome = await queueCreditNote(db, parsed, route.company!)
             else outcome = await placeDocument(ctx, parsed, bytes, route.company!)
             await record(ctx, outcome, parsed)
             ;(summary[outcome.status] as number)++

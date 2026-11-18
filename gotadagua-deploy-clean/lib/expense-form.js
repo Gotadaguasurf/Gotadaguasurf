@@ -16,6 +16,13 @@
    })
    ExpenseForm.open({ title, mode:'add'|'edit', showDelete }) · close() · isOpen()
    ExpenseForm.set(values) · values() · setStatus(html) · toast(kind, msg) · busy(bool)
+
+   Credit notes (18 Nov 2026, lib/credit-notes.js + supabase/credit-notes.sql): with fields.creditNote the form
+   has a «Credit note» switch (#inv_credit_note) and, when it is on, «Cancels which invoice?» (#inv_credits_invoice).
+   The row stays hidden until the host calls creditNoteAvailable(true) — before the SQL has run the form is the old one.
+   creditNote() → { on, creditsInvoiceId } · setCreditNote({ on, creditsInvoiceId }) · refreshCredits()
+   The host gives the picker its options: mount({ onCreditLookup: async ({ supplier, nif, amount, date, want }) => [{ id, label, selected? }],
+   onCreditToggle(on) }). The form only collects; the host stores the amount negative.
    ════════════════════════════════════════════════════════════════════════ */
 (function(){
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -51,9 +58,21 @@
   .xf-pick{max-height:170px;overflow:auto;border:1px solid var(--border-2,#d5dde8);border-radius:var(--r-sm,10px)}
   .xf-pick label{display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border,#e5eaf0);font-size:12.5px;cursor:pointer;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink,#16243a)}
   .xf-pick label:last-child{border-bottom:none}
+  .xf-pick input[type=radio]{width:16px;height:16px;padding:0;margin:0;flex-shrink:0;accent-color:var(--ocean,#1e6fa8)}
   .xf-pick label:hover{background:var(--surface-2,#f8fafc)}
   .xf-pick label.sel{background:var(--green-bg,#eaf8f0)}
   .xf-pick .amt{margin-left:auto;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .xf-cn{grid-column:span 12;display:flex;gap:8px 16px;align-items:flex-end;flex-wrap:wrap;min-width:0}
+  .xf-cn[hidden]{display:none}
+  .xf-sw{display:inline-flex;align-items:center;gap:8px;height:38px;font-size:13px;font-weight:600;color:var(--ink,#16243a);cursor:pointer;user-select:none;white-space:nowrap}
+  .xf-sw input{appearance:none;-webkit-appearance:none;width:34px;height:20px;border-radius:999px;background:var(--border-2,#d5dde8);position:relative;cursor:pointer;margin:0;flex-shrink:0;outline:none;transition:background .15s}
+  .xf-sw input::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(22,36,58,.25);transition:transform .15s}
+  .xf-sw input:checked{background:var(--ocean,#1e6fa8)}
+  .xf-sw input:checked::after{transform:translateX(14px)}
+  .xf-sw input:focus-visible{box-shadow:var(--ring,0 0 0 3px rgba(30,111,168,.18))}
+  .xf-cn .xf-f{flex:1 1 260px;grid-column:auto}
+  .xf-cn-as{font-size:12.5px;color:var(--muted,#64748b);height:38px;display:inline-flex;align-items:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .xf-cn-as b{color:var(--red,#b42318);font-weight:700;margin-left:4px}
   .xf-status{margin-top:12px;font-size:13px}
   .xf-status:empty{display:none}
   .xf-toast{padding:10px 14px;border-radius:var(--r-sm,10px);font-size:13px;font-weight:500;margin-top:12px;border:1px solid transparent;line-height:1.5}
@@ -84,7 +103,7 @@
 
   function mount(cfg){
     CFG = Object.assign({ fields:{}, locations:[], companies:[], categories:[], payments:['Bank Transfer','Card','Cash','Other'], currencies:['EUR','MAD','LKR','USD','GBP'] }, cfg || {});
-    const f = Object.assign({ location:false, payingCompany:false, currency:false, file:true, driveLink:false, bankPicker:false, splitHint:false, dupWarn:false, description:true, notes:true, nif:true, number:true }, CFG.fields || {});
+    const f = Object.assign({ location:false, payingCompany:false, currency:false, file:true, driveLink:false, bankPicker:false, splitHint:false, dupWarn:false, creditNote:false, description:true, notes:true, nif:true, number:true }, CFG.fields || {});
     if (!document.getElementById('xf-css')) { const st = document.createElement('style'); st.id = 'xf-css'; st.textContent = CSS; document.head.appendChild(st); }
     if (ROOT) ROOT.remove();
     const today = new Date().toISOString().slice(0, 10);
@@ -105,6 +124,11 @@
             ${f.currency ? fieldHtml('c3', 'inv_currency', 'Currency', `<select id="inv_currency">${CFG.currencies.map(c => `<option value="${c}">${c}</option>`).join('')}</select>`) : `<input id="inv_currency" type="hidden" value="EUR">`}
             ${fieldHtml('c3', 'inv_category', 'Category', `<select id="inv_category">${CFG.categories.map(c => `<option value="${esc(c.id)}" data-personal="${c.is_personal ? 1 : 0}">${esc(c.name)}</option>`).join('')}</select>`)}
             ${fieldHtml('c3', 'inv_payment', 'Payment method', `<select id="inv_payment">${CFG.payments.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select>`)}
+            ${f.creditNote ? `<div class="xf-cn" id="xf_cn" hidden>
+              <label class="xf-sw"><input type="checkbox" id="inv_credit_note" onchange="ExpenseForm.creditToggled()"> Credit note</label>
+              <span class="xf-cn-as" id="xf_cn_as" style="display:none"></span>
+              <div class="xf-f" id="xf_cn_pick" style="display:none"><label for="inv_credits_invoice">Cancels which invoice? <small>(optional)</small></label><select id="inv_credits_invoice"><option value="">Not linked</option></select></div>
+            </div>` : ''}
             ${f.payingCompany ? fieldHtml('c4', 'inv_paying_company', 'Paying company <small id="payCoAuto">(auto from location)</small>', `<select id="inv_paying_company">${opt(CFG.companies, 'slug', 'label')}</select>`) : ''}
             ${f.nif ? fieldHtml('c4', 'inv_nif', 'Tax number (NIF)', `<input id="inv_nif" type="text" placeholder="optional">`) : ''}
             ${f.number ? fieldHtml('c4', 'inv_number', 'Invoice number', `<input id="inv_number" type="text" placeholder="e.g. FT 2026/1234">`) : ''}
@@ -112,7 +136,7 @@
             ${f.description ? fieldHtml(f.currency ? 'c6' : 'c12', 'inv_description', 'Description', `<input id="inv_description" type="text" placeholder="What was purchased?">`) : ''}
             ${f.driveLink ? fieldHtml('c6', 'inv_drive_link', 'Google Drive link', `<input id="inv_drive_link" type="url" placeholder="https://drive.google.com/…">`) : ''}
             ${f.notes ? fieldHtml(f.driveLink ? 'c6' : 'c12', 'inv_notes', 'Notes', `<input id="inv_notes" type="text" placeholder="Internal notes">`) : ''}
-            ${f.bankPicker ? `<div class="xf-f c12"><label>Bank movement — the debit this was paid with</label><div class="xf-pick" id="inv_bankpick"></div><div class="xf-hint">Debits of the same amount near the date come first. Leave none selected for cash purchases.</div></div>` : ''}
+            ${f.bankPicker ? `<div class="xf-f c12"><label id="inv_bankpick_lbl">Bank movement — the debit this was paid with</label><div class="xf-pick" id="inv_bankpick"></div><div class="xf-hint" id="inv_bankpick_hint">Debits of the same amount near the date come first. Leave none selected for cash purchases.</div></div>` : ''}
           </div>
           <div id="manualExtras" style="display:none"></div>
           <button type="button" id="extractBtn" style="display:none"></button>
@@ -130,6 +154,12 @@
     ROOT.addEventListener('click', (e) => { if (e.target !== ROOT) return; if (dirty() && !confirm('Discard this expense?')) return; cancel(); });
     const file = $('inv_file');
     if (file) file.addEventListener('change', () => { const fl = file.files && file.files[0]; if (fl) { const lbl = $('inv_file_lbl'); if (lbl) lbl.textContent = fl.name; if (CFG.onFile) CFG.onFile(fl); } });
+    // credit note: the options of «Cancels which invoice?» follow the supplier, the date and the amount
+    if (f.creditNote) {
+      ['inv_company', 'inv_date', 'inv_amount', 'inv_nif'].forEach(id => { const el = $(id); if (el) el.addEventListener('change', () => { if (creditNote().on) refreshCredits(); }); });
+      const amt = $('inv_amount'); if (amt) amt.addEventListener('input', paintCreditAs);
+      CN_WANT = null; const cnRow = $('xf_cn'); if (cnRow) cnRow.hidden = !CN_AVAILABLE;   // a re-mount keeps what the host said
+    }
     return ROOT;
   }
 
@@ -156,22 +186,81 @@
     const fi = $('inv_file'); if (fi) fi.value = '';
     setStatus(''); toast('', '');
     const b = $('xf_banner'); if (b) b.innerHTML = v.banner || '';
+    setCreditNote({ on: !!v.creditNote, creditsInvoiceId: v.creditsInvoiceId || null });
   }
   function values(){
     const out = {};
     Object.entries(FIELDS).forEach(([k, id]) => { const el = $(id); if (el) out[k] = el.value; });
     const cs = $('inv_category'); out.categoryName = cs ? (cs.options[cs.selectedIndex]?.textContent || null) : null;
     const fi = $('inv_file'); out.file = fi && fi.files && fi.files[0] || null;
+    const cn = creditNote(); out.creditNote = cn.on; out.creditsInvoiceId = cn.creditsInvoiceId;
     return out;
   }
   function setStatus(html){ const el = $('extractStatus'); if (el) el.innerHTML = html || ''; }
   function toast(kind, msg){ const el = $('invToast'); if (!el) return; el.className = 'xf-toast' + (kind ? ' ' + kind : ''); el.textContent = msg || ''; }
-  function setBank(cands, selectedId, onPick){
+  // o.credit: a credit note comes back as money IN — the list shows bank credits instead of debits
+  function setBank(cands, selectedId, onPick, o = {}){
     const box = $('inv_bankpick'); if (!box) return;
     const eur = (n) => '€' + Number(n || 0).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2});
-    box.innerHTML = cands.length ? cands.map(r => `<label class="${r.id === selectedId ? 'sel' : ''}"><input type="radio" name="bankpick" ${r.id === selectedId ? 'checked' : ''} data-id="${esc(r.id)}"><span>${esc(r.movement_date)}</span><span>${esc(r.description)}</span><span class="amt">${eur(-r.amount)}</span></label>`).join('') : '<div class="xf-hint" style="padding:8px 10px">No debit of this amount near the date.</div>';
+    const lbl = $('inv_bankpick_lbl'), hint = $('inv_bankpick_hint');
+    if (lbl) lbl.textContent = o.credit ? 'Bank movement — the refund this credit note came back as' : 'Bank movement — the debit this was paid with';
+    if (hint) hint.textContent = o.credit ? 'Credits of the same amount near the date come first. Leave none selected when the supplier takes it off the next invoice.' : 'Debits of the same amount near the date come first. Leave none selected for cash purchases.';
+    box.innerHTML = cands.length ? cands.map(r => `<label class="${r.id === selectedId ? 'sel' : ''}"><input type="radio" name="bankpick" ${r.id === selectedId ? 'checked' : ''} data-id="${esc(r.id)}"><span>${esc(r.movement_date)}</span><span>${esc(r.description)}</span><span class="amt">${o.credit ? '+' + eur(r.amount) : eur(-r.amount)}</span></label>`).join('') : `<div class="xf-hint" style="padding:8px 10px">${o.credit ? 'No credit of this amount near the date.' : 'No debit of this amount near the date.'}</div>`;
     box.querySelectorAll('input[type=radio]').forEach(inp => inp.addEventListener('click', () => onPick && onPick(inp.dataset.id)));
   }
 
-  window.ExpenseForm = { mount, open, close, isOpen, cancel, save, del, busy, set, values, setStatus, toast, setBank, dirty, root: () => ROOT };
+  // ── Credit note ─────────────────────────────────────────────────────────
+  let CN_AVAILABLE = false, CN_WANT = null, CN_SEQ = 0, CN_WAS_NEG = false;
+  // The host says whether the database knows credit notes (supabase/credit-notes.sql). Until then: the old form.
+  function creditNoteAvailable(on){ CN_AVAILABLE = !!on; const row = $('xf_cn'); if (row) row.hidden = !CN_AVAILABLE; if (!CN_AVAILABLE) { const c = $('inv_credit_note'); if (c) c.checked = false; paintCredit(); } }
+  function creditNote(){
+    const c = $('inv_credit_note'), s = $('inv_credits_invoice');
+    const on = !!(CN_AVAILABLE && c && c.checked);
+    return { on, creditsInvoiceId: on && s && s.value ? s.value : null };
+  }
+  function paintCreditAs(){
+    const as = $('xf_cn_as'); if (!as) return;
+    const on = creditNote().on, n = Math.abs(Number(($('inv_amount') || {}).value) || 0);
+    as.style.display = on ? '' : 'none';
+    as.innerHTML = on ? `Saved as<b>−${n.toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2})}</b>` : '';
+  }
+  function paintCredit(){
+    const on = creditNote().on, pick = $('xf_cn_pick');
+    if (pick) pick.style.display = on ? '' : 'none';
+    // a credit note is typed as a plain amount: the sign is the switch. The form remembers that the amount was
+    // negative, so switching it off gives the minus back (a stored credit never turns into a cost by a toggle).
+    const amt = $('inv_amount'), eurEl = $('inv_amount_eur');
+    if (on && amt && Number(amt.value) < 0) { amt.value = Math.abs(Number(amt.value)).toFixed(2); CN_WAS_NEG = true; }
+    if (on && eurEl && Number(eurEl.value) < 0) eurEl.value = Math.abs(Number(eurEl.value)).toFixed(2);
+    if (!on && CN_WAS_NEG) {
+      if (amt && Number(amt.value) > 0) amt.value = (-Number(amt.value)).toFixed(2);
+      if (eurEl && Number(eurEl.value) > 0) eurEl.value = (-Number(eurEl.value)).toFixed(2);
+    }
+    paintCreditAs();
+  }
+  // Fill «Cancels which invoice?» from the host; the wanted id stays selected even when it is outside the list.
+  async function refreshCredits(){
+    const sel = $('inv_credits_invoice'); if (!sel || !creditNote().on) return;
+    const want = CN_WANT || sel.value || null, seq = ++CN_SEQ;
+    let list = [];
+    try { if (CFG && CFG.onCreditLookup) list = await CFG.onCreditLookup({ supplier: ($('inv_company') || {}).value || '', nif: ($('inv_nif') || {}).value || '', amount: Math.abs(Number(($('inv_amount') || {}).value) || 0), date: ($('inv_date') || {}).value || '', want }) || []; } catch (_e) { list = []; }
+    if (seq !== CN_SEQ) return;
+    sel.innerHTML = `<option value="">${list.length ? 'Not linked' : 'Not linked — no invoice of this supplier or amount in the last 120 days'}</option>` + list.map(o => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('');
+    // keep the linked invoice; otherwise take the one the document itself names (the host marks it «selected»)
+    const pre = want || (list.find(o => o.selected) || {}).id || null;
+    if (pre && list.some(o => o.id === pre)) sel.value = pre;
+    CN_WANT = null;
+  }
+  function setCreditNote(o = {}){
+    const c = $('inv_credit_note'); if (!c) return;
+    CN_WAS_NEG = false;   // a new form: nothing to give back yet
+    c.checked = !!(o.on && CN_AVAILABLE);
+    CN_WANT = c.checked ? (o.creditsInvoiceId || null) : null;
+    const sel = $('inv_credits_invoice'); if (sel) sel.innerHTML = '<option value="">Not linked</option>';
+    paintCredit();
+    if (c.checked) refreshCredits();
+  }
+  function creditToggled(){ paintCredit(); if (creditNote().on) refreshCredits(); if (CFG && CFG.onCreditToggle) CFG.onCreditToggle(creditNote().on); }
+
+  window.ExpenseForm = { mount, open, close, isOpen, cancel, save, del, busy, set, values, setStatus, toast, setBank, dirty, creditNoteAvailable, creditNote, setCreditNote, refreshCredits, creditToggled, root: () => ROOT };
 })();

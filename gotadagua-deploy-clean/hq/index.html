@@ -94,6 +94,21 @@
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .sup-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+/* «Invoices from email · to decide» on phones: one block per document — supplier and amount first, then why, then the buttons */
+@media (max-width:700px){
+  #fechoMail table.mail-q thead{display:none}
+  #fechoMail table.mail-q,#fechoMail table.mail-q tbody{display:block;width:100%;min-width:0}
+  #fechoMail table.mail-q tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  #fechoMail table.mail-q tr:last-child{border-bottom:none}
+  #fechoMail table.mail-q td{display:block;padding:0;border:none;height:auto;white-space:normal;min-width:0;overflow-wrap:anywhere}
+  #fechoMail table.mail-q td.mq-sup{order:1;flex:1 1 0;font-weight:600}
+  #fechoMail table.mail-q td.mq-amt{order:2;font-weight:700}
+  #fechoMail table.mail-q td.mq-why{order:3;flex:1 1 100%}
+  #fechoMail table.mail-q td.mq-when{order:4;font-size:12px;color:var(--muted)}
+  #fechoMail table.mail-q td.mq-when .cell-sub{display:inline}
+  #fechoMail table.mail-q td.mq-file{order:5;font-size:12px}
+  #fechoMail table.mail-q td.mq-act{order:6;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px;white-space:normal!important;text-align:left!important;margin-top:6px}
+}
 .review-q{display:block;margin-top:4px;font-size:12px;color:var(--amber);white-space:normal}
 .cell-save-flash{animation:cellFlash .9s ease-out}
 @keyframes cellFlash{0%{background-color:var(--green-bg)}100%{background-color:transparent}}
@@ -341,6 +356,7 @@ AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tab
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4"></script>
 <script src="/supabase-config.js"></script>
 <script src="/owner-config.js"></script>
+<script src="/lib/credit-notes.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script src="/hq/my-tasks.js"></script>
@@ -496,14 +512,27 @@ function render(){
 // ids are the ones every HQ routine already uses (inv_date, inv_company …).
 function mountExpenseForm(){
   ExpenseForm.mount({
-    fields: { location:true, payingCompany:true, currency:true, file:true, driveLink:true, splitHint:true, dupWarn:true },
+    fields: { location:true, payingCompany:true, currency:true, file:true, driveLink:true, splitHint:true, dupWarn:true, creditNote:true },
     locations: HQ_LOCATIONS, companies: HQ_COMPANIES, categories: CATEGORIES, payments: PAYMENT_TYPES,
+    onCreditLookup: (q) => creditLookup(q),
     onSave: () => saveInvoice(),
     onCancel: () => { if (window.__editingInvoiceId) cancelEditInvoice(); },
     onDelete: async () => { const id = window.__editingInvoiceId; if (!id) return; await deleteInvoice(id); cancelEditInvoice(); ExpenseForm.close(); },
     onFile: () => { if (typeof extractFromInvoice === 'function') extractFromInvoice(); },
   });
   $('inv_paying_company').value = payingCompanyFor($('inv_location').value);
+}
+// Credit notes (lib/credit-notes.js + supabase/credit-notes.sql): which lines are credit notes and which invoice each
+// cancels. Read apart from the lists, so the page works unchanged before the SQL has run (no switch, no badge).
+let CN = CreditNotes.EMPTY();
+async function loadCreditNotes(){ CN = await CreditNotes.load(sb); ExpenseForm.creditNoteAvailable(CN.available); return CN; }
+// «Cancels which invoice?»: the invoice the document names, then the same amount, then the same supplier — last 120 days.
+async function creditLookup(q){
+  const list = await CreditNotes.lookup(sb, { company: $('inv_paying_company')?.value || 'water-movements', supplier: q.supplier, nif: q.nif, amount: q.amount, date: q.date, excludeId: window.__editingInvoiceId, cancelsNumber: window.__cnCancelsNumber || null });
+  const out = list.map(c => ({ id: c.row.id, label: CreditNotes.optionLabel(c, q.supplier), selected: c.named }));
+  // the invoice already linked stays in the list even when it is older than 120 days
+  if (q.want && !out.some(o => o.id === q.want)) { const t = CN.targets.get(q.want); if (t) out.unshift({ id: t.id, label: CreditNotes.optionLabel(t, q.supplier) }); }
+  return out;
 }
 function openAddExpense(){
   window.__editingInvoiceId = null;
@@ -1620,6 +1649,12 @@ async function extractFromInvoice(){
   if (ex.amount != null) $('inv_amount').value      = Number(ex.amount).toFixed(2);
   if (ex.currency)       $('inv_currency').value    = ex.currency;
   if (ex.payment_type)   $('inv_payment').value     = ex.payment_type;
+  // The reader says it is a credit note → the switch goes on; the amount stays a plain number (the switch is the sign).
+  if (CN.available && CreditNotes.isCreditNote(ex)) {
+    if (ex.amount != null) $('inv_amount').value = Math.abs(Number(ex.amount)).toFixed(2);
+    window.__cnCancelsNumber = ex.credits_invoice_number || null;
+    ExpenseForm.setCreditNote({ on:true });
+  }
 
   // Category — match by lowercase name against CATEGORIES.
   if (ex.category_hint) {
@@ -1805,13 +1840,13 @@ async function findExistingExpense({ sha, invoice_number, amount, amount_eur, co
     const { data } = await sb.from('hq_invoices').select(cols).eq('file_sha256', sha).is('deleted_at', null).limit(5);
     out.sameFile = (data || []).find(r => !skip.has(r.id)) || null;
   }
-  if (invoice_number && amount > 0 && company) {
+  if (invoice_number && amount && company) {   // signed: a credit note only meets a credit note
     const { data } = await sb.from('hq_invoices').select(cols).eq('invoice_number', invoice_number).eq('amount', amount)
       .ilike('company', company).is('deleted_at', null).order('created_at', { ascending: true }).limit(5);
     out.sameNumber = (data || []).find(r => !skip.has(r.id)) || null;
   }
   const v = Math.round((Number(amount_eur) || 0) * 100) / 100;
-  if (v > 0 && /^\d{4}-\d{2}-\d{2}$/.test(String(invoice_date || ''))) {
+  if (v && /^\d{4}-\d{2}-\d{2}$/.test(String(invoice_date || ''))) {   // v < 0 (credit note): only negative lines of that amount, never the invoice it cancels
     const d = Date.parse(invoice_date + 'T00:00:00Z');
     const day = (t) => new Date(t).toISOString().slice(0, 10);
     const { data } = await sb.from('hq_invoices').select(cols).is('deleted_at', null).eq('is_duplicate', false)
@@ -1849,7 +1884,7 @@ async function saveInvoice(){
   const company         = ($('inv_company').value||'').trim();
   const supplier_nif    = ($('inv_nif').value||'').trim() || null;
   const invoice_number  = ($('inv_number').value||'').trim() || null;
-  const amount          = Number($('inv_amount').value) || 0;
+  let   amount          = Number($('inv_amount').value) || 0;
   const currency        = $('inv_currency').value || 'EUR';
   let   fx_rate         = Number($('inv_fx').value) || (currency==='EUR' ? 1 : null);
   const payment_type    = $('inv_payment').value;
@@ -1875,7 +1910,10 @@ async function saveInvoice(){
     btn.disabled = false;
     return;
   }
-  const amount_eur = Number($('inv_amount_eur').value) || (amount * fx_rate);
+  let amount_eur = Number($('inv_amount_eur').value) || (amount * fx_rate);
+  // Credit note: stored negative whatever sign was typed (the database does the same — supabase/credit-notes.sql).
+  const cnForm = ExpenseForm.creditNote();
+  if (cnForm.on) { amount = CreditNotes.signed(amount, true); amount_eur = CreditNotes.signed(amount_eur, true); }
 
   // File handling: we no longer store PDFs in Supabase. The picker + AI
   // extract still work — they read the file only to feed parse-invoice —
@@ -1949,6 +1987,9 @@ async function saveInvoice(){
     needs_review: isEditing ? false : wasExtracted
   };
   if (file_sha256) payload.file_sha256 = file_sha256;
+  // The two credit-note columns are only sent when they change something (they do not exist before credit-notes.sql).
+  if (cnForm.on) { payload.doc_type = 'credit_note'; payload.credits_invoice_id = cnForm.creditsInvoiceId; }
+  else if (isEditing && window.__editingWasCreditNote) { payload.doc_type = 'invoice'; payload.credits_invoice_id = null; }
   // Only stamp dedup fields on fresh inserts (editing preserves the DB state).
   if (!isEditing) {
     payload.is_duplicate = is_duplicate;
@@ -1961,12 +2002,14 @@ async function saveInvoice(){
   if (isEditing) {
     ({ error } = await sb.from('hq_invoices').update(payload).eq('id', window.__editingInvoiceId));
   } else {
-    const r = await insertInvoiceRows(payload);
+    const r = cnForm.on ? { data: await sb.from('hq_invoices').insert(payload), rows: 1, split: null } : await insertInvoiceRows(payload);
     error = r.data.error; savedRows = r.rows; splitInfo = r.split;
   }
   if (error) { toast('invToast','err',"Couldn't save: "+error.message); btn.disabled = false; return; }
+  // a credit note meets its refund on the statement when there is exactly one credit of that amount (±20 days)
+  if (cnForm.on) { try { await sb.rpc('hq_credit_notes_to_bank', { p_company: paying_company }); } catch (_e) {} }
 
-  toast('invToast','ok', isEditing ? 'Expense updated · review cleared' : (savedRows > 1 ? `Saved as ${savedRows} rows — ${splitInfo.instructor}'s lessons of ${splitInfo.month}: ${splitInfo.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount)}`).join(' · ')}` : 'Expense saved'));
+  toast('invToast','ok', cnForm.on ? `Credit note saved · ${eur(amount_eur)}` : isEditing ? 'Expense updated · review cleared' : (savedRows > 1 ? `Saved as ${savedRows} rows — ${splitInfo.instructor}'s lessons of ${splitInfo.month}: ${splitInfo.parts.map(p => `${locLabel(p.location_slug)} ${eur(p.amount)}`).join(' · ')}` : 'Expense saved'));
   if (isEditing) cancelEditInvoice();
   else           clearInvoiceForm();
   btn.disabled = false;
@@ -2137,8 +2180,11 @@ async function bulkProcessInvoices(){
         try { fx_rate = await fetchFxToEur(currency); }
         catch (_) { fx_rate = 1; }   // fall back to 1 if the API is unreachable
       }
-      const amount   = Number(ex.amount) || 0;
+      let amount   = Number(ex.amount) || 0;
       if (!amount) throw new Error('No amount could be read from the file');
+      // a credit note dropped here is stored negative, never as a positive expense
+      const isCN = CreditNotes.isCreditNote(ex);
+      if (isCN) amount = CreditNotes.signed(amount, true);
       const amount_eur = amount * fx_rate;
 
       // 6. Dedup check against the existing table by (invoice_number + amount
@@ -2187,9 +2233,10 @@ async function bulkProcessInvoices(){
         needs_review: true,
         is_duplicate: dupHit,
         file_sha256: sha,
-        notes: dupNote,
+        notes: [isCN ? '[nota de crédito]' : null, dupNote].filter(Boolean).join(' ') || null,
         created_by: CURRENT_USER?.id || null
       };
+      if (isCN && CN.available) payload.doc_type = 'credit_note';
       const ins = await insertInvoiceRows(payload);
       if (ins.data.error) throw new Error('save: '+ins.data.error.message);
 
@@ -2535,13 +2582,14 @@ function parseSantanderRows(aoa, transferRefs){
 
 // Pure: data in, sheets out. Kept free of XLSX and of the DOM so the
 // smoke suite can check the numbers without downloading anything.
-function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices, folders, bankUnmatched }){
+function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoices, folders, bankUnmatched, creditNotes }){
+  const cn = creditNotes || CreditNotes.EMPTY();   // «Tipo» and «Anula doc.» — the last two columns of every expense sheet
   // Rows paid by another company (Wave Movements, MGPR) are not this
   // accountant's books: counted in the summary, left out of the sheets.
   const outras = (invoices||[]).filter(r => r.paying_company && r.paying_company !== 'water-movements');
   const inv = (invoices||[]).filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements') && docStatus(r) !== 'por_fora').sort((a,b) => String(a.invoice_date).localeCompare(String(b.invoice_date)) || String(a.company).localeCompare(String(b.company)));
-  const expHeader = ['Data','Fornecedor','NIF','N.º documento','Descrição','Valor','Moeda','Valor EUR','Categoria','Local','Pagamento','Documento','Estado','Notas'];
-  const expWidths = [11,30,12,20,46,11,7,11,18,13,14,12,16,60];
+  const expHeader = ['Data','Fornecedor','NIF','N.º documento','Descrição','Valor','Moeda','Valor EUR','Categoria','Local','Pagamento','Documento','Estado','Notas','Tipo','Anula doc.'];
+  const expWidths = [11,30,12,20,46,11,7,11,18,13,14,12,16,60,16,22];
   const toRow = (r) => [
     r.invoice_date || '', r.company || '', r.supplier_nif || '', r.invoice_number || '',
     String(r.description||'').slice(0,250),
@@ -2551,6 +2599,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
     // A flagged row with no note was filed by an import and nobody has
     // confirmed it yet — say so, or "A REVER" reads as "something is wrong".
     String(r.notes || (r.needs_review ? 'Lançada automaticamente; ainda não confirmada na app.' : '')).slice(0,400),
+    CreditNotes.tipoPt(cn, r), CreditNotes.anulaDoc(cn, r),
   ];
   const expSheet = (name, list) => ({
     name, header: expHeader, widths: expWidths,
@@ -2582,9 +2631,9 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
   const check = inv.slice().sort((a,b) => ordem[temFatura(a)] - ordem[temFatura(b)] || (a.drive_link ? String(a.invoice_date).localeCompare(String(b.invoice_date)) : Number(b.amount_eur||0) - Number(a.amount_eur||0)));
   const checklist = {
     name: 'Checklist', kind: 'checklist',
-    header: ['Tem fatura?','Data','Fornecedor','Valor EUR','Categoria','Local','N.º documento','Documento','Onde procurar / nota','Estado na app'],
-    widths: [13,11,30,12,16,13,20,11,52,16],
-    rows: check.map(r => [temFatura(r), r.invoice_date || '', r.company || '', Number(r.amount_eur||0), r.category_name || '', locLabel(r.location_slug), r.invoice_number || '', r.drive_link ? 'abrir' : '', r.drive_link ? '' : (accHint(r.company) || String(r.notes||'').slice(0,160)), accEstado(r)]),
+    header: ['Tem fatura?','Data','Fornecedor','Valor EUR','Categoria','Local','N.º documento','Documento','Onde procurar / nota','Estado na app','Tipo','Anula doc.'],
+    widths: [13,11,30,12,16,13,20,11,52,16,16,22],
+    rows: check.map(r => [temFatura(r), r.invoice_date || '', r.company || '', Number(r.amount_eur||0), r.category_name || '', locLabel(r.location_slug), r.invoice_number || '', r.drive_link ? 'abrir' : '', r.drive_link ? '' : (accHint(r.company) || String(r.notes||'').slice(0,160)), accEstado(r), CreditNotes.tipoPt(cn, r), CreditNotes.anulaDoc(cn, r)]),
     links: check.map((r,i) => r.drive_link ? { r: i+1, c: 7, url: r.drive_link } : null).filter(Boolean),
     dropdown: { col: 0, options: ['Sim','Não','Não existe'] }, statusCol: 0, totalCol: 3, wrapCol: 8,
   };
@@ -2615,6 +2664,7 @@ function buildAccountantSheets({ invoices, transfers, bank, period, partnerInvoi
       ['Linhas', inv.length],
       ['Com documento', inv.length - missing.length],
       ['Total (EUR)', sum(inv, r => r.amount_eur)],
+      ['Notas de crédito (valor negativo, já no total)', inv.filter(r => CreditNotes.is(cn, r)).length],
       ['Pagas por outra empresa (fora deste ficheiro)', outras.length],
       ['',''],
       ['FATURAS DE VENDA A PARCEIROS (receita)',''],
@@ -2804,6 +2854,8 @@ function fechoTabHtml(){
 //    harvester did and what it could not decide (buyer unknown). «Water» /
 //    «Manjar» / «Ignorar» resolve a review item through the function, which
 //    refetches the PDF from Gmail, files it in the Drive and creates the line.
+//    A credit note is never booked by the harvester (Miguel, 30 Oct 2026): it waits
+//    here with the negative line it proposes, and «Add credit note» confirms it.
 async function renderFechoMail(){
   const box = $('fechoMail'); if (!box) return;
   const { data, error } = await sb.from('mail_ingest_items').select('id, account_email, received_at, filename, status, reason, company, gmail_link, drive_link, parsed, hq_invoice_id').in('status', ['review','inserted','linked','error']).order('created_at', { ascending:false }).limit(60);
@@ -2812,7 +2864,16 @@ async function renderFechoMail(){
   const review = rows.filter(r => r.status === 'review');
   const recent = rows.filter(r => r.status !== 'review').slice(0, 12);
   if (!rows.length) { box.innerHTML = ''; return; }
-  const money = (p) => p && p.amount != null ? `${Number(p.amount).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2})} ${p.currency || 'EUR'}` : '—';
+  const isCn = (r) => CreditNotes.isCreditNote(r.parsed);
+  const money = (p) => p && p.amount != null ? `${CreditNotes.isCreditNote(p) ? '−' : ''}${Math.abs(Number(p.amount)).toLocaleString('en-GB', {minimumFractionDigits:2, maximumFractionDigits:2})} ${p.currency || 'EUR'}` : '—';
+  const coLabel = { 'water-movements': 'Water Movements', 'manjar': 'Manjar (The Suk)' };
+  const cnN = review.filter(isCn).length;
+  const ask = cnN === review.length ? 'credit notes are never added by themselves: confirm each one.' : cnN ? 'pick the company · credit notes wait for your OK.' : 'which company is this invoice for?';
+  const why = (r) => isCn(r) ? `Credit note${r.parsed?.invoice_number ? ' ' + r.parsed.invoice_number : ''}${r.parsed?.credits_invoice_number ? ' · cancels ' + r.parsed.credits_invoice_number : ''}${coLabel[r.company] ? ' · for ' + coLabel[r.company] : ''}` : (r.reason || '');
+  const decideBtns = (r) => (isCn(r) && coLabel[r.company]
+    ? `<button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','${r.company}')">${AppShell.icon('plus')} Add credit note</button>`
+    : `<button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','water-movements')">Water Movements</button> <button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','manjar')">Manjar (The Suk)</button>`)
+    + ` <button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','skip')">Ignore</button>`;
   const statusLbl = { inserted: ['Added', 'badge-green'], linked: ['Matched', 'badge-green'], error: ['Failed', 'badge-red'] };
   box.innerHTML = `
     <div class="card">
@@ -2823,10 +2884,10 @@ async function renderFechoMail(){
         </div>
         <button class="btn btn-s" onclick="mailIngestRunNow()">${AppShell.icon('mail')} Check email now</button>
       </div>
-      ${review.length ? `<div class="card-body" style="padding-bottom:0"><b>${review.length} to decide</b> — which company is this invoice for?</div>
-      <div class="tbl-wrap"><table><thead><tr><th>Received</th><th>File</th><th>Supplier</th><th class="r">Amount</th><th>Why</th><th></th></tr></thead><tbody>
-        ${review.map(r => `<tr><td>${esc(String(r.received_at || '').slice(0,10))} <span class="cell-sub">${esc(r.account_email)}</span></td><td>${r.gmail_link ? `<a href="${esc(r.gmail_link)}" target="_blank" rel="noopener">${esc(r.filename || 'PDF')}</a>` : esc(r.filename || '')}</td><td>${esc(r.parsed?.company || '')}${r.parsed?.buyer_name ? `<span class="cell-sub">customer: ${esc(r.parsed.buyer_name)}</span>` : ''}</td><td class="r">${money(r.parsed)}</td><td class="hint">${esc(r.reason || '')}</td>
-          <td style="white-space:nowrap;text-align:right"><button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','water-movements')">Water Movements</button> <button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','manjar')">Manjar (The Suk)</button> <button class="btn btn-s btn-sm" onclick="mailIngestDecide('${r.id}','skip')">Ignore</button></td></tr>`).join('')}
+      ${review.length ? `<div class="card-body" style="padding-bottom:0"><b>${review.length} to decide</b> — ${ask}</div>
+      <div class="tbl-wrap"><table class="mail-q"><thead><tr><th>Received</th><th>File</th><th>Supplier</th><th class="r">Amount</th><th>Why</th><th></th></tr></thead><tbody>
+        ${review.map(r => `<tr><td class="mq-when">${esc(String(r.received_at || '').slice(0,10))} <span class="cell-sub">${esc(r.account_email)}</span></td><td class="mq-file">${r.gmail_link ? `<a href="${esc(r.gmail_link)}" target="_blank" rel="noopener">${esc(r.filename || 'PDF')}</a>` : esc(r.filename || '')}</td><td class="mq-sup">${esc(r.parsed?.company || '')}${isCn(r) ? ' <span class="badge badge-blue" title="Credit note">NC</span>' : ''}${r.parsed?.buyer_name ? `<span class="cell-sub">customer: ${esc(r.parsed.buyer_name)}</span>` : ''}</td><td class="r mq-amt" style="white-space:nowrap">${money(r.parsed)}</td><td class="hint mq-why">${esc(why(r))}</td>
+          <td class="mq-act" style="white-space:nowrap;text-align:right">${decideBtns(r)}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="card-body hint">Nothing to decide.</div>'}
       ${recent.length ? `<details style="border-top:1px solid var(--border)"><summary class="hint" style="cursor:pointer;padding:12px var(--card-pad)">Last ${recent.length} handled</summary><div class="tbl-wrap"><table><tbody>
         ${recent.map(r => { const [lbl, cls] = statusLbl[r.status] || [r.status, 'badge-grey']; return `<tr><td>${esc(String(r.received_at || '').slice(0,10))}</td><td>${r.drive_link ? `<a href="${esc(r.drive_link)}" target="_blank" rel="noopener">${esc(r.filename || '')}</a>` : esc(r.filename || '')}</td><td><span class="badge ${cls}">${esc(lbl)}</span></td><td class="hint">${esc(r.reason || '')}</td></tr>`; }).join('')}
@@ -2911,6 +2972,7 @@ async function renderFecho(){
         .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', [month, '*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
       sb.from('hq_month_checks').select('item, done_at, done_by, note').eq('month_key', month).then(({ data, error }) => { if (error) throw error; return data || []; }),
+      loadCreditNotes(),
     ]);
     if (seq !== FECHO.seq) return;
     FECHO.rows = rows.filter(r => r.is_duplicate !== true && (!r.paying_company || r.paying_company === 'water-movements') && docStatus(r) !== 'por_fora');
@@ -3040,7 +3102,8 @@ async function fechoMarkNoInvoice(id){
 //    and the invoices; then the month's expenses that no bank movement pays.
 const FECHO_BANKS = ['santander', 'cgd', 'paypal', 'santander_card'];   // the card (Pedro Paiva *0391) is paid off by PAG.CTA.CARTAO on the Santander statement
 function fechoBankStatus(m, linked){
-  if (Number(m.amount) > 0) return { ok:true, label:'Income' };
+  // money in that belongs to an expense line is a supplier giving money back, not income
+  if (Number(m.amount) > 0) return { ok:true, label: !linked.length ? 'Income' : linked.some(l => CreditNotes.is(CN, l)) ? 'Credit note refund' : 'Supplier refund' };
   if (m.kind === 'income') return { ok:true, label:'Refund (less income)' };   // guest refunds: booked against the revenue, not an expense
   if (m.kind === 'bank_fee') return { ok:true, label:'Bank fee' };
   if (m.kind === 'internal_transfer' || m.internal_transfer_id) return { ok:true, label:'Transfer between accounts' };
@@ -3121,7 +3184,7 @@ function fechoMissing(){
 function fechoStatusCell(r){
   const docs = r.linked.filter(l => l.drive_link).concat((r.sales || []).filter(l => l.drive_link));
   if (!r.st.ok || !docs.length) return esc(r.st.label);
-  return docs.map((l, k) => `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener" title="${esc(l.company || '')}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}">${k ? 'Invoice ' + (k + 1) : 'Invoice'} ${AppShell.icon('external')}</a>`).join(' ');
+  return docs.map((l, k) => `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener" title="${esc(l.company || '')}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}">${CreditNotes.is(CN, l) ? 'Credit note' : k ? 'Invoice ' + (k + 1) : 'Invoice'} ${AppShell.icon('external')}</a>`).join(' ');
 }
 function fechoBanksPaint(){
   const box = $('fechoBanks'); if (!box || !FECHO.bankRows) return;
@@ -3147,7 +3210,7 @@ function fechoBanksPaint(){
     hint = `Everything ${fechoMonthLabel(FECHO.month)} still needs, from the three statements and the expenses no bank pays — biggest first.`;
     table = missing.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Expense</th><th>Paid from</th><th class="r">Amount</th>${showWhere ? '<th>Where to look</th>' : ''}<th></th></tr></thead><tbody>${missing.map(r => `<tr>
         <td style="white-space:nowrap">${fmtDia(r.date)}</td>
-        <td><b>${esc(r.title)}</b><span class="cell-sub">${esc(r.sub)}</span></td>
+        <td><b>${esc(r.title)}</b>${r.kind === 'attach' ? ' ' + CreditNotes.badge(CN, { id: r.ids[0] }) : ''}<span class="cell-sub">${esc(r.sub)}</span></td>
         <td class="hint" style="white-space:nowrap">${esc(r.from)}</td>
         <td class="r" style="white-space:nowrap">${eur(r.amount)}</td>
         ${showWhere ? `<td class="hint" style="max-width:320px">${esc(r.hint)}</td>` : ''}
@@ -3157,7 +3220,7 @@ function fechoBanksPaint(){
     hint = `Expenses of ${fechoMonthLabel(FECHO.month)} that no Santander, CGD or PayPal movement pays yet (cash and «por fora» left out).`;
     table = nb.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Payment</th><th class="r">Amount</th><th>PDF</th></tr></thead><tbody>${nb.map(l => `<tr>
         <td style="white-space:nowrap">${fmtDia(l.invoice_date)}</td>
-        <td><b>${esc(l.company || '')}</b><span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span></td>
+        <td><b>${esc(l.company || '')}</b> ${CreditNotes.badge(CN, l)}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span></td>
         <td class="hint">${esc(l.payment_type || '')}</td>
         <td class="r">${eur(l.amount_eur)}</td>
         <td class="fecho-act"><div>${l.drive_link ? `<a class="file-link" href="${esc(l.drive_link)}" target="_blank" rel="noopener">open</a>` : docStatus(l) === 'falta' ? docBtns(l.id) : '<span class="badge badge-grey">no invoice</span>'}</div></td>
@@ -3168,7 +3231,7 @@ function fechoBanksPaint(){
     right = pill(filter === 'all', `All ${all.length}`, `FECHO.bankFilter='all';fechoBanksPaint()`) + pill(filter === 'todo', `To do ${todo.length}`, `FECHO.bankFilter='todo';fechoBanksPaint()`) + pill(filter === 'done', `Done ${all.length - todo.length}`, `FECHO.bankFilter='done';fechoBanksPaint()`)
       + (all.length ? ` <button class="btn btn-s btn-sm" id="fechoPrintBtn" title="One PDF: the ${BANK_LABEL[view]} statement of the month with a mark on each line, then every invoice in the same order" onclick="fechoPrintPack('${view}')">${ic('printer')} Print pack</button>` : '');
     hint = `Every movement of ${fechoMonthLabel(FECHO.month)} on the ${BANK_LABEL[view]} statement, in date order. ✓ = expense with its invoice (or none needed) · ✗ = invoice or expense line missing.`;
-    const lineTxt = (r) => r.linked.length ? r.linked.map(l => `${esc(l.company || '')}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span>`).join('')
+    const lineTxt = (r) => r.linked.length ? r.linked.map(l => `${esc(l.company || '')} ${CreditNotes.badge(CN, l)}<span class="cell-sub">${esc(l.category_name || 'no category')} · ${esc(locLabel(l.location_slug))}${l.invoice_number ? ' · ' + esc(l.invoice_number) : ''}</span>`).join('')
       : (r.sales || []).length ? r.sales.map(l => `${esc(l.company || '')}<span class="cell-sub">Partner invoice · ${esc(l.invoice_number || '')}</span>`).join('') : '<span class="hint">—</span>';
     const action = (r) => r.st.action === 'attach' ? `<button class="btn btn-s btn-sm" onclick="fechoAttach('${r.st.line.id}')">${ic('paperclip')} Attach</button> <button class="btn btn-s btn-sm" onclick="fechoPasteLink('${r.st.line.id}')">${ic('link')} Link</button>`
       : r.st.action === 'add' ? `<button class="btn btn-s btn-sm" onclick="fechoLaunch('${r.m.id}')">${ic('plus')} Add expense</button>` : '';
@@ -3392,7 +3455,7 @@ async function fetchAccountantData(period){
   const monthKey = period.slug.length === 7 ? period.slug : null;
   const [invoices, transfers, bank, partnerInvoices, folders, bankUnmatched] = await Promise.all([
     fetchAllPaged(() => sb.from('hq_invoices')
-      .select('invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason')
+      .select('id, invoice_date, company, supplier_nif, invoice_number, description, amount, currency, amount_eur, category_name, location_slug, payment_type, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason')
       .is('deleted_at', null)
       .gte('invoice_date', period.from).lte('invoice_date', period.to)
       .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
@@ -3461,7 +3524,7 @@ async function downloadAccountantPack(periodArg){
   try {
     const data = await fetchAccountantData(period);
     if (!data.invoices.length && !data.bank.length) { toast('accToast','warn',`Nothing entered in ${accLabelEn(period)}.`); return; }
-    const pack = buildAccountantSheets({ ...data, period });
+    const pack = buildAccountantSheets({ ...data, period, creditNotes: await loadCreditNotes() });
     try {
       const ExcelJS = await loadExcelJsLib();
       const buf = await accExcelWorkbook(ExcelJS, pack).xlsx.writeBuffer();
@@ -3513,6 +3576,8 @@ async function importSantanderFile(file){
       if (lErr) throw lErr;
       lines = ` Expense lines: ${res?.linked || 0} matched, ${res?.created || 0} created${res?.skipped_split ? `, ${res.skipped_split} split receipts still to match` : ''}.`;
     } catch (e) { lines = ' (matching to expense lines failed: ' + (e.message || e) + ')'; }
+    // credit notes waiting for their refund: linked when the statement brings exactly one credit of that amount
+    try { const { data: cnN } = await sb.rpc('hq_credit_notes_to_bank', { p_company: 'water-movements' }); if (Number(cnN) > 0) lines += ` ${cnN} credit note${cnN === 1 ? '' : 's'} matched to the refund.`; } catch (_e) {}
     if (el) el.textContent = `${rows.length} movements in the file (${fmtDia(datas[0])} to ${fmtDia(datas[datas.length-1])}): ${novos} new, ${rows.length - novos} already saved.${lines}`;
   } catch (e) {
     if (el) el.textContent = 'Failed: ' + (e.message || e.code || String(e));
@@ -4297,6 +4362,10 @@ async function openEditInvoice(id){
   window.__editingFileUrl    = row.file_url;
   window.__editingFileName   = row.file_name;
   window.__editingFileMime   = row.file_mime;
+  // A credit note opens with the switch on and a plain amount (the switch is the sign).
+  const cnRow = CN.byId.get(id) || null;
+  window.__editingWasCreditNote = !!cnRow; window.__cnCancelsNumber = null;
+  ExpenseForm.setCreditNote({ on: !!cnRow, creditsInvoiceId: cnRow?.credits_invoice_id || null });
   // Clear any AI-extract stash from a previous single-file flow.
   window.__prefilledStoragePath = null;
   window.__prefilledFileName    = null;
@@ -4337,6 +4406,8 @@ function clearInvoiceForm(){
   $('inv_fx').value = '1';
   $('fxHint').textContent = '(EUR — 1.000000)';
   $('dupWarn').classList.remove('show');
+  window.__editingWasCreditNote = false; window.__cnCancelsNumber = null;
+  ExpenseForm.setCreditNote({ on:false });
   const fileInput = $('inv_file');
   if (fileInput) fileInput.value = '';
   const extractStatus = $('extractStatus');
@@ -4421,6 +4492,7 @@ async function renderInvoiceList(){
       rows.forEach(r => { if (r.bank_movement_id && dt.has(r.bank_movement_id) && !bankByInv.has(r.id)) bankByInv.set(r.id, dt.get(r.bank_movement_id)); });
     }
   } catch (_) { /* column missing or no access: the column simply shows no link */ }
+  await loadCreditNotes();
   if (seq !== window.__invListSeq) return;
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
@@ -4504,6 +4576,7 @@ async function renderInvoiceList(){
         : ds === 'por_fora' ? '<span class="badge badge-grey" title="Paid in cash with no invoice — counts here, stays out of the accountant pack">cash · no invoice</span>'
         : '<span class="badge badge-amber">missing</span>';
     const tags = [
+      CreditNotes.badge(CN, r), CreditNotes.creditedBadge(CN, r),
       r.needs_review ? '<span class="badge badge-amber">Review</span>' : '',
       r.is_duplicate ? '<span class="badge badge-amber">Possible duplicate</span>' : '',
       isPersonal ? '<span class="badge badge-grey">Personal</span>' : '',

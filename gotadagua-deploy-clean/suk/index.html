@@ -62,6 +62,7 @@
 .sup-name{display:block;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sup-desc{display:block;font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .review-q{display:block;margin-top:4px;font-size:12px;color:var(--amber);white-space:normal}
+.sup-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 /* Month close — same look as the HQ one */
 .fecho-done{padding:14px var(--card-pad, 16px)}
 .month-pills{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
@@ -182,6 +183,7 @@
 <script src="/owner-config.js"></script>
 <script src="/lib/app-shell.js"></script>
 <script src="/lib/business-pnl.js"></script>
+<script src="/lib/credit-notes.js"></script>
 <script src="/lib/expense-form.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script>
@@ -200,6 +202,9 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&l
 // or off the books («[por fora» note, or paid in cash with no invoice — counts in the P&L, never goes to the accountant)
 const docMissing = (i) => !/\[por fora/i.test(String(i.notes || '')) && !i.drive_link && !i.doc_exempt_reason && !/\[sem fatura/i.test(String(i.notes || '')) && !['Salary', 'Benefits', 'Taxes'].includes(i.category_name || '') && i.payment_type !== 'Cash';
 let BANK_ROWS = [], INVOICES = [], WATER_INV = [], CATEGORIES = [], FOLDERS = [], CAN_EDIT = false, USER = null;
+// Credit notes (lib/credit-notes.js + supabase/credit-notes.sql): which lines are credit notes and the invoice each cancels.
+// Read apart from the lists, so the page works unchanged before the SQL has run (no switch, no badge).
+let CN = CreditNotes.EMPTY(), REFUND_IDS = new Set();
 
 function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3600); }
 function showPage(name){
@@ -229,6 +234,7 @@ function rubricOf(r){
   if (r.kind === 'internal_transfer' || /WATER MOVEMENTS/.test(d)) return 'Vendas à Water (catering)';
   if (/RICARDO NUNO/.test(d)) return 'Suprimentos do sócio';
   if (r.amount > 0) {
+    if (r.hq_invoice_id || REFUND_IDS.has(r.id)) return 'Reembolso de fornecedor';   // linked to a credit note / expense line: not sales
     if (/TPA|UNICRE/.test(d)) return 'Vendas TPA (cartão)';
     if (/DEP NUM|DEPOSITO NUMERARIO|DEPOSITO/.test(d)) return 'Depósitos de numerário';
     return 'Outras entradas';
@@ -237,7 +243,7 @@ function rubricOf(r){
   return 'Outros';
 }
 // Display names of the categories read from the statement (the keys above stay as they are — they drive the logic).
-const RUBRIC_LABEL = { 'Bebidas':'Drinks', 'Compras (comida)':'Food purchases', 'Salários':'Salaries', 'Impostos e Seg. Social':'Taxes & social security', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Accounting', 'Higiene e limpeza':'Cleaning & hygiene', 'Seguros':'Insurance', 'Manutenção e equipamento':'Equipment & maintenance', 'Pagamentos por referência':'Reference payments', 'Banco':'Bank fees', 'Vendas à Water (catering)':'Catering sold to Water Movements', 'Suprimentos do sócio':'Partner funding', 'Vendas TPA (cartão)':'Card sales (TPA)', 'Depósitos de numerário':'Cash deposits', 'Outras entradas':'Other income', 'Outros':'Other' };
+const RUBRIC_LABEL = { 'Bebidas':'Drinks', 'Compras (comida)':'Food purchases', 'Salários':'Salaries', 'Impostos e Seg. Social':'Taxes & social security', 'Renda':'Rent', 'Utilities':'Utilities', 'Contabilidade':'Accounting', 'Higiene e limpeza':'Cleaning & hygiene', 'Seguros':'Insurance', 'Manutenção e equipamento':'Equipment & maintenance', 'Pagamentos por referência':'Reference payments', 'Banco':'Bank fees', 'Vendas à Water (catering)':'Catering sold to Water Movements', 'Suprimentos do sócio':'Partner funding', 'Vendas TPA (cartão)':'Card sales (TPA)', 'Depósitos de numerário':'Cash deposits', 'Outras entradas':'Other income', 'Reembolso de fornecedor':'Supplier refund (not sales)', 'Outros':'Other' };
 const rubricLabel = (name) => RUBRIC_LABEL[name] || name;
 const NO_INVOICE = new Set(['Banco', 'Salários', 'Impostos e Seg. Social', 'Vendas à Water (catering)', 'Suprimentos do sócio']);
 const supplierOf = (desc) => String(desc || '').replace(/^MDB \d+ /, '').replace(/^DD /, '').replace(/^TRF P\/ /, '').replace(/^PAG SERV \d+\/\d+ /, 'PAG SERV ').replace(/^MDB \d+ PAG REFERENCIA.*/, 'PAG REFERENCIA').replace(/\s+\d[\d\s\/-]*$/, '').replace(/\s+/g, ' ').trim().slice(0, 30);
@@ -274,8 +280,9 @@ async function boot(){
 }
 function mountForm(){
   ExpenseForm.mount({
-    fields: { file:true, bankPicker:true },
+    fields: { file:true, bankPicker:true, creditNote:true },
     categories: CATEGORIES, payments: ['Bank Transfer','Card','Cash','Other'],
+    onCreditLookup: (q) => creditLookup(q), onCreditToggle: () => { INV_BANK_ID = null; renderBankPick(); },
     onSave: () => saveInvoice(), onDelete: () => deleteInvoice(), onFile: (f) => invFileChosen(f),
     onCancel: () => { INV_EDIT = null; INV_FILE = null; },
   });
@@ -294,6 +301,8 @@ async function loadData(){
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').eq('company', COMPANY).then(({ data, error }) => { if (error) throw error; return data || []; }),
     ]);
   } catch (e) { toast('Could not load: ' + (e.message || e), 'err'); }
+  CN = await CreditNotes.load(sb); ExpenseForm.creditNoteAvailable(CN.available);
+  REFUND_IDS = new Set(INVOICES.map(i => i.bank_movement_id).filter(Boolean));
   BANK_ROWS.forEach(r => { r.rubric = rubricOf(r); r.month = String(r.movement_date).slice(0, 7); });
   // Debits without a line: ONE rule for every company — hq_bank_unmatched_co() (supabase/bank-unmatched-company.sql),
   // the same the HQ Month close, the accountant page and the Excel use for Water.
@@ -431,10 +440,10 @@ function renderInvoices(){
     : i.missing_pdf ? '<span class="badge badge-amber">missing</span>'
     : (i.payment_type === 'Cash' || /\[por fora/i.test(String(i.notes || ''))) ? '<span class="badge badge-grey" title="Off the books — counts here, stays out of the accountant pack">cash · no invoice</span>'
     : '<span class="badge badge-grey" title="Salaries, taxes and benefits need no invoice">no invoice</span>';
-  const bankCell = (i) => i.bank ? `<span class="badge badge-green" title="Matched to the BCP debit of ${i.bank.movement_date}">BCP · ${fmtDay(i.bank.movement_date)}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No BCP debit linked yet">not linked</span>');
+  const bankCell = (i) => i.bank ? `<span class="badge badge-green" title="Matched to the BCP ${i.bank.amount > 0 ? 'credit' : 'debit'} of ${i.bank.movement_date}">BCP · ${fmtDay(i.bank.movement_date)}</span>` : (i.payment_type === 'Cash' ? '<span class="badge badge-grey">cash</span>' : '<span class="badge badge-amber" title="No BCP debit linked yet">not linked</span>');
   $('invBody').innerHTML = rows.length ? withMonthRows(rows, i => i.invoice_date, 10, month === 'all', i => i.amount_eur, i => `<tr class="click inv-r" onclick="openInvoice('${i.id}')">
     <td style="white-space:nowrap" title="${i.invoice_date}">${fmtDay(i.invoice_date)}</td>
-    <td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td>
+    <td><div class="sup-cell"><span class="sup-name" title="${esc(i.company)}">${esc(i.company)}</span>${i.description ? `<span class="sup-desc" title="${esc(i.description)}">${esc(i.description)}</span>` : ''}${cnTags(i)}${i.needs_review ? `<span class="review-q"><span class="badge badge-amber">Review</span> ${esc(reviewQuestion(i.notes))}</span>` : ''}</div></td>
     <td><span class="mono inv-no" title="${esc(i.invoice_number || '')}">${esc(i.invoice_number || '—')}</span></td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? catSelect(i) : (i.category_name ? esc(i.category_name) : '<span class="badge badge-amber">decide</span>')}</td>
     <td onclick="event.stopPropagation()">${CAN_EDIT ? bizSelect(i) : esc(bizName(i))}</td>
@@ -446,6 +455,14 @@ function renderInvoices(){
   </tr>`, 8, 'expense') : '<tr class="empty-row"><td colspan="10">No expenses match this filter.</td></tr>';
 }
 
+// «NC» on a credit note; «credited −X → net Y» on the invoice it cancels
+function cnTags(i){ const t = [CreditNotes.badge(CN, i), CreditNotes.creditedBadge(CN, i)].filter(Boolean).join(' '); return t ? `<span class="sup-tags">${t}</span>` : ''; }
+async function creditLookup(q){
+  const list = await CreditNotes.lookup(sb, { company: COMPANY, supplier: q.supplier, nif: q.nif, amount: q.amount, date: q.date, excludeId: INV_EDIT?.id || null, cancelsNumber: INV_CANCELS });
+  const out = list.map(c => ({ id: c.row.id, label: CreditNotes.optionLabel(c, q.supplier), selected: c.named }));
+  if (q.want && !out.some(o => o.id === q.want)) { const t = CN.targets.get(q.want); if (t) out.unshift({ id: t.id, label: CreditNotes.optionLabel(t, q.supplier) }); }
+  return out;
+}
 // Category straight from the table: a select per line; when the supplier has
 // other lines still without a category, offer to apply it to all of them.
 function catSelect(i){
@@ -480,11 +497,12 @@ async function setBusiness(id, slug){
   toast(`${ids.length} line${ids.length > 1 ? 's' : ''} → ${slug === CATERING ? 'Catering' : 'Restaurant'}`);
   renderInvoices(); if ($('page-overview').classList.contains('active')) renderOverview();
 }
-let INV_EDIT = null, INV_FILE = null, INV_BANK_ID = null;
+let INV_EDIT = null, INV_FILE = null, INV_BANK_ID = null, INV_CANCELS = null;
 function openInvoice(id, prefill){
   if (!CAN_EDIT) return;
-  INV_EDIT = id ? INVOICES.find(i => i.id === id) : null; INV_FILE = null; INV_BANK_ID = null;
+  INV_EDIT = id ? INVOICES.find(i => i.id === id) : null; INV_FILE = null; INV_BANK_ID = null; INV_CANCELS = null;
   const v = INV_EDIT || prefill || {};
+  const cn = INV_EDIT ? CN.byId.get(INV_EDIT.id) || null : null;   // a credit note opens with the switch on; the form shows its amount without the minus
   const cat = CATEGORIES.find(c => c.id === v.category_id) || CATEGORIES.find(c => c.name === v.category_name) || CATEGORIES.find(c => c.name === 'Food');
   INV_BANK_ID = INV_EDIT?.bank?.id || prefill?.bank_id || null;
   ExpenseForm.open({
@@ -493,6 +511,7 @@ function openInvoice(id, prefill){
     values: {
       date: v.invoice_date || new Date().toISOString().slice(0, 10), company: v.company || '', nif: v.supplier_nif || '', number: v.invoice_number || '',
       amount: v.amount_eur != null ? Number(v.amount_eur) : '', description: v.description || '', notes: v.notes || '', payment: v.payment_type || 'Bank Transfer',
+      creditNote: !!cn, creditsInvoiceId: cn?.credits_invoice_id || null,
       category: cat ? cat.id : '', fileLabel: INV_EDIT?.file_name ? `On Drive: ${INV_EDIT.file_name}` : 'No PDF yet — choose it: it goes to the Manjar Drive folder of the invoice month and the fields (number, NIF, supplier, date) are read automatically.',
     },
   });
@@ -500,13 +519,16 @@ function openInvoice(id, prefill){
 }
 function closeInvoice(){ ExpenseForm.close(); }
 function renderBankPick(){
-  const amt = Number($('inv_amount').value) || 0, date = $('inv_date').value;
+  const amt = Math.abs(Number($('inv_amount').value) || 0), date = $('inv_date').value;
   const d0 = date ? new Date(date) : null;
-  const cands = BANK_ROWS.filter(r => r.amount < 0 && r.kind === 'expense' && (!r.hq_invoice_id || r.id === INV_BANK_ID))
-    .map(r => ({ r, score: (Math.abs(-r.amount - amt) < 0.011 ? 0 : 1) * 1000 + (d0 ? Math.abs((new Date(r.movement_date) - d0) / 86400000) : 0) }))
-    .filter(x => x.r.id === INV_BANK_ID || (x.score < 1000 + 60 && (amt ? Math.abs(-x.r.amount - amt) < 0.011 || x.score < 45 : x.score < 15)))
+  // a credit note comes back as money in: the list shows the BCP credits instead of the debits
+  const credit = ExpenseForm.creditNote().on;
+  const free = (r) => r.id === INV_BANK_ID || (!r.hq_invoice_id && !(credit && REFUND_IDS.has(r.id)));   // debits: exactly as before
+  const cands = BANK_ROWS.filter(r => (credit ? r.amount > 0 && r.kind === 'income' : r.amount < 0 && r.kind === 'expense') && free(r))
+    .map(r => ({ r, score: (Math.abs(Math.abs(r.amount) - amt) < 0.011 ? 0 : 1) * 1000 + (d0 ? Math.abs((new Date(r.movement_date) - d0) / 86400000) : 0) }))
+    .filter(x => x.r.id === INV_BANK_ID || (x.score < 1000 + 60 && (amt ? Math.abs(Math.abs(x.r.amount) - amt) < 0.011 || (!credit && x.score < 45) : !credit && x.score < 15)))
     .sort((a, b) => a.score - b.score).slice(0, 12);
-  ExpenseForm.setBank(cands.map(x => x.r), INV_BANK_ID, (id) => { INV_BANK_ID = (INV_BANK_ID === id) ? null : id; renderBankPick(); });
+  ExpenseForm.setBank(cands.map(x => x.r), INV_BANK_ID, (id) => { INV_BANK_ID = (INV_BANK_ID === id) ? null : id; renderBankPick(); }, { credit });
 }
 async function invFileChosen(file){
   if (!file) return; INV_FILE = file; $('inv_file_lbl').textContent = `${file.name} — reading the file…`; ExpenseForm.setStatus('');
@@ -525,6 +547,8 @@ async function invFileChosen(file){
     if (ex.amount && !$('inv_amount').value) $('inv_amount').value = Number(ex.amount);
     if (ex.description && (!$('inv_description').value || fromBank)) $('inv_description').value = ex.description;
     if (ex.payment_type) $('inv_payment').value = ex.payment_type;
+    // the reader says it is a credit note → the switch goes on (the amount stays a plain number)
+    if (CN.available && CreditNotes.isCreditNote(ex)) { INV_CANCELS = ex.credits_invoice_number || null; if ($('inv_amount').value) $('inv_amount').value = Math.abs(Number($('inv_amount').value)); ExpenseForm.setCreditNote({ on:true, creditsInvoiceId: ExpenseForm.creditNote().creditsInvoiceId }); }
     const cat = ex.category_hint && CATEGORIES.find(c => c.name.toLowerCase() === String(ex.category_hint).toLowerCase()); if (cat) $('inv_category').value = cat.id;
     $('inv_file_lbl').textContent = `${file.name} — fields read, check them.`;
     renderBankPick();
@@ -546,7 +570,8 @@ async function driveUpload(file, folderId, name){
 }
 async function saveInvoice(){
   if (!CAN_EDIT) return;
-  const invoice_date = $('inv_date').value, company = $('inv_company').value.trim().toLowerCase(), amount = Number($('inv_amount').value) || 0;
+  const cnForm = ExpenseForm.creditNote();   // credit note: stored negative whatever sign was typed
+  const invoice_date = $('inv_date').value, company = $('inv_company').value.trim().toLowerCase(), amount = CreditNotes.signed(Number($('inv_amount').value) || 0, cnForm.on);
   const catSel = $('inv_category'); const category_id = catSel.value || null; const category_name = catSel.options[catSel.selectedIndex]?.textContent || null;
   if (!invoice_date || !company || !amount || !category_id) { toast('Date, supplier, amount and category are required', 'err'); return; }
   ExpenseForm.busy(true);
@@ -558,6 +583,9 @@ async function saveInvoice(){
       amount, currency:'EUR', fx_rate:1, amount_eur: amount, payment_type: $('inv_payment').value,
       category_id, category_name, needs_review: false,
     };
+    // the two credit-note columns are only sent when they change something (they do not exist before credit-notes.sql)
+    if (cnForm.on) { payload.doc_type = 'credit_note'; payload.credits_invoice_id = cnForm.creditsInvoiceId; }
+    else if (INV_EDIT && CN.byId.has(INV_EDIT.id)) { payload.doc_type = 'invoice'; payload.credits_invoice_id = null; }
     if (INV_FILE) {
       const key = String(invoice_date).slice(0, 7);
       const folder = FOLDERS.find(f => f.month_key === key)?.folder_id;
@@ -574,7 +602,7 @@ async function saveInvoice(){
     const old = BANK_ROWS.find(r => r.hq_invoice_id === id);
     if (old && old.id !== INV_BANK_ID) { const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: null }).eq('id', old.id); if (error) throw error; }
     if (INV_BANK_ID) { const { error } = await sb.from('hq_bank_movements').update({ hq_invoice_id: id }).eq('id', INV_BANK_ID); if (error) throw error; }
-    toast((INV_EDIT ? 'Expense updated' : 'Expense added') + (INV_FILE ? ' · PDF on Drive' : ''));
+    toast((cnForm.on ? `Credit note saved · ${eur(amount)}` : INV_EDIT ? 'Expense updated' : 'Expense added') + (INV_FILE ? ' · PDF on Drive' : ''));
     closeInvoice(); await loadData(); renderInvoices(); renderOverview(); if (closeOpen()) renderClose();
   } catch (e) { toast('Not saved: ' + (e.message || e), 'err'); }
   finally { ExpenseForm.busy(false); }
@@ -700,9 +728,9 @@ function mcPack(month){
   const sum = (l, f) => Math.round(l.reduce((s, x) => s + Number(f(x) || 0), 0) * 100) / 100;
   const nao = lines.filter(i => status(i) === 'Não');
   const checklist = { name: 'Checklist', kind: 'checklist',
-    header: ['Data', 'Fornecedor', 'Nº fatura', 'Categoria', 'Negócio', 'Pagamento', 'Valor (EUR)', 'Tem fatura?', 'Ficheiro na Drive', 'Notas'],
-    widths: [12, 30, 16, 20, 12, 14, 13, 13, 18, 50], wrapCol: 9, totalCol: 6, statusCol: 7, dropdown: { col: 7, options: ['Sim', 'Não', 'Não existe'] },
-    rows: lines.map(i => [i.invoice_date, i.company || '', i.invoice_number || '', i.category_name || '', bizName(i), i.payment_type || '', Number(i.amount_eur || 0), status(i), i.drive_link ? 'abrir' : '', i.notes || '']),
+    header: ['Data', 'Fornecedor', 'Nº fatura', 'Categoria', 'Negócio', 'Pagamento', 'Valor (EUR)', 'Tem fatura?', 'Ficheiro na Drive', 'Notas', 'Tipo', 'Anula doc.'],
+    widths: [12, 30, 16, 20, 12, 14, 13, 13, 18, 50, 16, 22], wrapCol: 9, totalCol: 6, statusCol: 7, dropdown: { col: 7, options: ['Sim', 'Não', 'Não existe'] },
+    rows: lines.map(i => [i.invoice_date, i.company || '', i.invoice_number || '', i.category_name || '', bizName(i), i.payment_type || '', Number(i.amount_eur || 0), status(i), i.drive_link ? 'abrir' : '', i.notes || '', CreditNotes.tipoPt(CN, i), CreditNotes.anulaDoc(CN, i)]),
     links: lines.map((i, k) => i.drive_link ? { r: k + 1, c: 8, url: i.drive_link } : null).filter(Boolean) };
   const unmatched = { name: 'Banco sem lançamento', kind: 'bank', header: ['Data', 'Descrição', 'Valor (EUR)', 'Lançado?'], widths: [12, 50, 14, 14],
     totalCol: 2, statusCol: 3, dropdown: { col: 3, options: ['Não', 'Sim', 'Não é despesa'] }, rows: debits.map(r => [r.movement_date, r.description, -Number(r.amount), 'Não']) };
@@ -740,7 +768,12 @@ async function mcDownloadExcel(){
 //    for whoever reconciles; then the month's expenses that no BCP movement pays.
 let MC_BF = 'all', MC_VIEW = 'missing', MC_MISSING = { missing: [], debits: [] };
 function mcBankStatus(r){
-  if (Number(r.amount) > 0) return { ok:true, label: r.kind === 'internal_transfer' ? 'Catering from Water' : 'Income' };
+  if (Number(r.amount) > 0) {
+    // money in that belongs to an expense line is a supplier giving money back, not sales
+    const line = r.rubric === 'Reembolso de fornecedor' ? INVOICES.find(i => i.id === r.hq_invoice_id || i.bank_movement_id === r.id) : null;
+    if (line) return { ok:true, label: CreditNotes.is(CN, line) ? 'Credit note refund' : 'Supplier refund', line };
+    return { ok:true, label: r.kind === 'internal_transfer' ? 'Catering from Water' : 'Income' };
+  }
   if (r.kind === 'bank_fee') return { ok:true, label:'Bank fee' };
   if (r.has_invoice === 'linked') {
     const line = INVOICES.find(i => i.id === r.hq_invoice_id);
@@ -776,14 +809,14 @@ function renderCloseBanks(month){
     hint = all ? 'Everything still missing, newest month first. Pick a month to check the Millennium statement line by line.' : `Everything ${mcLabel(month)} still needs: invoices to attach (the PDF goes to the Manjar Drive folder of the month) and BCP debits with no expense — biggest first.`;
     table = items.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Expense</th><th>Paid from</th><th class="r">Amount</th><th></th></tr></thead><tbody>${withMonthRows(items, x => x.date, 5, all, x => x.amount, x => `<tr>
         <td style="white-space:nowrap" title="${x.date}">${fmtDay(x.date)}</td>
-        <td><b>${esc(x.title)}</b><span class="cell-sub">${esc(x.sub)}</span></td>
+        <td><b>${esc(x.title)}</b>${x.kind === 'attach' ? ' ' + CreditNotes.badge(CN, { id: x.id }) : ''}<span class="cell-sub">${esc(x.sub)}</span></td>
         <td class="hint" style="white-space:nowrap">${esc(x.from)}</td>
         <td class="r">${eur(x.amount)}</td>
         <td style="white-space:nowrap;text-align:right">${x.kind === 'attach' ? docBtns(x.id) : CAN_EDIT ? `<button class="btn btn-s btn-sm" onclick="addFromBank('${x.id}')">${ic('plus')} Add expense</button>` : ''}</td>
       </tr>`, 3, 'item')}</tbody></table>` : `<div class="card-body" style="color:var(--green)">${ic('check-circle')} Nothing missing — every BCP debit has its expense and every expense its invoice.</div>`;
   } else if (view === 'nobank') {
     hint = `Expenses of ${mcLabel(month)} that no Millennium movement pays yet (cash and «por fora» left out).`;
-    table = noBank.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Payment</th><th class="r">Amount</th><th>PDF</th></tr></thead><tbody>${noBank.map(i => `<tr><td style="white-space:nowrap">${fmtDay(i.invoice_date)}</td><td><b>${esc(i.company || '')}</b><span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="hint">${esc(i.payment_type || '')}</td><td class="r">${eur(i.amount_eur)}</td><td style="white-space:nowrap">${i.drive_link ? `<a class="file-link" href="${esc(i.drive_link)}" target="_blank" rel="noopener">open</a>` : i.missing_pdf ? docBtns(i.id) : '<span class="badge badge-grey">no invoice</span>'}</td></tr>`).join('')}</tbody></table>` : '<div class="card-body hint">Every expense of the month is matched to a bank movement.</div>';
+    table = noBank.length ? `<table class="fecho-tbl"><thead><tr><th>Date</th><th>Supplier</th><th>Payment</th><th class="r">Amount</th><th>PDF</th></tr></thead><tbody>${noBank.map(i => `<tr><td style="white-space:nowrap">${fmtDay(i.invoice_date)}</td><td><b>${esc(i.company || '')}</b> ${CreditNotes.badge(CN, i)}<span class="cell-sub">${esc(i.category_name || 'no category')} · ${esc(bizName(i))}${i.invoice_number ? ' · ' + esc(i.invoice_number) : ''}</span></td><td class="hint">${esc(i.payment_type || '')}</td><td class="r">${eur(i.amount_eur)}</td><td style="white-space:nowrap">${i.drive_link ? `<a class="file-link" href="${esc(i.drive_link)}" target="_blank" rel="noopener">open</a>` : i.missing_pdf ? docBtns(i.id) : '<span class="badge badge-grey">no invoice</span>'}</td></tr>`).join('')}</tbody></table>` : '<div class="card-body hint">Every expense of the month is matched to a bank movement.</div>';
   } else {
     const rows = MC_BF === 'todo' ? todo : MC_BF === 'done' ? stmt.filter(x => x.st.ok) : stmt;
     const fpill = (k, label) => pill(MC_BF === k, label, `MC_BF='${k}';renderCloseBanks('${month}')`);
@@ -796,8 +829,8 @@ function renderCloseBanks(month){
         <td style="white-space:nowrap" title="${x.r.movement_date}">${fmtDay(x.r.movement_date)}</td>
         <td>${esc(x.r.description)}</td>
         <td class="r" style="white-space:nowrap;${x.r.amount > 0 ? 'color:var(--green)' : ''}">${eur(Math.abs(x.r.amount))}</td>
-        <td>${x.st.line ? `${esc(x.st.line.company || '')}<span class="cell-sub">${esc(x.st.line.category_name || 'no category')} · ${esc(bizName(x.st.line))}</span>` : '<span class="hint">—</span>'}</td>
-        <td class="hint" style="white-space:nowrap">${x.st.ok && x.st.line && x.st.line.drive_link ? `<a class="file-link" href="${esc(x.st.line.drive_link)}" target="_blank" rel="noopener">Invoice ${ic('external')}</a>` : esc(x.st.label)}</td>
+        <td>${x.st.line ? `${esc(x.st.line.company || '')} ${CreditNotes.badge(CN, x.st.line)}<span class="cell-sub">${esc(x.st.line.category_name || 'no category')} · ${esc(bizName(x.st.line))}</span>` : '<span class="hint">—</span>'}</td>
+        <td class="hint" style="white-space:nowrap">${x.st.ok && x.st.line && x.st.line.drive_link ? `<a class="file-link" href="${esc(x.st.line.drive_link)}" target="_blank" rel="noopener">${CreditNotes.is(CN, x.st.line) ? 'Credit note' : 'Invoice'} ${ic('external')}</a>` : esc(x.st.label)}</td>
         <td style="white-space:nowrap;text-align:right">${action(x)}</td>
       </tr>`).join('')}</tbody></table>` : `<div class="card-body hint">${stmt.length ? 'Nothing here with this filter.' : `No Millennium movements in ${mcLabel(month)} yet — import the statement in Bank statement.`}</div>`;
   }
@@ -908,6 +941,8 @@ async function importBcp(file){
     let lines = '';
     try { const { data: res, error: lErr } = await sb.rpc('hq_bank_to_expenses', { p_company: COMPANY, p_since: rows.map(r => r.movement_date).sort()[0] || null }); if (lErr) throw lErr; lines = ` · lines: ${res?.linked || 0} linked, ${res?.created || 0} created`; }
     catch (e) { lines = ' · lines not created: ' + (e.message || e); }
+    // credit notes waiting for their refund: linked when the statement brings exactly one credit of that amount
+    try { const { data: cnN } = await sb.rpc('hq_credit_notes_to_bank', { p_company: COMPANY }); if (Number(cnN) > 0) lines += ` · ${cnN} credit note${cnN === 1 ? '' : 's'} matched to the refund`; } catch (_e) {}
     await loadData();
     st.textContent = `${rows.length} rows in the file · ${BANK_ROWS.length - before} new · ${rows.length - (BANK_ROWS.length - before)} already in the app${lines}.`;
     toast('Statement imported'); renderBank(); renderOverview();
