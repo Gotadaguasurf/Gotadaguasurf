@@ -2344,7 +2344,7 @@ function goToInvoicesFilter(which){
 
 // ─── Filter change handlers ───────────────────────────────────────────
 // Debounced so typing in the search box doesn't hammer render.
-const onFilterChanged = debounce(() => renderInvoiceList(), 220);
+const onFilterChanged = debounce(() => renderInvoiceList({ reuse: true }), 220);
 function clearAllFilters(){
   const set = (id, val) => { const el = $(id); if (el) { if (el.type === 'checkbox') el.checked = val; else el.value = val; } };
   set('filter_location', '__all__');
@@ -4602,7 +4602,7 @@ function reviewQuestion(notes){
   if (!m) return 'category or location unknown';
   return m[m.length - 1].replace(/^REVIEW[^—\]]*—\s*/, '').replace(/\]$/, '');
 }
-async function renderInvoiceList(){
+async function renderInvoiceList(opts = {}){
   const body = $('invListBody');
   if (!body) return;
   const loc = $('filter_location')?.value || '__all__';
@@ -4610,58 +4610,68 @@ async function renderInvoiceList(){
   // Switching location or period quickly: only the latest request may draw the list.
   const seq = window.__invListSeq = (window.__invListSeq || 0) + 1;
 
-  body.innerHTML = `<div class="loading">Loading…</div>`;
-  let rows;
-  try {
-    // Deleted view: the 🗑 filter flips the query between live rows and
-    // the recycle bin. Everything else (aggregates, exports, batch bar)
-    // operates on whatever set is rendered.
-    const showDeleted = $('filter_deleted')?.checked;
-    rows = await fetchAllPaged(() => {
-      let q = sb.from('hq_invoices')
-        .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, bank_movement_id, commission_in_booking, deleted_at, deleted_by')
-        .neq('paying_company', NOT_HQ_COMPANY)
-        .order('invoice_date', { ascending:false }).order('id', { ascending:false });
-      q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
-      if (loc !== '__all__') q = q.eq('location_slug', loc);
-      // Um intervalo explicito manda sobre o mes — permite ver um trimestre
-      // ou o ano inteiro sem ter de somar mes a mes.
-      const from = $('filter_from')?.value || '';
-      const to   = $('filter_to')?.value || '';
-      if (from || to) {
-        if (from) q = q.gte('invoice_date', from);
-        if (to)   q = q.lte('invoice_date', to);
-      } else if (month) {
-        const start = `${month}-01`;
-        const [y,m] = month.split('-').map(Number);
-        const endD = new Date(Date.UTC(y, m, 1));
-        const end = endD.toISOString().slice(0,10);
-        q = q.gte('invoice_date', start).lt('invoice_date', end);
-      }
-      return q;
-    });
-  } catch (error) {
-    if (seq !== window.__invListSeq) return;
-    body.innerHTML = `<div class="card"><div class="empty-state">${AppShell.icon('alert')}<div class="empty-title">Could not load the expenses</div><p>${escapeHtml(error.message)}</p></div></div>`;
-    return;
-  }
-  // Bank link per expense (hq_bank_movements.hq_invoice_id) — same «Matched to bank» column as /suk/.
-  let bankByInv = new Map();
-  try {
-    const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date, bank').not('hq_invoice_id', 'is', null).neq('paying_company', NOT_HQ_COMPANY).order('id'));
-    links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, { date: b.movement_date, bank: b.bank }); });
-    // Lines paid together with others (salary / meal-card lots, two invoices in one transfer, split receipts)
-    // point to the shared debit through hq_invoices.bank_movement_id.
-    const shared = [...new Set(rows.filter(r => r.bank_movement_id && !bankByInv.has(r.id)).map(r => r.bank_movement_id))];
-    for (let k = 0; k < shared.length; k += 100) {
-      const { data, error } = await sb.from('hq_bank_movements').select('id, movement_date, bank').in('id', shared.slice(k, k + 100));
-      if (error) throw error;
-      const dt = new Map((data || []).map(m => [m.id, { date: m.movement_date, bank: m.bank }]));
-      rows.forEach(r => { if (r.bank_movement_id && dt.has(r.bank_movement_id) && !bankByInv.has(r.id)) bankByInv.set(r.id, dt.get(r.bank_movement_id)); });
+  // Only the location, the period and «Archived» are asked of the server. Search, category, bank and the
+  // toggles filter the rows already loaded (audit HQ-08: no refetch of every line on each keystroke).
+  // Any other caller (a save, a delete, a tab switch) reads the server again.
+  const showDeleted = $('filter_deleted')?.checked;
+  const from = $('filter_from')?.value || '';
+  const to   = $('filter_to')?.value || '';
+  const key = JSON.stringify([loc, month, from, to, !!showDeleted]);
+  const cache = window.__invListCache;
+  let rows, bankByInv;
+  if (opts.reuse && cache && cache.key === key) {
+    rows = cache.rows.slice(); bankByInv = cache.bankByInv;
+  } else {
+    body.innerHTML = `<div class="loading">Loading…</div>`;
+    try {
+      // Deleted view: the 🗑 filter flips the query between live rows and
+      // the recycle bin. Everything else (aggregates, exports, batch bar)
+      // operates on whatever set is rendered.
+      rows = await fetchAllPaged(() => {
+        let q = sb.from('hq_invoices')
+          .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_name, file_url, file_name, drive_link, needs_review, is_duplicate, category_id, notes, supplier_nif, fx_rate, doc_exempt_reason, bank_movement_id, commission_in_booking, deleted_at, deleted_by')
+          .neq('paying_company', NOT_HQ_COMPANY)
+          .order('invoice_date', { ascending:false }).order('id', { ascending:false });
+        q = showDeleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
+        if (loc !== '__all__') q = q.eq('location_slug', loc);
+        // Um intervalo explicito manda sobre o mes — permite ver um trimestre
+        // ou o ano inteiro sem ter de somar mes a mes.
+        if (from || to) {
+          if (from) q = q.gte('invoice_date', from);
+          if (to)   q = q.lte('invoice_date', to);
+        } else if (month) {
+          const start = `${month}-01`;
+          const [y,m] = month.split('-').map(Number);
+          const endD = new Date(Date.UTC(y, m, 1));
+          const end = endD.toISOString().slice(0,10);
+          q = q.gte('invoice_date', start).lt('invoice_date', end);
+        }
+        return q;
+      });
+    } catch (error) {
+      if (seq !== window.__invListSeq) return;
+      body.innerHTML = `<div class="card"><div class="empty-state">${AppShell.icon('alert')}<div class="empty-title">Could not load the expenses</div><p>${escapeHtml(error.message)}</p></div></div>`;
+      return;
     }
-  } catch (_) { /* column missing or no access: the column simply shows no link */ }
-  await loadCreditNotes();
-  if (seq !== window.__invListSeq) return;
+    // Bank link per expense (hq_bank_movements.hq_invoice_id) — same «Matched to bank» column as /suk/.
+    bankByInv = new Map();
+    try {
+      const links = await fetchAllPaged(() => sb.from('hq_bank_movements').select('hq_invoice_id, movement_date, bank').not('hq_invoice_id', 'is', null).neq('paying_company', NOT_HQ_COMPANY).order('id'));
+      links.forEach(b => { if (!bankByInv.has(b.hq_invoice_id)) bankByInv.set(b.hq_invoice_id, { date: b.movement_date, bank: b.bank }); });
+      // Lines paid together with others (salary / meal-card lots, two invoices in one transfer, split receipts)
+      // point to the shared debit through hq_invoices.bank_movement_id.
+      const shared = [...new Set(rows.filter(r => r.bank_movement_id && !bankByInv.has(r.id)).map(r => r.bank_movement_id))];
+      for (let k = 0; k < shared.length; k += 100) {
+        const { data, error } = await sb.from('hq_bank_movements').select('id, movement_date, bank').in('id', shared.slice(k, k + 100));
+        if (error) throw error;
+        const dt = new Map((data || []).map(m => [m.id, { date: m.movement_date, bank: m.bank }]));
+        rows.forEach(r => { if (r.bank_movement_id && dt.has(r.bank_movement_id) && !bankByInv.has(r.id)) bankByInv.set(r.id, dt.get(r.bank_movement_id)); });
+      }
+    } catch (_) { /* column missing or no access: the column simply shows no link */ }
+    await loadCreditNotes();
+    if (seq !== window.__invListSeq) return;
+    window.__invListCache = { key, rows: rows.slice(), bankByInv };
+  }
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
 
   // Apply client-side filters (Location + Month already ran server-side).

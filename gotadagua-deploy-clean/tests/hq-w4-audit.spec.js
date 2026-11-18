@@ -171,3 +171,33 @@ test('HQ-09 every paged HQ read has id as the last sort key; HQ-18 «saved up to
   expect(status).toContain('bank=eq.santander');
   expect(status).toContain('paying_company=eq.water-movements');
 });
+
+// ── HQ-08 ────────────────────────────────────────────────────────────────
+test('HQ-08 Expenses: typing a search or picking a category filters the loaded rows; only location / period / archived read the server again', async ({ page }) => {
+  let listReads = 0;
+  const ROWS = [
+    { id: 'a', invoice_date: '2026-10-02', company: 'prio', amount: 40, amount_eur: 40, currency: 'EUR', location_slug: 'portugal', paying_company: 'water-movements', category_id: 'c1', category_name: 'Transport', payment_type: 'Card', needs_review: false, is_duplicate: false },
+    { id: 'b', invoice_date: '2026-10-03', company: 'edp', amount: 107.3, amount_eur: 107.3, currency: 'EUR', location_slug: 'portugal', paying_company: 'water-movements', category_id: 'c2', category_name: 'Utilities', payment_type: 'Bank Transfer', needs_review: false, is_duplicate: false },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = decodeURIComponent(route.request().url());
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_invoices?select=id,location_slug')) { listReads++; return json(ROWS); }
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderInvoiceList === 'function' && document.querySelector('#tab-invoices'));
+  await page.evaluate(() => switchTab('invoices'));
+  await page.waitForFunction(() => /edp/.test(document.querySelector('#invListBody')?.textContent || ''), null, { timeout: 15000 });
+  const before = listReads;
+  await page.fill('#filter_search', 'pri');
+  await page.waitForFunction(() => !/edp/.test(document.querySelector('#invListBody')?.textContent || '') && /prio/.test(document.querySelector('#invListBody')?.textContent || ''), null, { timeout: 5000 });
+  await page.fill('#filter_search', '');
+  await page.waitForFunction(() => /edp/.test(document.querySelector('#invListBody')?.textContent || ''), null, { timeout: 5000 });
+  expect(listReads).toBe(before);              // no server read for the search
+  await page.evaluate(() => { $('filter_from').value = '2026-10-01'; hqPeriodo = null; onFilterChanged(); });
+  await expect.poll(() => listReads).toBe(before + 1);   // a new period reads the server
+});
