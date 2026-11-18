@@ -201,3 +201,53 @@ test('HQ-08 Expenses: typing a search or picking a category filters the loaded r
   await page.evaluate(() => { $('filter_from').value = '2026-10-01'; hqPeriodo = null; onFilterChanged(); });
   await expect.poll(() => listReads).toBe(before + 1);   // a new period reads the server
 });
+
+// ── DATA-02 / DATA-06 ────────────────────────────────────────────────────
+test('DATA-02 a booking with no camp is a «No camp set» row and column, so the hero, the table and the P&L agree; DATA-06 prepaid months sit at the end of the period lists', async ({ page }) => {
+  const rollup = {
+    bookings: [
+      { month_key: '2026-10', location: 'Portugal', slug: 'portugal', direct: true, total: 1000, net_amount: 1000, commission_amount: 0, pax: 1, n: 1 },
+      { month_key: '2026-10', location: 'Unknown', slug: null, direct: true, total: 600, net_amount: 600, commission_amount: 0, pax: 2, n: 2 },
+    ],
+    invoices: [{ month: '2028-02', location_slug: 'sri-lanka', category_id: 'c1', personal: false, amount_eur: 100, n: 1 }],
+    ledger: [],
+    pnl: [
+      { slug: 'portugal', month: '2026-10', rev_book: 1000, rev_ops: 0, exp_local: 0, exp_hq: 0 },
+      { slug: null, month: '2026-10', rev_book: 600, rev_ops: 0, exp_local: 0, exp_hq: 0 },
+      { slug: 'sri-lanka', month: '2028-02', rev_book: 0, rev_ops: 0, exp_local: 0, exp_hq: 100 },
+    ],
+  };
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json(rollup);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => [...document.querySelectorAll('#overviewBody td.loc-name')].some(td => /No camp set/.test(td.textContent)), null, { timeout: 15000 });
+  const ov = await page.evaluate(() => ({
+    row: [...document.querySelectorAll('#overviewBody tbody tr')].find(tr => /No camp set/.test(tr.textContent)),
+    total: [...document.querySelectorAll('#overviewBody tfoot td')].map(td => td.textContent.trim())[1],
+    options: [...document.querySelector('#ov_period').children].map(c => c.tagName === 'OPTGROUP' ? 'group:' + c.label + ':' + [...c.children].map(o => o.value).join(',') : c.value),
+  }));
+  expect(ov.total).toBe('€1,600.00');           // bookings column Total = Portugal 1,000 + no camp 600
+  expect(ov.options[0]).toBe('__all__');
+  expect(ov.options[1]).toBe('2026-10');
+  expect(ov.options[ov.options.length - 1]).toBe('group:Prepaid (later months):2028-02');
+  const noDrill = await page.evaluate(() => [...document.querySelectorAll('#overviewBody tbody tr')].find(tr => /No camp set/.test(tr.textContent)).getAttribute('onclick'));
+  expect(noDrill).toBeNull();
+  await page.evaluate(() => renderPnl());
+  await page.waitForFunction(() => /No camp set/.test(document.querySelector('#pnlGrid thead')?.textContent || ''), null, { timeout: 10000 });
+  const pnl = await page.evaluate(() => ({
+    head: [...document.querySelectorAll('#pnlGrid thead th')].map(th => th.textContent.trim()),
+    first: [...document.querySelectorAll('#pnlGrid tbody tr')][0].lastElementChild.textContent.trim(),
+    options: [...document.querySelector('#pnl_period').children].map(c => c.tagName === 'OPTGROUP' ? 'group' : c.value),
+  }));
+  expect(pnl.head[pnl.head.length - 2]).toBe('No camp set');
+  expect(pnl.first).toBe('€1,600.00');           // P&L bookings Total = the Overview's
+  expect(pnl.options).toEqual(['all', '2026-10', 'group']);
+  expect(errs).toEqual([]);
+});

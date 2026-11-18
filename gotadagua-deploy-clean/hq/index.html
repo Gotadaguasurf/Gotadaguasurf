@@ -389,6 +389,10 @@ const OWNER_EMAILS = new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadagu
 // /suk/ and never shows in this HQ (Miguel, 22 Oct 2026). Rows tagged
 // paying_company='manjar' / location 'the-suk' are filtered out below.
 const NOT_HQ_COMPANY = 'manjar';
+// A booking whose camp the one formula cannot tell (rollup slug null): its own «No camp set» bucket, never dropped (DATA-02).
+const PNL_UNASSIGNED = 'unassigned';
+// The realized booking statuses of hq_overview_rollup (supabase/one-formula.sql); no status = Paid.
+const HQ_REALIZED = ['Paid', 'Confirmed', 'Deposit paid', 'paid', 'confirmed', 'deposit_paid'];
 const NOT_HQ_LOCATIONS = ['the-suk', 'suk-catering'];   // Manjar's restaurant + its catering business
 const isNotHqLoc = (slug) => NOT_HQ_LOCATIONS.includes(slug);
 const HQ_LOCATIONS = [
@@ -639,10 +643,9 @@ async function renderOverview(){
     const set = new Set();
     bkRowsAll.forEach(r => r.month_key && set.add(r.month_key));
     invRowsAll.forEach(r => r.month && set.add(r.month));
-    const months = [...set].sort().reverse();
+    const months = [...set];
     const cur = perSel.value;
-    perSel.innerHTML = '<option value="__all__">All-time</option>' +
-      months.map(m => `<option value="${m}" ${cur===m?'selected':''}>${m}</option>`).join('');
+    perSel.innerHTML = '<option value="__all__">All-time</option>' + periodOptionsHtml(months, cur);
   }
 
   const period = perSel?.value || '__all__';
@@ -691,9 +694,10 @@ async function renderOverview(){
   const ensureLoc = (key) => { if (!byLoc[key]) byLoc[key] = {slug:key, blRev:0, localRev:0, expenses:0, hqExpenses:0}; return byLoc[key]; };
   HQ_LOCATIONS.forEach(l => ensureLoc(l.slug));
 
+  // A booking whose camp the formula cannot tell is never dropped (audit DATA-02): it gets a «No camp set» row,
+  // so the hero, the table Total and the P&L Report add up the same rows.
   bkRows.forEach(r => {
-    const slug = r.slug || locNameToSlug(r.location);
-    if (!slug) return;
+    const slug = r.slug || locNameToSlug(r.location) || PNL_UNASSIGNED;
     ensureLoc(slug).blRev += Number(r.net_amount ?? r.total ?? 0);
   });
   lgRows.forEach(r => {
@@ -906,7 +910,7 @@ async function renderOverview(){
         <th class="r">Profit</th>
       </tr></thead>
       <tbody>
-        ${locRows.map(r => `<tr class="loc-row-drill click" onclick="openLocDrilldown('${r.slug}','${period}','${(r.label||'').replace(/'/g,'&#39;')}',${r.profit.toFixed(2)})" title="See the expenses behind this row">
+        ${locRows.map(r => `${r.slug === PNL_UNASSIGNED ? `<tr title="Bookings whose camp could not be read from the Bookinglayer location — set it on the booking">` : `<tr class="loc-row-drill click" onclick="openLocDrilldown('${r.slug}','${period}','${(r.label||'').replace(/'/g,'&#39;')}',${r.profit.toFixed(2)})" title="See the expenses behind this row">`}
           <td class="loc-name">${r.label}</td>
           <td class="r">${eur(r.blRev)}</td>
           <td class="r">${eur(r.localRev)}</td>
@@ -5069,6 +5073,17 @@ let __pnlAgg=null;      // {key:{revBook,revOps,expLocal,expHq}}
 let __pnlMonths=[];
 let __pnlPersonal=0;
 let __pnlLastGrid=null; // for CSV export
+// Rows the formula cannot place in a camp (rollup slug null) keep their own key PNL_UNASSIGNED, shown only when non-zero (DATA-02).
+function pnlCols(){
+  const has = __pnlAgg && Object.keys(__pnlAgg).some(k => k.startsWith(PNL_UNASSIGNED + '|') && Object.values(__pnlAgg[k]).some(v => Math.abs(v) >= 0.005));
+  return has ? HQ_LOCATIONS.concat([{ slug: PNL_UNASSIGNED, label: locLabel(PNL_UNASSIGNED) }]) : HQ_LOCATIONS;
+}
+// Period lists (DATA-06): months up to now first, newest first; prepaid months after today stay pickable at the end.
+function periodOptionsHtml(months, selected){
+  const cur = currentMonth(), opt = (m) => `<option value="${m}" ${selected === m ? 'selected' : ''}>${m}</option>`;
+  const past = months.filter(m => m <= cur).sort().reverse(), later = months.filter(m => m > cur).sort();
+  return past.map(opt).join('') + (later.length ? `<optgroup label="Prepaid (later months)">${later.map(opt).join('')}</optgroup>` : '');
+}
 async function loadPnlData(){
   // One formula (supabase/one-formula.sql): the grid comes from hq_overview_rollup().pnl —
   // bookings realized + operations revenue − local expenses − HQ invoices, per resolved location and month.
@@ -5076,8 +5091,9 @@ async function loadPnlData(){
   if (error) throw error;
   const agg = {}; const months = new Set();
   (roll?.pnl || []).forEach(r => {
-    if (!r.slug || !r.month) return;
-    agg[r.slug + '|' + r.month] = { revBook: Number(r.rev_book||0), revOps: Number(r.rev_ops||0), expLocal: Number(r.exp_local||0), expHq: Number(r.exp_hq||0) };
+    if (!r.month) return;
+    const k = (r.slug || PNL_UNASSIGNED) + '|' + r.month, c = agg[k] || (agg[k] = { revBook:0, revOps:0, expLocal:0, expHq:0 });
+    c.revBook += Number(r.rev_book||0); c.revOps += Number(r.rev_ops||0); c.expLocal += Number(r.exp_local||0); c.expHq += Number(r.exp_hq||0);
     months.add(r.month);
   });
   __pnlAgg = agg;
@@ -5090,10 +5106,10 @@ async function renderPnl(){
   if (!__pnlAgg) { grid.innerHTML = '<div class="loading">Loading…</div>'; await loadPnlData(); }
   const sel = document.getElementById('pnl_period');
   if (sel && sel.options.length <= 1) {
-    sel.innerHTML = '<option value="all">All months</option>' + __pnlMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+    sel.innerHTML = '<option value="all">All months</option>' + periodOptionsHtml(__pnlMonths);
   }
   const period = sel?.value || 'all';
-  const cols = HQ_LOCATIONS;
+  const cols = pnlCols();
   const cell = (slug, month) => __pnlAgg[slug + '|' + month] || {revBook:0,revOps:0,expLocal:0,expHq:0};
   const inPeriod = (m) => period === 'all' || m === period;
   const sumFor = (slug) => {
@@ -5159,7 +5175,7 @@ function exportPnlCsv(){
   const esc = v => { const s = String(v==null?'':v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
   const lines = [['Month','Location','Revenue bookings (net)','Revenue operations','Expenses local','Expenses HQ','Result'].join(',')];
   __pnlMonths.slice().sort().forEach(m => {
-    HQ_LOCATIONS.forEach(l => {
+    pnlCols().forEach(l => {
       const c = __pnlAgg[l.slug+'|'+m];
       if (!c) return;
       lines.push([m, l.label, c.revBook.toFixed(2), c.revOps.toFixed(2), c.expLocal.toFixed(2), c.expHq.toFixed(2), (c.revBook+c.revOps-c.expLocal-c.expHq).toFixed(2)].map(esc).join(','));
@@ -5174,8 +5190,6 @@ function exportPnlCsv(){
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
 }
 
-// The realized booking statuses of hq_overview_rollup (supabase/one-formula.sql); no status = Paid.
-const HQ_REALIZED = ['Paid', 'Confirmed', 'Deposit paid', 'paid', 'confirmed', 'deposit_paid'];
 async function renderCashflow(){
   const cfBody = $('cashflowBody');
   const trBody = $('transferListBody');
@@ -5673,6 +5687,7 @@ async function investSaveAsset(id){
 
 // ── Utilities ───────────────────────────────────────────────────────
 function locLabel(slug){
+  if (slug === PNL_UNASSIGNED) return 'No camp set';
   const hq = HQ_LOCATIONS.find(x => x.slug === slug);
   if (hq) return hq.label;
   const l = LOCATIONS.find(x => x.slug === slug);
