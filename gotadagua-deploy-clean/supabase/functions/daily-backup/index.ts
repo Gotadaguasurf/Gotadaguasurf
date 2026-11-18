@@ -3,8 +3,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 //
 //  Trigger: scheduled by pg_cron once per day (see schedule-daily-backup.sql).
-//  Auth: only callable with the service-role key. pg_cron passes that
-//        explicitly via the Authorization header.
+//  Auth: the cron's service-role key, the x-backup-secret header (BACKUP_CRON_SECRET),
+//        or an HQ login (a manual run). Until 18 Nov 2026 any valid JWT — the public
+//        anon key included — started a full backup (SEC-03, AUT-13). Staged: refused
+//        only once ENFORCE_CALLER_CHECKS = 'true'; the cron's call passes either way.
 //
 //  What it does:
 //    1. For each table in BACKUP_TABLES, select * (full table dump).
@@ -17,16 +19,19 @@
 //  (auth.users, auth.identities, etc.) are managed by Supabase itself and
 //  are not part of this backup — Supabase keeps its own backups of those.
 //
-//  How to restore (manually): download the day's folder from Storage,
-//  for each table COPY/INSERT the JSON rows back. There's no automatic
-//  restore endpoint — restore is rare and benefits from a human in the loop.
+//  How to restore: scripts/restore-backup.js turns a downloaded folder (or one
+//  <table>.json.gz) into a SQL file you read and then run yourself — see
+//  .github/workflows/backup-readme.md «Restore from the nightly JSON copy».
+//  It never connects to a database; restore keeps a human in the loop.
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { bearer, isServiceKey, isHqUser, refuseOrLog } from '../_shared/auth.ts';
+import { recordRun } from '../_shared/runs.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-backup-secret',
 };
 
 // Tables to back up. Order matters only for restore — we back up everything.
@@ -170,15 +175,18 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Auth is enforced at the Supabase Edge Function gateway: a valid JWT
-    // (anon, service_role, or a signed-in user) is required to even reach
-    // this code. We don't add a second comparison here because it complicates
-    // matters when the project mixes the new sb_secret_* key format with the
-    // legacy eyJ* env-injected SUPABASE_SERVICE_ROLE_KEY.
-    //
-    // The function uses the service-role env key INTERNALLY (below) to read
-    // every table for backup — so the data access is still privileged
-    // regardless of which valid JWT the caller used.
+    // Who may start a backup (SEC-03): the cron (service-role key, or the shared
+    // secret header), or an HQ login. The public anon key is not enough.
+    // isServiceKey copes with both key formats (legacy eyJ… and sb_secret_…).
+    const token = bearer(req);
+    const secret = Deno.env.get('BACKUP_CRON_SECRET') || '';
+    const allowed = (secret !== '' && req.headers.get('x-backup-secret') === secret)
+      || await isServiceKey(token) || await isHqUser(token);
+    if (!allowed && refuseOrLog('daily-backup', 'not the cron and not an HQ login')) {
+      return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -273,11 +281,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    // One line in automation_runs (AUT-09): ok only when every table is whole in every tier.
+    const runOk = manifestBody.tables_failed === 0 && manifestBody.tables_incomplete.length === 0;
+    await recordRun(supabase, 'daily-backup', runOk,
+      runOk ? `${manifestBody.tables_ok} tables, ${manifestBody.rows_total} rows (${targets.map(t => t.tier).join(' + ')})`
+            : `${manifestBody.tables_failed} failed, incomplete: ${manifestBody.tables_incomplete.join(', ') || 'none'}`,
+      { day: today, tiers: manifestBody.tiers_written, tables_failed: manifestBody.tables_failed, tables_incomplete: manifestBody.tables_incomplete, rows_total: manifestBody.rows_total });
+
     return new Response(JSON.stringify({ ok: true, ...manifestBody }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (err) {
     console.error('daily-backup error:', err);
+    try {
+      const db = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', { auth: { persistSession: false } });
+      await recordRun(db, 'daily-backup', false, `stopped: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } catch (_e) { /* nothing more to do */ }
     return new Response(JSON.stringify({
       ok: false, error: err instanceof Error ? err.message : 'Unknown error'
     }), {
