@@ -5674,7 +5674,10 @@ function syncClosedWeekToHubLedger(wk){
 // ════════════════════════════════════════════════════════════
 function openOv(id){document.getElementById(id).classList.add('open');}
 function closeOv(id){document.getElementById(id).classList.remove('open');}
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+// A failure is red and stays 6 s (it vanished in 2.2 s with no error colour, audit UXC-15); everything else as before.
+let __toastTimer=null;
+function toast(msg,kind){const t=document.getElementById('toast');const err=kind==='err'||/\b(fail|failed|error|could not|couldn't|not saved|refused)\b/i.test(String(msg||''));
+  t.textContent=msg;t.classList.toggle('err',err);t.classList.add('show');clearTimeout(__toastTimer);__toastTimer=setTimeout(()=>t.classList.remove('show'),err?6000:2200);}
 ['addWeekOv','addGuestOv','billOv','closeWeekOv','menuOv'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
