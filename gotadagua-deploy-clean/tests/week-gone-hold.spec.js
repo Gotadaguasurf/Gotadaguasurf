@@ -86,6 +86,17 @@ test('manual import of an older camp report holds nothing (it does not have the 
   expect(st.calls.filter(c => c.t === 'trip_update')).toEqual([]);
 });
 
+test('manual import: a trip an import already saw today is not held (the file may predate its booking) — the next hourly import judges it', async ({ page }) => {
+  // NOW = 19 Nov 10:00 Casablanca; the hourly import saw this booking at 09:02 today
+  const st = await H.openWeek(page, { now: NOW, guests: F.guests(), trips: [gone({ last_import_at: '2026-11-19T08:02:00Z' })] });
+  await importReport(page, st, '2026-11-19 0705 - marrocos.csv');
+  await expect(page.locator('#weekRoot .tr-plan', { hasText: 'on hold' })).toHaveCount(0);
+  await page.click('#trImportSave');
+  await H.call(st, 'import');
+  await page.waitForTimeout(300);
+  expect(st.calls.filter(c => c.t === 'trip_update')).toEqual([]);
+});
+
 test('the import card says the camp report comes by itself every hour, and what the old Guests export cannot do (WEEK-05)', async ({ page }) => {
   await H.openWeek(page, { now: NOW, guests: F.guests(), trips: [] });
   await page.click('#weekRoot button:has-text("Import Guests file")');

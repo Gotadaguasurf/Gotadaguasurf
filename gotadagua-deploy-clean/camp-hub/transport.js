@@ -2333,9 +2333,12 @@
   // Bookings that left the report: their future trips are put on hold with a question when the report is saved — never
   // cancelled (the rule of the hourly import, lib/bl-ingest.js). Only a report downloaded today: an older file does not
   // have the bookings made since. Many at once = a broken file: nothing held.
+  // A trip an import already saw today (last_import_at today) is left to the next hourly import: a file downloaded this
+  // morning does not have a booking made since, and «cancel this trip?» on a real booking would be a wrong question.
   function reportHolds(parsed) {
     const w = reportFileWindow(parsed); if (!w || !BlIngest.vanished || (parsed.export_date || '') < cToday()) return [];
-    const v = BlIngest.vanished(TR.trips, parsed.refs_active, BlIngest.judgeWindow ? BlIngest.judgeWindow(w) : w, colomboNow()).inside;
+    const seenToday = a => !!a.last_import_at && BlIngest.localNow(CC.tz || 'Asia/Colombo', a.last_import_at).slice(0, 10) >= cToday();
+    const v = BlIngest.vanished(TR.trips, parsed.refs_active, BlIngest.judgeWindow ? BlIngest.judgeWindow(w) : w, colomboNow()).inside.filter(a => !seenToday(a));
     if (new Set(v.map(a => a.booking_ref)).size > BlIngest.vanishCap((parsed.refs_active || []).length)) return [];
     return BlIngest.vanishHolds(v, cToday());
   }
