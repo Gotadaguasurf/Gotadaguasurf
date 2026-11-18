@@ -309,7 +309,8 @@ async function saveNight(){
     if (error) throw error;
     if (oldIds.length) {
       const { error: delErr } = await sb.from('ledger_entries').delete().in('id', oldIds);
-      if (delErr) { await loadRows(); loadNightIntoForm(); renderNightsList(); renderSeason(); toast(`Night ${dmy(date)} saved, but the previous ${oldIds.length} lines could not be removed — it shows twice until you save again (${delErr.message})`, 'err'); return; }
+      // the form keeps what was typed (not the doubled rows), so «save again» writes the night once and removes both sets
+      if (delErr) { await loadRows(); renderNightsList(); renderSeason(); toast(`Night ${dmy(date)} saved, but the previous ${oldIds.length} lines could not be removed — it shows twice until you save again (${delErr.message})`, 'err'); return; }
     }
     toast(`Night ${dmy(date)} saved · ${rows.length} lines`);
     await loadRows(); loadNightIntoForm(); renderNightsList(); renderSeason();

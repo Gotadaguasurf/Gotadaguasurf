@@ -3,7 +3,7 @@
 // a loss reads «−€40.00» in red (SA-23), a commission line can be deleted (SA-10).
 // Hermetic: Supabase is stubbed, amounts are invented.
 const { test, expect } = require('@playwright/test');
-const { fakeOwnerSession } = require('./helpers');
+const { fakeOwnerSession, OWNER_EMAIL } = require('./helpers');
 
 const W = 'wl-0000';
 function ledger() {
@@ -15,17 +15,24 @@ function ledger() {
     { id: 'c1', type: 'expense', category: 'Wild · Comissões', entry_date: '2026-09-02', amount_eur: 300, source_kind: 'manual', payment_method: 'Cash', qty: null, description: 'Commission Max — 300 €' },
   ];
 }
-async function openWild(page, { failInsert = false, rows = ledger() } = {}) {
+async function openWild(page, { failInsert = false, failDelete = false, rows = ledger() } = {}) {
   const calls = [];
+  let seq = 0;
   await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
     const req = route.request(); const url = decodeURIComponent(req.url()); const method = req.method();
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
-    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Miguel', platform_role: 'owner' });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: OWNER_EMAIL, aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: OWNER_EMAIL, full_name: 'Owner', platform_role: 'owner' });
     if (url.includes('/rest/v1/locations')) return json({ id: W, slug: 'wild-wednesday', name: 'Wild Wednesday' });
     if (url.includes('/rest/v1/ledger_entries')) {
-      if (method === 'POST') { calls.push({ op: 'insert', body: JSON.parse(req.postData() || '[]') }); return failInsert ? json({ message: 'insert refused' }, 400) : json([], 201); }
-      if (method === 'DELETE') { calls.push({ op: 'delete', url }); return json([]); }
+      if (method === 'POST') { const body = JSON.parse(req.postData() || '[]'); calls.push({ op: 'insert', body });
+        if (failInsert) return json({ message: 'insert refused' }, 400);
+        if (failDelete) body.forEach(r => rows.push({ ...r, id: 'n' + (++seq) }));   // stateful only for the failed-delete case
+        return json([], 201); }
+      if (method === 'DELETE') { calls.push({ op: 'delete', url });
+        if (failDelete && calls.filter(c => c.op === 'delete').length === 1) return json({ message: 'delete refused' }, 400);
+        if (failDelete) { const ids = (url.match(/id=in\.\(([^)]*)\)/) || [])[1]?.split(',') || []; for (let i = rows.length - 1; i >= 0; i--) if (ids.includes(rows[i].id)) rows.splice(i, 1); }
+        return json([]); }
       return json(rows);
     }
     return json([]);
@@ -62,6 +69,22 @@ test('a refused insert leaves the closed night untouched (nothing is deleted)', 
   await page.evaluate(() => saveNight());
   await expect(page.locator('#toast.err')).toContainText("Couldn't save the night — insert refused");
   expect(calls.map(c => c.op)).toEqual(['insert']);
+});
+
+test('a refused delete after the insert says so, and «save again» writes the night once (the form never takes the doubled rows)', async ({ page }) => {
+  const { calls, errs } = await openWild(page, { failDelete: true });
+  await openNight(page, '2026-08-05');
+  await page.evaluate(() => saveNight());
+  await expect(page.locator('#toast.err')).toContainText('could not be removed');
+  expect(await page.inputValue('#n_pure')).toBe('20');                                // not 40
+  expect(await page.isEnabled('#saveNightBtn')).toBe(true);
+  await page.evaluate(() => saveNight());
+  await expect(page.locator('#toast')).toContainText('saved');
+  const ins = calls.filter(c => c.op === 'insert');
+  expect(ins).toHaveLength(2);
+  expect(ins[1].body.find(r => r.category === 'Wild · Pure')).toMatchObject({ amount_eur: 240, qty: 20 });
+  expect(calls[calls.length - 1].url).toMatch(/id=in\.\(r1,r2,r3,n1,n2,n3\)/);   // old and first-try rows both go
+  expect(errs).toEqual([]);
 });
 
 test('a night that lost money reads −€ in red', async ({ page }) => {

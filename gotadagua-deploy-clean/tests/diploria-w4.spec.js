@@ -3,7 +3,7 @@
 // error in small print and offers Retry. No SQL file names on screen.
 // Hermetic: Supabase is stubbed, names are invented.
 const { test, expect } = require('@playwright/test');
-const { fakeOwnerSession } = require('./helpers');
+const { fakeOwnerSession, OWNER_EMAIL } = require('./helpers');
 
 const LOC = '00000000-0000-4000-8000-0000000000a1';
 async function openDiploria(page, { fail }) {
@@ -11,8 +11,8 @@ async function openDiploria(page, { fail }) {
   await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
     const req = route.request(); const url = decodeURIComponent(req.url());
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
-    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', full_name: 'Owner', platform_role: 'owner' });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: OWNER_EMAIL, aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) return json({ id: 'u1', email: OWNER_EMAIL, full_name: 'Owner', platform_role: 'owner' });
     const t = (url.match(/\/rest\/v1\/([a-z_]+)/) || [])[1];
     if (state.fail[t] === 'missing') return json({ message: `relation "public.${t}" does not exist`, code: '42P01' }, 404);
     if (state.fail[t] === 'network') return json({ message: 'upstream connect error or disconnect/reset before headers', code: 'XX000' }, 500);
