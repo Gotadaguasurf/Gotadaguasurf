@@ -525,70 +525,40 @@
         type:'camp',
         title:'Sri Lanka',
         subtitle:'Ahangama',
-        eyebrow:'Camp Hub',
-        copy:'Open the real Sri Lanka Camp Hub you already built, with camp tab, operations ledger, overview, and weekly control.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'camp',
         action:'open',
         href:'/camp-hub',
-        meta:[['Main use','Operations'],['File','Camp Hub']]
       },
       {
         key:'portugal',
         type:'camp',
         title:'Portugal',
         subtitle:'Costa da Caparica',
-        eyebrow:'Camp Hub',
-        copy:'Same Camp Hub as the others — Portugal data, EUR currency, scoped automatically by ?location=portugal.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'wave',
         action:'open',
         href:'/camp-hub?location=portugal',
-        meta:[['Main use','Operations'],['Currency','EUR']]
       },
       {
         key:'junior',
         type:'camp',
         title:'Junior Camp',
         subtitle:'Costa da Caparica',
-        eyebrow:'Camp Hub',
-        copy:'Same Camp Hub — Junior Camp data, EUR currency, scoped automatically by ?location=junior-camp.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'people',
         action:'open',
         href:'/camp-hub?location=junior-camp',
-        meta:[['Main use','Junior'],['Currency','EUR']]
       },
       {
         key:'morocco',
         type:'camp',
         title:'Morocco',
         subtitle:'Tamraght',
-        eyebrow:'Camp Hub',
-        copy:'Same Camp Hub as Sri Lanka — Morocco data, MAD currency, scoped automatically by ?location=morocco.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'location',
         action:'open',
         href:'/camp-hub?location=morocco',
-        meta:[['Main use','Operations'],['Currency','MAD']]
       },
       {
         key:'surf-school',
         type:'camp',
         title:'Surf School',
         subtitle:'Costa da Caparica',
-        eyebrow:'Camp Hub',
-        copy:'Surf School operations hub — Caparica. Overview + Operations Ledger + Weekly P&L like every camp; the middle tab is Rentals & Lessons instead of Camp Tab.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'wave',
         action:'open',
         href:'/camp-hub?location=surf-school',
-        meta:[['Main use','Rentals + lessons'],['Currency','EUR']]
       },
       // Businesses — the party and the restaurant are their own P&L, like a
       // camp, with their own page. Access = the matching pill in Settings
@@ -598,28 +568,16 @@
         type:'business',
         title:'Wild Wednesday',
         subtitle:'Costa da Caparica',
-        eyebrow:'Business',
-        copy:'Fechar a noite (bilhetes por camp, porta, Shotgun, custos em dinheiro) e ver a época, com as rubricas do Excel.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'wave',
         action:'open',
         href:'/wild/',
-        meta:[['Main use','Party P&L'],['Currency','EUR']]
       },
       {
         key:'the-suk',
         type:'business',
         title:'The Suk',
         subtitle:'Manjar · Costa da Caparica',
-        eyebrow:'Business',
-        copy:'O restaurante do Manjar. Fecho de dia e resultado — em preparação.',
-        status:'live',
-        statusLabel:'Setting up',
-        icon:'home',
         action:'open',
         href:'/suk/',
-        meta:[['Main use','Restaurant P&L'],['Currency','EUR']]
       },
       // Dipløria (15 Nov 2026): our own boardshorts business, sold in the camps (each camp with its own
       // stock). Access = the owner or the «Dipløria» pill in Settings (workspace 'diploria'); the
@@ -629,154 +587,88 @@
         type:'business',
         title:'Dipløria',
         subtitle:'Boardshorts · Portugal + Sri Lanka',
-        eyebrow:'Business',
-        copy:'What each camp sells, the stock per camp (adjustable), sales by day and Dipløria\'s own expenses.',
-        status:'live',
-        statusLabel:'Live now',
-        icon:'stack',
         action:'open',
         href:'/diploria/',
-        meta:[['Main use','Stock + sales'],['Currency','EUR']]
       },
       {
         key:'prices-sri-lanka',
         type:'pricing',
         title:'Sri Lanka',
         subtitle:'Prices · Ahangama',
-        eyebrow:'Pricing Catalog',
-        copy:'Master prices for tours, transports, surf packs, accommodation. Edit here → propagates to Camp Tab + Transport picker.',
-        status:'live',
-        statusLabel:'Live',
-        icon:'price',
         action:'open',
         href:'/prices?location=sri-lanka',
-        meta:[['Currency','LKR'],['Linked to','Camp Tab + Transport']]
       },
       {
         key:'prices-portugal',
         type:'pricing',
         title:'Portugal',
         subtitle:'Prices · Costa da Caparica',
-        eyebrow:'Pricing Catalog',
-        copy:'Master prices for the Portugal workspace. Independent catalog, EUR-denominated.',
-        status:'live',
-        statusLabel:'Live',
-        icon:'price',
         action:'open',
         href:'/prices?location=portugal',
-        meta:[['Currency','EUR']]
       },
       {
         key:'prices-junior',
         type:'pricing',
         title:'Junior Camp',
         subtitle:'Prices · Costa da Caparica',
-        eyebrow:'Pricing Catalog',
-        copy:'Master prices for the Junior Camp programme. Separate catalog, EUR-denominated.',
-        status:'live',
-        statusLabel:'Live',
-        icon:'price',
         action:'open',
         href:'/prices?location=junior-camp',
-        meta:[['Currency','EUR']]
       },
       {
         key:'prices-morocco',
         type:'pricing',
         title:'Morocco',
         subtitle:'Prices · Tamraght',
-        eyebrow:'Pricing Catalog',
-        copy:'Master prices for Morocco. Tours, transports (Dunes / Agadir / Marrakech), accommodation.',
-        status:'live',
-        statusLabel:'Live',
-        icon:'price',
         action:'open',
         href:'/prices?location=morocco',
-        meta:[['Currency','MAD'],['Linked to','Camp Tab + Transport']]
       },
       {
         key:'prices-surf-school',
         type:'pricing',
         title:'Surf School',
         subtitle:'Prices · Costa da Caparica',
-        eyebrow:'Pricing Catalog',
-        copy:'Master prices for the Surf School catalog. Independent from the Portugal / Junior catalogs, EUR-denominated.',
-        status:'live',
-        statusLabel:'Live',
-        icon:'price',
         action:'open',
         href:'/prices?location=surf-school',
-        meta:[['Currency','EUR']]
       },
       {
         key:'partners',
         type:'ops',
         title:'Partners',
         subtitle:'',
-        eyebrow:'Management',
-        copy:'Open the real partner tracker file directly from the hub, instead of keeping it as a separate disconnected tool.',
-        status:'live',
-        statusLabel:'Linked',
-        icon:'partner',
         action:'open',
         href:'/partners',
-        meta:[['Main use','Commissions'],['File','Partner Tracker']]
       },
       {
         key:'crm',
         type:'ops',
         title:'CRM',
         subtitle:'',
-        eyebrow:'Management',
-        copy:'B2B outreach pipeline — surf schools, surf camps, partners. Track status, send emails from Gmail, schedule follow-ups.',
-        status:'live',
-        statusLabel:'Linked',
-        icon:'partner',
         action:'open',
         href:'/crm',
-        meta:[['Main use','Outreach'],['Team','Sales']]
       },
       {
         key:'instructors',
         type:'ops',
         title:'Instructors',
         subtitle:'',
-        eyebrow:'Management',
-        copy:'Open the real instructor control file here, so the platform behaves like one clear entry page for the team.',
-        status:'live',
-        statusLabel:'Linked',
-        icon:'book',
         action:'open',
         href:'/instructors',
-        meta:[['Main use','Payroll'],['File','Instructor Control']]
       },
       {
         key:'hq',
         type:'ops',
         title:'HQ',
         subtitle:'',
-        eyebrow:'Management',
-        copy:'Owner view: Bookinglayer revenue import + profit-per-location across every camp. Toggle a teammate’s access in Settings.',
-        status:'live',
-        statusLabel:'Owner',
-        icon:'gear',
         action:'open',
         href:'/hq/',
-        meta:[['Main use','Profit'],['Scope','All camps']]
       },
       {
         key:'settings',
         type:'ops',
         title:'Settings',
         subtitle:'',
-        eyebrow:'Inside this hub',
-        copy:'This is where links, future permissions, workspace access, and connection setup can live later.',
-        status:'live',
-        statusLabel:'In hub',
-        icon:'gear',
         action:'page',
         page:'settings',
-        meta:[['Main use','Setup'],['Scope','Platform']]
       }
     ];
 
@@ -1450,16 +1342,6 @@
       el.innerHTML = `Invites aren't switched on yet — contact support.`;
     }
 
-    function renderPreviewSelect(){
-      const select = document.getElementById('previewUserSelect');
-      if(!select) return;
-      if (!accessUsers.length) {
-        select.innerHTML = `<option value="">No users loaded</option>`;
-        return;
-      }
-      select.innerHTML = accessUsers.map(user=>`<option value="${user.email}" ${user.email===currentPreviewUser?'selected':''}>${user.email}</option>`).join('');
-    }
-
     function renderAccessSettings(){
       const manage = !__currentProfile || canManageTeam();
       ['teamAccessCard','teamListCard'].forEach(id => {
@@ -1469,7 +1351,6 @@
       renderAreaPills();
       renderRoleHint();
       renderAccessUsers();
-      renderPreviewSelect();
       renderTeamAccessModeNotice();
     }
 
@@ -2015,7 +1896,6 @@
     function setPreviewAccess(email){
       if (!email) return;
       currentPreviewUser = email;
-      renderPreviewSelect();
       renderHub();
       renderTeamAccessModeNotice();
       showToast(`Viewing the home page as ${email}`);
@@ -2556,6 +2436,19 @@
       }
     }
 
+    // One hub open used to run the whole load three times (the auth
+    // listener's SIGNED_IN and INITIAL_SESSION, and the boot chain): ~30
+    // requests instead of ~10 (audit SA-13). Those callers share a load that
+    // is running, and skip it when this same person is already loaded. Every
+    // other caller (after a save, an invite, realtime) still awaits
+    // hydrateFromSession() and loads fresh.
+    let __authHydrateInFlight = null;
+    function hydrateForAuthEvent(userId){
+      if(__authHydrateInFlight) return __authHydrateInFlight;
+      if(userId && __currentProfile && __currentProfile.id === userId) return Promise.resolve();
+      __authHydrateInFlight = hydrateFromSession().finally(() => { __authHydrateInFlight = null; });
+      return __authHydrateInFlight;
+    }
     async function hydrateFromSession(){
       if(getAcceptToken() && !window.__acceptDone){
         await openAcceptInviteFlow();
@@ -2713,33 +2606,11 @@
         };
         __currentAccessRows = effectiveAccessRows;
         __workspaceRows = workspaceRes.data || [];
-        // Self-heal: every area the Settings UI lets the user tick
-        // MUST have a matching `workspaces` row, otherwise saves
-        // silently drop the area. Seed the missing ones on-the-fly
-        // so the user never hits a "checkbox ticked but no DB row"
-        // dead-end. Curated list — only the keys we expose in the UI.
-        const REQUIRED_WORKSPACE_SLUGS = [
-          { slug:'crm',              name:'CRM',                workspace_type:'ops' },
-          { slug:'prices-sri-lanka', name:'Sri Lanka prices',   workspace_type:'ops' },
-          { slug:'prices-morocco',   name:'Morocco prices',     workspace_type:'ops' },
-          { slug:'prices-portugal',  name:'Portugal prices',    workspace_type:'ops' },
-          { slug:'prices-junior',    name:'Junior Camp prices', workspace_type:'ops' },
-          { slug:'prices-surf-school', name:'Surf School prices', workspace_type:'ops' },
-          { slug:'profit',           name:'Profit by location', workspace_type:'ops' },
-        ];
-        const existingSlugs = new Set(__workspaceRows.map(r => r.slug));
-        const missing = REQUIRED_WORKSPACE_SLUGS.filter(r => !existingSlugs.has(r.slug));
-        if(missing.length){
-          const { data: inserted, error: seedErr } = await client.from('workspaces')
-            .upsert(missing.map(r => ({ ...r, active: true })), { onConflict: 'slug', ignoreDuplicates: true })
-            .select();
-          if(seedErr){
-            console.warn('[Hub] auto-seed missing workspaces failed', seedErr);
-          } else if(inserted?.length){
-            __workspaceRows = __workspaceRows.concat(inserted);
-            console.info('[Hub] auto-seeded workspaces:', inserted.map(r => r.slug).join(', '));
-          }
-        }
+        // (The «self-heal» that tried to create missing workspaces rows on
+        // every open is gone — audit SA-13: workspaces has no insert policy,
+        // so it failed on every open for the long-dead «profit» area, three
+        // times per visit. buildWorkspaceAccessRows already reports a ticked
+        // area that has no workspaces row.)
         const workspaceMap = Object.fromEntries(__workspaceRows.map(row => [row.id, row.slug]));
         const areas = new Set(['settings']);
         __currentAccessRows.forEach(row => {
@@ -2870,8 +2741,6 @@
       // disappear for the actual owner.
       const OWNER_EMAILS=new Set(window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']);
       const _isOwner=(__currentProfile?.role==='owner')||OWNER_EMAILS.has(String(__currentProfile?.email||'').toLowerCase());
-      const _csvBtn=document.getElementById('csvImportBtn');
-      if(_csvBtn) _csvBtn.style.display=_isOwner?'':'none';
       // Surface globally so openGlobalCsvImport (and any other future
       // owner-gated handler) can re-check without duplicating the rule.
       window.__isPlatformOwner=_isOwner;
@@ -2932,7 +2801,8 @@
           return;
         }
         if(session?.user){
-          hydrateFromSession().catch(error => showToast(error?.message || 'Could not load your session.'));
+          const sameBootUser = _event === 'INITIAL_SESSION' || _event === 'SIGNED_IN';
+          hydrateForAuthEvent(sameBootUser ? session.user.id : null).catch(error => showToast(error?.message || 'Could not load your session.'));
         } else {
           showLoggedOutUI();
           setLoginState('login');
@@ -2941,7 +2811,8 @@
       consumeHashSessionIfPresent()
         .then(async consumedHash => {
           if(!consumedHash) await consumeQueryOtpIfPresent();
-          return hydrateFromSession();
+          const { data: { session } } = await getSupabaseClient().auth.getSession();
+          return hydrateForAuthEvent(session?.user?.id || null);
         })
         .catch(() => {
           showLoggedOutUI();
@@ -3171,7 +3042,7 @@
               ) : ''}
             </td>
             <td style="padding:7px 14px;text-align:right;vertical-align:top">
-              <button onclick="event.stopPropagation();deleteCsvSingleBooking('${escapeAttr(b.booking_ref||'')}','${escapeAttr(b.booker||'')}')" title="Delete this booking from Partners. The camp hub keeps it." class="btn btn-r" style="padding:4px 9px;font-size:11px">Delete</button>
+              <button onclick="event.stopPropagation();deleteCsvSingleBooking('${escapeAttr(b.booking_ref||'')}','${escapeAttr(b.booker||'')}')" title="Delete this booking. Partners and the camp hub both read this list." class="btn btn-r" style="padding:4px 9px;font-size:11px">Delete</button>
             </td>
           </tr>`;
         }).join('');
@@ -3242,13 +3113,12 @@
     }
 
     // Per-row delete for a single booking from the expanded detail view.
-    // Only touches the partners view (bookings table) — the camp hub keeps
-    // its own overview data because it's keyed by check-in date rather
-    // than booking_ref and re-imports from CSV anyway.
+    // Deletes the row in the bookings table, which Partners AND the camp hub
+    // read (the camp hub stopped using its own copy; audit PRT-20).
     async function deleteCsvSingleBooking(bookingRef, booker){
       if(!bookingRef){ return; }
       const who = booker ? ` (${booker})` : '';
-      if(!confirm(`Delete booking ${bookingRef}${who}?\n\nIt is removed from Partners only — the camp hub keeps it. Re-importing the CSV puts it back.`)) return;
+      if(!confirm(`Delete booking ${bookingRef}${who}?\n\nIt disappears from Partners and from the camp hub (both read this list).\nA re-import brings back what Bookinglayer still has, never a hand-made APP- booking, its notes or a price override.`)) return;
       const status=document.getElementById('csvManageStatus');
       status.textContent = 'Deleting…';
       const client = getSupabaseClient();
@@ -3295,18 +3165,18 @@
         const answer = window.prompt(
           `Delete ${count} booking${plural} for ${location} in ${month}?\n${filterNote}\n` +
           `Delete from where? Type 1, 2 or 3:\n` +
-          `1 = Camp hub and Partners\n` +
-          `2 = Partners only (the camp hub keeps them)\n` +
-          `3 = Camp hub only (Partners keeps them)\n\n` +
-          `The CSV file is not changed — you can re-import any time.`, '1');
+          `1 = The bookings list and the old camp hub copy\n` +
+          `2 = The bookings list only (Partners and the camp hub both read it)\n` +
+          `3 = The old camp hub copy only (the bookings list keeps them)\n\n` +
+          `A re-import brings back what Bookinglayer still has, never a hand-made APP- booking, its notes or a price override.`, '1');
         if(answer === null) return;
         scope = { '1':'all', '2':'partners', '3':'camphub' }[String(answer).trim()];
         if(!scope){ status.textContent = 'Nothing deleted — type 1, 2 or 3.'; return; }
       } else {
-        const scopeLabel = scope==='all' ? 'camp hub and Partners'
-                         : scope==='partners' ? 'Partners only (the camp hub keeps them)'
-                         : 'camp hub only (Partners keeps them)';
-        if(!confirm(`Delete ${count} booking${plural} for ${location} in ${month}?\n${filterNote}\nFrom: ${scopeLabel}.\nThe CSV file is not changed — you can re-import any time.`)) return;
+        const scopeLabel = scope==='all' ? 'the bookings list (Partners and the camp hub) and the old camp hub copy'
+                         : scope==='partners' ? 'the bookings list (Partners and the camp hub both read it)'
+                         : 'the old camp hub copy only (the bookings list keeps them)';
+        if(!confirm(`Delete ${count} booking${plural} for ${location} in ${month}?\n${filterNote}\nFrom: ${scopeLabel}.\nA re-import brings back what Bookinglayer still has, never a hand-made APP- booking, its notes or a price override.`)) return;
       }
       status.textContent = 'Deleting…';
       let removedPartners = 0, removedCampHub = 0;
