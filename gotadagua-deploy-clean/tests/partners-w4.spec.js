@@ -223,3 +223,35 @@ test('«Partners still owe us» says how much of it is already in the bank (repo
   expect(errs).toEqual([]);
   await ctx.close();
 });
+
+// ── UXC-21 (2): the money paths of the page ─────────────────────────────────
+test('statement and advance balance: who owes whom per month, and the advance credit after commission', async ({ browser }) => {
+  const tables = fixture();
+  tables.partner_ledger.push({ id: 'l2', partner_id: 'p-tide-riders', partner_name: 'Tide Riders', entry_date: '2026-08-20', kind: 'payment', amount: 200, ref: 'ADV-1', applies_to: '2026-08', bank: 'cgd', bank_ref: 'TRF', notes: null, deleted_at: null });
+  const { ctx, page, errs } = await openPartners(browser, { tables });
+  await page.evaluate(() => openStatement('Blue Wave Travel', '2026-09'));
+  const due = await page.locator('#stmtBody .amount-due-box .adu-value').allInnerTexts();
+  expect(due).toEqual(['€800.00', '€0.00']);                     // partner collected 1,000 at 20 % → owes us 800; we owe nothing
+  await page.evaluate(() => closeStatement());
+  // Tide Riders: we paid 200 ahead; September earned them 90 → 110 of credit left
+  const adv = await page.evaluate(() => { const a = advanceBalance('Tide Riders'); return { today: a.today, paid: a.paid, commission: a.commission }; });
+  expect(adv).toEqual({ today: 110, paid: 200, commission: 90 });
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
+
+test('Partners & Rates rate change: a booking with its own rate (from the Bookinglayer line) is never re-priced', async ({ browser }) => {
+  const tables = fixture();
+  tables.bookings.push({ ...tables.bookings[0], id: 'b-own', booking_ref: '2026-2888', partner_commission_pct: 18, commission_amount: 180, net_amount: 820 });
+  const { ctx, page, calls, errs } = await openPartners(browser, { tables });
+  await page.evaluate(() => window.openSettings());
+  const row = page.locator('#partnerRatesList .partner-row').filter({ has: page.locator('input[value="Blue Wave Travel"]') });
+  await row.locator('input[id^="prate_"]').fill('22');
+  calls.length = 0;
+  await page.evaluate(() => window.saveSettings());
+  await expect.poll(() => calls.some(c => c.write === 'partners')).toBe(true);
+  const repriced = calls.filter(c => c.write === 'bookings' && c.method === 'PATCH').map(c => c.url);
+  expect(repriced.some(u => u.includes('2026-2888'))).toBe(false);
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
