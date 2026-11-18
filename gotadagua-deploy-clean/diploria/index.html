@@ -314,6 +314,9 @@ async function boot(){
   if (h && $('page-' + h)) showPage(h); else renderAll();
 }
 
+const isMissingTable = (e) => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table|schema cache/i.test(String(e.message || '')));
+const loadFailed = (what) => `Couldn't load ${what} — check the connection. <button class="btn btn-s btn-sm" type="button" onclick="retryLoad(this)">Retry</button>`;
+async function retryLoad(btn){ if (btn) btn.disabled = true; await loadAll(); renderAll(); }
 async function paged(build){
   const PAGE = 1000; let from = 0, all = [];
   for (let i = 0; i < 200; i++) {
@@ -341,6 +344,8 @@ async function loadAll(){
   ST.locations = loc.data || []; ST.catalog = cat.data || []; ST.items = items.data || [];
   ST.movesReady = !moves.error; ST.moves = moves.error ? [] : moves.data;
   ST.expensesReady = !exps.error; ST.expenses = exps.error ? [] : exps.data;
+  // only a missing table means «not set up yet»; anything else (a dropped connection) says so, with Retry
+  ST.movesMissing = isMissingTable(moves.error); ST.expensesMissing = isMissingTable(exps.error);
   ST.movesError = moves.error ? moves.error.message : ''; ST.expensesError = exps.error ? exps.error.message : '';
   ST.ledger = ledger.error ? [] : ledger.data; ST.ledgerError = ledger.error ? ledger.error.message : '';
   const ids = [...new Set(ST.items.map(i => i.guest_id).filter(Boolean))]; const guests = [];
@@ -434,7 +439,7 @@ function renderOverview(){
   $('ovMargin').innerHTML = [
     ['Straight to the Dipløria account', eur(mg.accountSales), 'Sri Lanka, card to Dipløria'],
     ['Held by the camps', eur(mg.heldSales), 'Portugal, paid to the camp, passed on later'],
-    ['Expenses', eur(mg.expenses), ST.expensesReady ? `${D.expenseRows(ST.expenses, r).length} line(s)` : 'expenses table not set up yet'],
+    ['Expenses', eur(mg.expenses), ST.expensesReady ? `${D.expenseRows(ST.expenses, r).length} line(s)` : ST.expensesMissing ? 'expenses table not set up yet' : "expenses didn't load"],
     ['Margin', eur(mg.margin), 'all sales − expenses', mg.margin < 0],
     ['Owed by the camps now', eur(owed), 'paid to the camp − passed, all time', owed > 0.005],
   ].map(([l, v, s, neg]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value${neg ? ' neg' : ''}">${v}</div><div class="kpi-sub">${s}</div></div>`).join('');
@@ -480,7 +485,7 @@ function pickDay(d){ ST.day = ST.day === d ? null : d; renderSales(); }
 // ── Stock ──
 function renderStock(){
   $('stockBanner').innerHTML = !ST.movesReady
-    ? `<div class="dp-banner">Stock moves are not set up yet (run supabase/diploria-stock.sql). Showing the catalog figures; changes are off. <span class="hint">${esc(ST.movesError)}</span></div>`
+    ? `<div class="dp-banner">${ST.movesMissing ? 'Stock moves are not set up yet.' : loadFailed('the stock moves')} Showing the catalog figures; changes are off. <span class="hint">${esc(ST.movesError)}</span></div>`
     : (STOCK.some(c => c.rows.some(r => r.drift)) ? '<div class="dp-banner">Some catalog figures differ from the moves (outlined cells). The next move on that size writes the right figure.</div>' : '');
   $('stockCamps').innerHTML = STOCK.map((c, ci) => {
     const sizes = D.SIZES; const canTap = ST.canEdit && ST.movesReady;
@@ -522,7 +527,7 @@ function renderMove(){
         <button class="btn btn-s" data-act="sent" onclick="mvStep('sent')">${AppShell.icon('plus')} Received</button>
         ${row ? `<button class="btn btn-s" data-act="correction" onclick="mvStep('correction')" ${row.left ? '' : 'disabled'}>${AppShell.icon('minus')} Correction</button>
         <button class="btn btn-s" data-act="transfer" onclick="mvStep('transfer')" ${row.left && D.transferTargets(STOCK, camp.id, row).length ? '' : 'disabled'}>${AppShell.icon('truck')} Move to another camp</button>` : ''}
-      </div>` : `<div class="hint" style="margin-top:12px">${ST.movesReady ? 'Read only: ask Miguel for edit access to change the stock.' : 'Stock moves are not set up yet.'}</div>`}
+      </div>` : `<div class="hint" style="margin-top:12px">${ST.movesReady ? 'Read only: ask Miguel for edit access to change the stock.' : ST.movesMissing ? 'Stock moves are not set up yet.' : "Stock moves didn't load — retry from the Stock page."}</div>`}
       <div class="section-lbl" style="margin-top:16px">History</div>
       <ul class="dp-hist" id="mvHist">${hist.length ? hist.map(h => `<li><span>${esc(dm(String(h.created_at || '').slice(0, 10)))}</span><span>${esc(D.KIND_LABEL[h.kind] || h.kind)}${h.note ? `<div class="note">${esc(h.note)}</div>` : ''}</span><span class="q ${h.qty > 0 ? 'pos' : h.qty < 0 ? 'neg' : ''}">${h.qty > 0 ? '+' : ''}${h.qty}</span></li>`).join('')
         : `<li><span></span><span class="note">${row ? `No move yet: opening stock ${row.initial} (catalog).` : 'Nothing yet.'}</span><span></span></li>`}</ul>`;
@@ -570,8 +575,8 @@ async function saveMove(){
 
 // ── Expenses ──
 function renderExpenses(){
-  $('expBanner').innerHTML = ST.expensesReady ? '' : `<div class="dp-banner">The expenses table is not set up yet (run supabase/diploria-expenses.sql). <span class="hint">${esc(ST.expensesError)}</span></div>`;
-  if (!ST.expensesReady) $('addExpBtn').disabled = true;
+  $('expBanner').innerHTML = ST.expensesReady ? '' : `<div class="dp-banner">${ST.expensesMissing ? 'The expenses table is not set up yet.' : loadFailed('the expenses')} <span class="hint">${esc(ST.expensesError)}</span></div>`;
+  $('addExpBtn').disabled = !ST.canEdit || !ST.expensesReady;   // back on after a successful Retry
   const r = range(); const list = D.expenseRows(ST.expenses, r); const mg = D.margin(D.filterSales(SALES, { range: r }), list);
   $('expSummary').innerHTML = [
     ['Expenses', eur(mg.expenses), mg.byCat.map(c => `${c.label} ${eur0(c.amount)}`).join(' · ') || periodLabel()],
