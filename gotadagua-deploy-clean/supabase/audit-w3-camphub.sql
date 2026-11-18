@@ -1,0 +1,129 @@
+-- ════════════════════════════════════════════════════════════════════════════
+--  Camp hub — audit of 18 Nov 2026: what the DATABASE still lets the
+--  Camp-Tab-only accounts read (findings CH-01, CH-02, CT-06, SEC-06).
+--
+--  NOTHING IN THIS FILE RUNS. Every statement is commented out: each block is
+--  an option for Miguel to choose. Running the file as it is changes nothing.
+--  The camp hub page already works without any of it (since 18 Nov 2026 a
+--  Camp-Tab-only device no longer downloads the bookings copy and asks only
+--  for the Camp Tab's own ledger lines — but anyone with the account and the
+--  API can still read the rest until one of these options is applied).
+--
+--  Who is affected today (read-only check, 18 Nov 2026):
+--    portugal    bar_man           can_edit=false   (shared bar login)
+--    sri-lanka   head_social_host  can_edit=false   (shared social-host login)
+--    surf-school 5 accounts        can_edit=false   (rentals-only view)
+--    sri-lanka   local_manager     can_edit=true    (Nadith — see C)
+--
+--  Every block is idempotent (drop … if exists / create … if not exists).
+--  Test any of them first inside   begin; … rollback;   impersonating the
+--  account (set local role authenticated; set_config('request.jwt.claims', …)):
+--  the Camp Tab of Portugal and Sri Lanka must still see its own checkouts
+--  (412 and 134 rows matched ledger_camptab_row on 18 Nov 2026).
+-- ════════════════════════════════════════════════════════════════════════════
+
+
+-- ── A. The saved copy of every booking (CH-01) ──────────────────────────────
+-- location_state_store, key 'camphub_ov_bookings_v3': one JSON array per camp
+-- with name, gross, partner and commission_pct of every booking (Portugal
+-- 1,849 bookings, Sri Lanka 540, Morocco 367, Junior 164). Readable by any
+-- active member of the camp, including the bar and social-host logins, which
+-- see 0 rows of the `bookings` table. Recorded rule (9 Sep 2026): «quem não
+-- tem o botão HQ não pode ver os números».
+--
+-- Option A1 (smallest, nothing deleted): only full members and HQ read that key.
+--
+-- drop policy if exists location_state_store_bookings_copy_full_only on public.location_state_store;
+-- create policy location_state_store_bookings_copy_full_only
+--   on public.location_state_store as restrictive for select to authenticated
+--   using (
+--     state_key is distinct from 'camphub_ov_bookings_v3'
+--     or public.has_full_location_access(location_id)
+--     or public.is_hq_member()
+--   );
+--
+-- Option A2 (the copy goes): the root importer (index.html, hub import) stops
+-- writing the key, then the four rows are backed up and deleted. NOTE: the
+-- copy is not a pure duplicate — its check-ins start Jan 2025 while `bookings`
+-- starts Jan 2026, and the importer's manage/delete view reads it. Decide
+-- first where the 2025 bookings should live.
+--
+-- create table if not exists public.backup_camphub_ov_bookings_20261118 as
+--   select s.*, now() as backed_up_at from public.location_state_store s
+--    where s.state_key = 'camphub_ov_bookings_v3';
+-- delete from public.location_state_store where state_key = 'camphub_ov_bookings_v3';
+--
+-- Option A3: leave it as it is (the page no longer downloads it on those
+-- devices; a realtime update of the key still reaches them while it exists).
+
+
+-- ── B. The whole camp ledger (CH-02, CT-06, SEC-06) ─────────────────────────
+-- ledger_entries_select_location asks only has_location_access (any active
+-- membership, no can_edit test). The Portugal bar login reads 1,589 rows
+-- (1,141 HQ-paid lines, salaries); the Sri Lanka social-host login 1,481
+-- (53 HQ lines, 194 camp-paid salary rows). The local manager, a higher role,
+-- reads 0 HQ lines (supabase/local-manager.sql, 6 Nov 2026 — that note says
+-- the restriction was «só para este user»).
+--
+-- Option B1 (narrow: only the Camp Tab roles bar_man / head_social_host /
+-- camp_tab_staff without edit rights see only the Camp Tab's own lines —
+-- the same rule their insert/update/delete policies already use). The
+-- surf-school viewers are not touched.
+--
+-- drop policy if exists ledger_entries_select_camptab_only on public.ledger_entries;
+-- create policy ledger_entries_select_camptab_only
+--   on public.ledger_entries as restrictive for select to authenticated
+--   using (
+--     not public.is_location_camptab_role(location_id)
+--     or public.has_full_location_access(location_id)
+--     or public.is_hq_member()
+--     or public.ledger_camptab_row(source_kind, type, paid_from, payment_method)
+--   );
+--
+-- Option B2 (wide: every member with can_edit=false). The 5 surf-school
+-- rentals-only accounts would then read 0 ledger rows: check /surf-school/
+-- first (it deletes a rental's ledger line by id, surf-school/index.html).
+--
+-- drop policy if exists ledger_entries_select_camptab_only on public.ledger_entries;
+-- create policy ledger_entries_select_camptab_only
+--   on public.ledger_entries as restrictive for select to authenticated
+--   using (
+--     public.has_full_location_access(location_id)
+--     or public.is_hq_member()
+--     or public.ledger_camptab_row(source_kind, type, paid_from, payment_method)
+--     or (type = 'money_sent' and category = 'Dipløria' and public.is_diploria_member())
+--   );
+--
+-- SEC-06 also lists two tables the same logins read; with B1 or B2 these
+-- would follow (the Camp Tab does not read either):
+--
+-- drop policy if exists monthly_cost_profiles_select_not_camptab on public.monthly_cost_profiles;
+-- create policy monthly_cost_profiles_select_not_camptab
+--   on public.monthly_cost_profiles as restrictive for select to authenticated
+--   using (public.has_full_location_access(location_id) or public.is_hq_member());
+--
+-- drop policy if exists instructor_lessons_select_not_camptab on public.instructor_lessons;
+-- create policy instructor_lessons_select_not_camptab
+--   on public.instructor_lessons as restrictive for select to authenticated
+--   using (not public.is_location_camptab_role(location_id)
+--          or public.has_full_location_access(location_id) or public.is_hq_member());
+--
+-- Option B3: leave it (the page asks only for Camp Tab lines on those devices).
+
+
+-- ── C. The local manager and the booking amounts (CH-01, second half) ───────
+-- bookings_select_scoped admits has_full_location_access, so the Sri Lanka
+-- local manager reads 292 bookings with total/net amounts; the hub only hides
+-- them on screen. The 9 Sep 2026 rule admits a manager with edit rights on
+-- his own camp, so this is a choice, not a bug.
+--
+-- Option C1: hide booking rows from the local manager (the Week / rooms
+-- screens he uses would then need their own view without amounts — check
+-- before applying).
+--
+-- drop policy if exists bookings_select_not_local_manager on public.bookings;
+-- create policy bookings_select_not_local_manager
+--   on public.bookings as restrictive for select to authenticated
+--   using (not public.is_local_manager(public.booking_location_id(location)));
+--
+-- Option C2: leave it (he keeps reading the amounts; the screen hides them).
