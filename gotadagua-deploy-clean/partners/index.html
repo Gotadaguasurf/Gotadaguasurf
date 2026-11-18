@@ -2374,6 +2374,7 @@ let __authClient = null;
 let __realtimeChannel = null;
 let __loadingFromSupabase = false;
 let __suppressRealtimeRefresh = false;
+let __reloadTimer = null, __reloadAgain = false;   // realtime: one debounced reload (scheduleReload)
 let __cloudMode = 'unknown';
 
 function isMissingTableError(err) {
@@ -2474,9 +2475,17 @@ function normalizeStatusNotes(rows) {
 // the booking moves into one of these statuses (next CSV import upserts
 // the row with the new status, so commission then counts automatically).
 const REALIZED_BOOKING_STATUSES = new Set(['paid','confirmed','deposit_paid']);
+// Only the columns this page reads, and five keys of raw_payload instead of the
+// whole Bookinglayer payload (PRT-13: about a third of the bytes of select *).
+const BOOKING_COLUMNS = 'id,booking_ref,booker,check_in_on,location,pax,package,partner_name,total,partner_commission_pct,commission_amount,net_amount,country,'
+  + 'rp_status:raw_payload->>status,rp_booking_source:raw_payload->>bookingSource,rp_source:raw_payload->>source,rp_due:raw_payload->>due,'
+  + 'rp_external_ref:raw_payload->>external_ref,rp_external_ref2:raw_payload->>externalRef';
 
 function mapBookingRowToApp(row) {
   const partner = row.partner_name && row.partner_name.trim() ? row.partner_name.trim() : DIRECT_LABEL;
+  // raw_payload keys arrive as rp_* columns (BOOKING_COLUMNS); a full row still works
+  const rp = row.raw_payload || { status: row.rp_status, bookingSource: row.rp_booking_source, source: row.rp_source, due: row.rp_due, external_ref: row.rp_external_ref, externalRef: row.rp_external_ref2 };
+  row = { ...row, raw_payload: rp };
   const status = (row.raw_payload && row.raw_payload.status) ? String(row.raw_payload.status).trim().toLowerCase().replace(/\s+/g, '_') : ''; // 'Deposit paid' → 'deposit_paid'
   const isRealized = !status || REALIZED_BOOKING_STATUSES.has(status); // empty status = legacy data, treat as realized
   const gross = Number(row.total || 0);
@@ -2577,7 +2586,7 @@ async function loadFromSupabase() {
       for(;;){
         const { data, error } = await client
           .from('bookings')
-          .select('*')
+          .select(BOOKING_COLUMNS)
           .order('check_in_on', { ascending: true })
           .range(from, from + PAGE_SIZE - 1);
         if(error) throw error;
@@ -2640,6 +2649,7 @@ async function loadFromSupabase() {
     throw err;
   } finally {
     __loadingFromSupabase = false;
+    if (__reloadAgain) { __reloadAgain = false; scheduleReload(); }
   }
 }
 // Saves Partners & Rates. Only the records this page loaded are updated; a name
@@ -2797,20 +2807,24 @@ async function persistAllToSupabase({ syncPartners = true, rateChanges = [] } = 
     setTimeout(() => { __suppressRealtimeRefresh = false; }, 400);
   }
 }
+// A burst of realtime events (an import touches hundreds of bookings) gives ONE
+// reload, 500 ms after the last event; an event during a reload queues another.
+function scheduleReload() {
+  if (__suppressRealtimeRefresh) return;
+  clearTimeout(__reloadTimer);
+  __reloadTimer = setTimeout(() => {
+    if (__loadingFromSupabase) { __reloadAgain = true; return; }
+    loadFromSupabase().catch(console.error);
+  }, 500);
+}
 function subscribeRealtime() {
   if (__cloudMode !== 'cloud') return;
   const client = getAuthClient();
   if (__realtimeChannel) client.removeChannel(__realtimeChannel);
   __realtimeChannel = client.channel('partner-tracker-db')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-      if (!__suppressRealtimeRefresh) loadFromSupabase().catch(console.error);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'partners' }, () => {
-      if (!__suppressRealtimeRefresh) loadFromSupabase().catch(console.error);
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_month_status' }, () => {
-      if (!__suppressRealtimeRefresh) loadFromSupabase().catch(console.error);
-    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'partners' }, scheduleReload)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_month_status' }, scheduleReload)
     .subscribe();
 }
 async function signOutTeam() {

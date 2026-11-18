@@ -186,3 +186,27 @@ test('audit-w4-partners.sql: schema only runs, every data fix is commented with 
   expect(fixes.length).toBeGreaterThanOrEqual(2);
   expect((sql.match(/-- expect \d+/g) || []).length).toBeGreaterThanOrEqual(fixes.length);
 });
+
+// ── PRT-13 ───────────────────────────────────────────────────────────────────
+test('bookings are read with the few columns the page uses, and a burst of realtime events gives one reload', async ({ browser }) => {
+  const { ctx, page, reads, errs } = await openPartners(browser);
+  const bk = reads.urls.find(u => /\/rest\/v1\/bookings\?select=/.test(u));
+  expect(bk).toMatch(/select=id,booking_ref,/);
+  expect(bk).toContain('rp_status:raw_payload->>status');
+  expect(bk).not.toMatch(/select=\*/);
+  // the stub returns full rows; a slim row (rp_* keys, no raw_payload) maps the same way
+  const mapped = await page.evaluate(() => [
+    mapBookingRowToApp({ booking_ref: 'X1', partner_name: 'P', total: 100, net_amount: 80, commission_amount: 20, partner_commission_pct: 20, check_in_on: '2026-10-01', rp_status: 'Deposit paid', rp_booking_source: 'Connect: P', rp_due: '100' }),
+    mapBookingRowToApp({ booking_ref: 'X2', partner_name: 'P', total: 100, net_amount: 80, commission_amount: 20, partner_commission_pct: 20, check_in_on: '2026-10-01', raw_payload: { status: 'Deposit paid', bookingSource: 'Connect: P', due: '100' } }),
+  ].map(({ ref, ...b }) => b));
+  expect(mapped[0]).toEqual(mapped[1]);
+  expect(mapped[0]).toMatchObject({ status: 'deposit_paid', isRealized: true, source: 'Connect: P', due: 100 });
+  // five events in a row → one reload of the bookings
+  const before = reads.bookings;
+  await page.evaluate(() => { for (let i = 0; i < 5; i++) scheduleReload(); });
+  await expect.poll(() => reads.bookings, { timeout: 5000 }).toBe(before + 1);
+  await page.waitForTimeout(900);
+  expect(reads.bookings).toBe(before + 1);
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
