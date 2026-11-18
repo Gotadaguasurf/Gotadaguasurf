@@ -1051,7 +1051,7 @@ function partnerOwes(today){
       .map(mb => ({ ...mb, worth: monthSplit(mb.bookings).owedToUs }))
       .sort((a,b) => b.worth - a.worth);
     const worth = r2(open.reduce((s,mb) => s + mb.worth, 0)), invoiced = r2(invoicedOpen[k]);
-    if(worth - invoiced <= 1) return;
+    if(!open.length || worth - invoiced <= 1) return;   // every record Paid or flagged: nothing to invoice (even with a credit note on the month)
     const notes = open.map(mb => statusNotes[statusKey(mb.name, g.month)] || '').join(' ');
     toInvoice.push({ partner: g.partner, month: g.month, worth, invoiced, amount: r2(worth - invoiced),
       status: open.map(mb => getStatus(mb.name, g.month)).find(Boolean) || '', hold: OWES_HOLD.test(notes),
@@ -2574,7 +2574,11 @@ function updateBadge(){
   document.getElementById('dataBadge').textContent=allBookings.length+' bookings · '+range;
 }
 
-function renderPartnersPage(){renderOwes();renderKPIs('kpiStrip');renderMonthTabs();renderTable();}
+function renderPartnersPage(){
+  // the «Who owes us» card must never take the rest of the page down
+  try { renderOwes(); } catch(e){ console.warn('[Partners] who owes us not shown', e); const box = document.getElementById('owesCard'); if(box) box.innerHTML = ''; }
+  renderKPIs('kpiStrip');renderMonthTabs();renderTable();
+}
 
 // ── PASSWORD / AUTH ───────────────────────────────────────────────────────
 let __authClient = null;
