@@ -3121,7 +3121,7 @@ async function renderFecho(){
   try {
     const [rows, folders, checks] = await Promise.all([
       fetchAllPaged(() => sb.from('hq_invoices')
-        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason, payment_type')
+        .select('id, invoice_date, company, amount_eur, category_name, location_slug, invoice_number, drive_link, needs_review, notes, paying_company, is_duplicate, doc_exempt_reason, payment_type, created_at')
         .is('deleted_at', null).gte('invoice_date', period.from).lte('invoice_date', period.to)
         .order('invoice_date', { ascending:true }).order('id', { ascending:true })),
       sb.from('accountant_drive_folders').select('company, month_key, folder_id').in('month_key', [month, '*']).then(({ data, error }) => { if (error) throw error; return data || []; }),
@@ -3162,7 +3162,9 @@ function fechoPaint(){
 }
 function fechoPack(){
   const pack = (FECHO.checks || []).find(c => c.item === 'pacote'); const done = !!(pack && pack.done_at);
-  return { done, who: done ? `${esc(String(pack.done_by||'').split('@')[0])} · ${fmtDia(String(pack.done_at).slice(0,10))}` : '' };
+  // Lines of the month created after the tick (audit HQ-12): the accountant's Excel does not have them yet.
+  const after = done ? (FECHO.rows || []).filter(r => r.created_at && Date.parse(r.created_at) > Date.parse(pack.done_at)).length : 0;
+  return { done, after, who: done ? `${esc(String(pack.done_by||'').split('@')[0])} · ${fmtDia(String(pack.done_at).slice(0,10))}` : '' };
 }
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -3360,7 +3362,7 @@ function fechoBanksPaint(){
   if ($('fecho_kpis')) $('fecho_kpis').innerHTML =
     fechoKpi('Invoices to attach', toAttach.length, toAttach.length ? 'bad' : 'ok', toAttach.length ? eur(sum(toAttach)) : 'all attached') +
     fechoKpi('Bank debits to add', toAdd.length, toAdd.length ? 'bad' : 'ok', toAdd.length ? eur(sum(toAdd)) : 'all added') +
-    fechoKpi('Pack sent', pack.done ? 'Yes' : 'No', pack.done ? 'ok' : '', pack.who);
+    fechoKpi('Pack sent', pack.done ? 'Yes' : 'No', pack.done ? (pack.after ? 'warn' : 'ok') : '', pack.who + (pack.after ? ` · <span class="kv-amber">${pack.after} line${pack.after === 1 ? '' : 's'} added since</span>` : ''));
   const pill = (on, label, js) => `<button class="hq-pill${on ? ' active' : ''}" onclick="${js}">${label}</button>`;
   const badge = (n, cls) => n ? ` <span class="badge ${cls || 'badge-red'}" style="margin-left:4px">${n}</span>` : '';
   const viewPills = pill(view === 'missing', `Missing${badge(missing.length)}`, `FECHO.bankSel='missing';fechoBanksPaint()`) +
@@ -3539,6 +3541,9 @@ function fechoLaunch(bankId){
   }, 150);
 }
 async function fechoToggleCheck(item, checked){
+  // Ticking «Pack sent» before the month is over: later lines would miss the accountant's Excel (HQ-12).
+  if (item === 'pacote' && checked && accPeriod('month', FECHO.month).to >= new Date().toISOString().slice(0, 10)
+      && !confirm(`${fechoMonthLabel(FECHO.month)} has not ended yet — lines can still arrive after you send the pack.\n\nTick «Pack sent» anyway?`)) { fechoPaint(); return; }
   const { data: sessionData } = await sb.auth.getSession();
   const who = sessionData?.session?.user?.email || '';
   const { error } = await sb.from('hq_month_checks').upsert({ month_key: FECHO.month, item, done_at: checked ? new Date().toISOString() : null, done_by: checked ? who : null, updated_at: new Date().toISOString() }, { onConflict: 'month_key,item' });

@@ -359,3 +359,42 @@ test('DATA-08 archiving a line lets go of its bank debit (both link directions);
   expect(writes.some(w => w.startsWith('hq_invoices?id=eq.p2'))).toBe(true);   // the copy was tried…
   expect(shown).toEqual([true, false]);                                          // …and refused, so it is not shown as copied
 });
+
+// ── HQ-12 ────────────────────────────────────────────────────────────────
+const SHOTS = process.env.W4_SHOTS || '';
+test('HQ-12 «Pack sent» says how many lines of the month came in after the tick, and asks before ticking a month that has not ended', async ({ page }) => {
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const req = route.request(); const url = req.url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/hq_month_checks')) return json(req.method() === 'GET' ? [{ item: 'pacote', done_at: '2026-10-29T06:24:37Z', done_by: 'miguel@gotadaguasurf.com' }] : []);
+    if (url.includes('/rest/v1/hq_invoices') && url.includes('created_at')) return json([
+      { id: 'i1', invoice_date: '2026-10-02', company: 'prio', amount_eur: 40, category_name: 'Transport', location_slug: 'portugal', drive_link: 'https://drive.google.com/file/d/a/view', paying_company: 'water-movements', created_at: '2026-10-03T10:00:00Z' },
+      { id: 'i2', invoice_date: '2026-10-30', company: 'edp', amount_eur: 107.3, category_name: 'Utilities', location_slug: 'portugal', drive_link: null, paying_company: 'water-movements', created_at: '2026-11-02T10:00:00Z' },
+      { id: 'i3', invoice_date: '2026-10-31', company: 'meo', amount_eur: 42.78, category_name: 'Utilities', location_slug: 'portugal', drive_link: null, paying_company: 'water-movements', created_at: '2026-11-03T10:00:00Z' },
+    ]);
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderFecho === 'function' && document.querySelector('[data-tab="fecho"]'));
+  await page.evaluate(() => switchTab('fecho'));
+  await page.selectOption('#fecho_mes', '2026-10');
+  await page.waitForFunction(() => /added since/.test(document.querySelector('#fecho_kpis')?.textContent || ''), null, { timeout: 15000 });
+  const kpi = await page.evaluate(() => [...document.querySelectorAll('#fecho_kpis .kpi')].map(k => k.textContent.replace(/\s+/g, ' ').trim()).find(t => /Pack sent/.test(t)));
+  expect(kpi).toBe('Pack sentYesmiguel · 29 Oct · 2 lines added since');
+  if (SHOTS) {
+    await page.locator('#fecho_kpis').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${SHOTS}/hq12-pack-sent-390.png` });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.locator('#fecho_kpis').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${SHOTS}/hq12-pack-sent-1280.png` });
+  }
+  // a month that has not ended: ticking asks first, and «Cancel» leaves it unticked
+  const dialogs = [];
+  page.on('dialog', d => { dialogs.push(d.message()); d.dismiss(); });
+  const cur = await page.evaluate(() => { FECHO.month = currentMonth(); FECHO.checks = []; return fechoToggleCheck('pacote', true).then(() => FECHO.checks.length); });
+  expect(dialogs[0]).toMatch(/has not ended yet/);
+  expect(cur).toBe(0);
+});
