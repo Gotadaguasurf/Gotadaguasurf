@@ -418,3 +418,13 @@ test('email-dispatch: a row another run already claimed is not sent twice (crm-2
   expect((await loadFunction('email-dispatch', { db, gmail: g.fetch })()).body).toMatchObject({ sent: 1 });
   expect(g.st.sends).toEqual(['raw:b@uni.example']);
 });
+
+test('gmail-sync: with more than 1,000 messages in the window, what is stored is still seen as stored (paged list, crm-22)', async () => {
+  const msgs = Array.from({ length: 1100 }, (_, i) => mail('s' + i, 'Ana <club@uni.example>', 'Re: Surf trip ' + i));
+  const stored = msgs.map((m, i) => ({ id: 'e' + i, company_id: 'co-1', direction: 'inbound', provider_msg_id: m.id, thread_id: m.threadId, sent_at: new Date().toISOString() }));
+  const db = fakeDb({ outreach_contacts: [{ ...CLUB }], email_messages: stored }); const g = fakeGmail(msgs);
+  const r = await loadFunction('gmail-sync', { db, gmail: g.fetch })();
+  expect(r.body).toMatchObject({ ok: true, fetched: 1100, note: 'all already in DB' });
+  expect(g.st.gets).toHaveLength(0);
+  expect(db.T.outreach_activity).toHaveLength(0);
+});

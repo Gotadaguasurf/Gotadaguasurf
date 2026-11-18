@@ -456,14 +456,29 @@ Deno.serve(async (req) => {
     //    run looked at and left out. One exception: a message left out only
     //    because nobody in the CRM had that address is looked at again once
     //    somebody does, so adding the contact still brings their email in.
-    const { data: existing } = await supa.from('email_messages')
-      .select('provider_msg_id').in('provider_msg_id', ids)
-    const stored = new Set((existing || []).map((r: any) => r.provider_msg_id))
-    const seenRes = await supa.from('gmail_sync_seen')
-      .select('provider_msg_id, addr').in('provider_msg_id', ids)
-    const haveSeenTable = !seenRes.error
+    //    Read 200 ids at a time: the list can hold up to 2,000 and one answer
+    //    stops at 1,000 rows. A stored message that is not seen as stored
+    //    would be imported again and re-mark its company every run, so a
+    //    failed read of email_messages stops the run here.
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200))
+    const stored = new Set<string>()
+    for (const part of chunks) {
+      const { data: existing, error: exErr } = await supa.from('email_messages')
+        .select('provider_msg_id').in('provider_msg_id', part)
+      if (exErr) return json({ ok: false, error: `could not read stored messages: ${exErr.message}` }, 500)
+      ;(existing || []).forEach((r: any) => stored.add(r.provider_msg_id))
+    }
+    let haveSeenTable = true
+    const seenRows: any[] = []
+    for (const part of chunks) {
+      const seenRes = await supa.from('gmail_sync_seen')
+        .select('provider_msg_id, addr').in('provider_msg_id', part)
+      if (seenRes.error) { haveSeenTable = false; break }
+      seenRows.push(...(seenRes.data || []))
+    }
     const seen: Map<string, string | null> = haveSeenTable
-      ? new Map((seenRes.data || []).map((r: any) => [r.provider_msg_id, r.addr]))
+      ? new Map(seenRows.map((r: any) => [r.provider_msg_id, r.addr]))
       : seenMem
     const newIds = ids.filter(id => {
       if (stored.has(id)) return false
@@ -481,9 +496,9 @@ Deno.serve(async (req) => {
     //    it to extract a usable plain-text body.
     const { msgs: detailResps, throttled } = await fetchMessages(token, newIds)
     const threadIds = [...new Set(detailResps.filter(Boolean).map((m: any) => m.threadId).filter(Boolean))]
-    if (threadIds.length) {
+    for (let i = 0; i < threadIds.length; i += 100) {
       const { data: owned } = await supa.from('email_messages')
-        .select('thread_id, company_id').eq('direction', 'outbound').in('thread_id', threadIds)
+        .select('thread_id, company_id').eq('direction', 'outbound').in('thread_id', threadIds.slice(i, i + 100))
       ;(owned || []).forEach((r: any) => {
         if (!r.company_id) return
         if (!threadOwners.has(r.thread_id)) threadOwners.set(r.thread_id, new Set())
