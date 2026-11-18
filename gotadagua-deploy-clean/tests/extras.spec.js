@@ -293,7 +293,7 @@ test('leaving chips above the Camp Tab: today and tomorrow with open tab, list o
   await frame.evaluate(() => { const g = rosterRows(S.activeWeek, 'guests').find(x => x.name === 'Tom Müller'); g.items.push({ id: makeUuid(), n: 'Shot', p: 1000, cat: 'Drinks' }); save(); });
   await page.evaluate(() => showPage('pos'));
   await expect(page.locator('#exLeaving .health-chip')).toHaveText(['Leaving today with open tab: 1 · LKR 2,600', 'Leaving tomorrow with open tab: 1 · LKR 1,000']);
-  await expect(page.locator('#toast')).toContainText('2 guests from the Guests file added to Camp Tab');
+  await expect(page.locator('#toast')).toContainText('2 guests from the Bookinglayer report added to Camp Tab');
   await page.locator('#exLeaving .health-chip').first().click();
   await expect(page.locator('#exLeaveList')).toContainText('Gonçalo Pina');
   await expect(page.locator('#exLeaveList')).toContainText('LKR 2,600');

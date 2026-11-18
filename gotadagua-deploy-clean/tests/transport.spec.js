@@ -184,11 +184,11 @@ test('transport: one view (no Reconcile pill since 16 Nov 2026), no «Next week�
   await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();
   await expect(page.locator('#transportRoot button.pill:has-text("Next week")')).toHaveCount(0);
   // The sheet (16 Nov 2026): an empty week still shows its seven days, each with «+ Add», and says where trips come from.
-  await expect(page.locator('#transportRoot .tr-sheet-empty')).toContainText('Airport transfers come from the Guests file (import it in Week)');
+  await expect(page.locator('#transportRoot .tr-sheet-empty')).toContainText("Airport transfers come from Bookinglayer's camp report every hour");
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await expect(page.locator('#transportRoot .tr-day [data-add]')).toHaveCount(7);
-  await page.click('#transportRoot .tr-sheet-empty button:has-text("Import Guests file")');
-  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
+  await page.click('#transportRoot .tr-sheet-empty button:has-text("Import report by hand")');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Bookinglayer report');
   expect(await page.evaluate(() => activePage)).toBe('week');
   expect(await page.locator('#trGuestsFile').count()).toBe(1);
   expect(errors).toEqual([]);
@@ -206,7 +206,7 @@ test('guests import (in Week): the Guests file stands alone — HQ bookings are 
     ],
   });
   await openImport(page);
-  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Guests file');
+  await expect(page.locator('#weekRoot .wk-import .card-title').first()).toHaveText('Bookinglayer report');
   await page.setInputFiles('#trGuestsFile', GUESTS_CSV);
   await expect(page.locator('#weekRoot')).toContainText('Airport trips from this file · 6');
   await expect(page.locator('#weekRoot')).toContainText('Maximilian Ehrler');

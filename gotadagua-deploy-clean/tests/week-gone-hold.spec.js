@@ -50,7 +50,7 @@ const ROOM = '13 - Anchor Point mixed shared room (8pax)';
 const report = () => csvPriced([{ ref: '2026-9100', ci: '2026-11-21', co: '2026-11-28', guests: [{ name: 'Rob Report', arrT: '10:00', arrF: 'FR1234', phone: '+491510000077' }],
   lines: [{ p: ROOM, person: 'Rob Report', start: '2026-11-21', end: '2026-11-28', price: 300 }, { p: 'Airport Transfer Morocco (Agadir)', person: 'Rob Report', start: '2026-11-21', price: 30 }] }]);
 async function importReport(page, st, name) {
-  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.click('#weekRoot button:has-text("Import report by hand")');
   await page.setInputFiles('#trGuestsFile', { name, mimeType: 'text/csv', buffer: Buffer.from(report()) });
   await expect(page.locator('#weekRoot .tr-plan-sum')).toBeVisible();
 }
@@ -99,7 +99,7 @@ test('manual import: a trip an import already saw today is not held (the file ma
 
 test('the import card says the camp report comes by itself every hour, and what the old Guests export cannot do (WEEK-05)', async ({ page }) => {
   await H.openWeek(page, { now: NOW, guests: F.guests(), trips: [] });
-  await page.click('#weekRoot button:has-text("Import Guests file")');
+  await page.click('#weekRoot button:has-text("Import report by hand")');
   const hint = page.locator('#weekRoot .tr-import .card-hint');
   await expect(hint).toContainText("Bookinglayer's camp report is imported automatically every hour");
   await expect(hint).toContainText('cannot tell one transfer leg from two');

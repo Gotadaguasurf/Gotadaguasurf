@@ -607,7 +607,7 @@
     // The closing Saturday's departures belong to this week (inWeek): that day is added after Friday.
     const days = special ? [...new Set(list.map(t => t.trip_date))].sort() : [...new Set([...weekDays(ws), ...list.map(t => t.trip_date)])].sort();
     const empty = !special && !list.length && !TR.trips.some(t => inWeek(t, ws))
-      ? `<div class="hint tr-sheet-empty">No trips this week yet. Airport transfers come from the Guests file (import it in Week); add runs with «+ Add» on the day.${LOCAL ? '' : ` <button class="btn-link" onclick="TransportUI.toImport()">Import Guests file in Week</button>`}</div>` : '';
+      ? `<div class="hint tr-sheet-empty">No trips this week yet. Airport transfers come from Bookinglayer's camp report every hour; add runs with «+ Add» on the day.${LOCAL ? '' : ` <button class="btn-link" onclick="TransportUI.toImport()">Import report by hand in Week</button>`}</div>` : '';
     const cols = `<div class="tr-srow tr-scols" aria-hidden="true"><span>Time</span><span>What</span><span>People</span><span>Driver</span><span class="tr-c-r">Price</span><span>Status</span></div>`;
     const c = contact();
     TR.runGroups = {};
@@ -1707,7 +1707,7 @@
   function openAddTransfer(opts) {
     const d = defaultDriver('airport');      // Morocco: Let Us Tours (default_for 'airport'); Sri Lanka: Dilan
     const onDay = opts && opts.date && /^\d{4}-\d\d-\d\d$/.test(opts.date) ? opts.date : cToday();
-    const body = `<div class="status-msg status-info tr-free-rule">Guests' airport transfers come from Bookinglayer (the Guests file) — never add them here. Add only a transfer nobody pays us for.</div>
+    const body = `<div class="status-msg status-info tr-free-rule">Guests' airport transfers come from Bookinglayer (the camp report) — never add them here. Add only a transfer nobody pays us for.</div>
       <div class="mfield"><label>Why is it free?</label><div class="pills tr-seg" id="at_fr">${FREE_REASONS.map(([v, l]) => `<button type="button" class="pill" data-v="${v}">${l}</button>`).join('')}</div></div>
       <div class="pills tr-seg" id="at_kind"><button class="pill active" data-v="airport_arrival">Airport to Camp</button><button class="pill" data-v="airport_departure">Camp to Airport</button></div>
       <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="at_d" value="${onDay}"></div><div class="mfield"><label>Time</label><input type="time" id="at_t"></div></div>
@@ -2354,7 +2354,7 @@
     const I = TR.imp;
     let out = `<div class="card tr-import"><div class="card-hdr"><div><div class="card-title">${opts && opts.title ? h(opts.title) : `Next week · ${fmtRange(ws, we)}`}</div>
       <div class="card-hint">Bookinglayer's camp report is imported automatically every hour. To import by hand, drop the camp report here (the Guests export with the «${h(IS_SL ? 'Semana Sri Lanka' : CC.preset)}» preset still works, but it cannot tell one transfer leg from two). Importing again updates the trips — nothing is duplicated.</div></div></div>
-      <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose Guests file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
+      <div class="card-body"><label class="btn ${I && (I.stage === 'preview' || I.stage === 'done') ? 'btn-s' : 'btn-p'}">${ic('upload')} Choose report file<input type="file" accept=".csv,.xlsx,.xls" id="trGuestsFile" style="display:none" onchange="TransportUI.pickFile(this)"></label>
       ${I && I.needDate ? `<div class="mfield tr-date-ask"><label>When did you download this file?</label><input type="date" id="trExportDate" value="${cToday()}"><button class="btn btn-s btn-sm" onclick="TransportUI.setExportDate()">Continue</button></div>` : ''}
       </div></div>`;
     if (!I || I.needDate) return out;
@@ -2371,7 +2371,7 @@
     // Morocco: what changed on the Bookinglayer side (missing column, unknown room, product or package) — one line each.
     if ((groups.warnings || []).length) out += `<div class="status-msg status-warn tr-impwarn"><b>Check before using the lists:</b>${groups.warnings.map(w => `<div class="tr-impwarn-l" data-kind="${w.kind}">${h(w.text)}</div>`).join('')}</div>`;
     if (groups.missingRefs) out += `<div class="status-msg status-info tr-soft">${groups.missingRefs} booking${groups.missingRefs === 1 ? '' : 's'} not yet in HQ — import bookings</div>`;
-    out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Airport trips from this file · ${groups.trips.length}</div><div class="card-hint">From the Guests export (the source for upcoming weeks), checked against HQ bookings when the booking is there.</div></div></div>
+    out += `<div class="card"><div class="card-hdr"><div><div class="card-title">Airport trips from this file · ${groups.trips.length}</div><div class="card-hint">From the Bookinglayer file (the source for upcoming weeks).</div></div></div>
       <div class="tr-rows">${groups.trips.length ? groups.trips.map(t => impRow(t)).join('') : '<div class="card-body hint">No transfer booked in this file.</div>'}</div>
       ${I.stage === 'preview' && noPrice(groups.trips).length ? `<div class="status-msg status-warn tr-noprice">${noPrice(groups.trips).length} transfer${noPrice(groups.trips).length === 1 ? ' has' : 's have'} no price yet (the prices are still loading, or /prices has no price for that car). Saving will try again and refuses if a price is still missing.</div>` : ''}
       ${noAirportPrice(groups.trips).length ? `<div class="status-msg status-warn tr-noairprice">${noAirportPrice(groups.trips).map(t => `${h(t.guests.join(', '))} (${h(CC.airportCity[t.place] || t.place)})`).join(', ')}: no price for this airport in /prices — saved at 0, type the price in the trip.</div>` : ''}

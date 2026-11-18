@@ -401,7 +401,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     let guests = null, guestsSrc = '';
     if (state.guestsLoaded) {
       const seen = new Set(state.guests.filter(liveGuest).filter((g) => String(g.check_in) <= we && String(g.check_out) > ws).map(guestId));
-      if (seen.size) { guests = seen.size; guestsSrc = 'Guests file'; }
+      if (seen.size) { guests = seen.size; guestsSrc = 'Bookinglayer report'; }
     }
     if (guests == null && typeof ovBookings !== 'undefined' && Array.isArray(ovBookings) && ovBookings.length && typeof ovBookingGuestCount === 'function') {
       guests = ovBookingGuestCount(ovBookingsForWeeks([{ start: ws }])); guestsSrc = 'HQ bookings';
@@ -443,7 +443,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
       row('Spent', `cash ${lkrTxt(N.spentCash)} · bank ${lkrTxt(N.spentBank)}`),
       row('Cash', `expected ${lkrTxt(N.cashNow)}`, N.lastView ? `last count ${dMon(N.last.count_date)}: counted ${int(N.lastView.counted)} · ${diffTxt(N.lastView)}${N.lastView.settled ? ' · settled' : ''}${N.through ? ` · statement up to ${dMon(N.through)}` : ''}` : `no count yet${N.through ? ` · statement up to ${dMon(N.through)}` : ''}`),
       row('Transfers', N.tr ? `${N.tr.booked} booked · ${N.tr.done} done · ${N.tr.paid} paid` : '—', N.tr ? `owed to drivers ${lkrTxt(N.tr.owed)}` : 'Transport not loaded'),
-      row('Guests file', N.fileDate ? `${N.fileWord} ${dMon(N.fileDate)}` : 'not imported', N.fileDate ? (N.fileAge <= 0 ? 'today' : `${N.fileAge} day${N.fileAge === 1 ? '' : 's'} old`) : 'Week → import on Monday'),
+      row('Bookinglayer', N.fileDate ? `${N.fileWord} ${dMon(N.fileDate)}` : 'not imported', N.fileDate ? (N.fileAge <= 0 ? 'today' : `${N.fileAge} day${N.fileAge === 1 ? '' : 's'} old`) : 'comes by itself every hour'),
     ];
     return `<div class="card ex-wk" id="exWeekCard"><div class="card-pad ex-wk-hdr"><div class="card-title">This week · ${range(N.ws, N.we)}</div></div><div class="ex-wk-body">${lines.join('')}</div></div>`;
   }
