@@ -279,3 +279,41 @@ test('HQ-15 «Create now» on a recurring template never adds a second line for 
   expect(posts.length).toBe(1);
   expect(posts[0].notes).toMatch(/^\[recorrente mensal/);
 });
+
+// ── SEAM-15 / HQ-16 / SEAM-12 ────────────────────────────────────────────
+async function overviewWithTodo(page, todoResponse) {
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/rpc/hq_todo')) return todoResponse.status ? json(todoResponse.body, todoResponse.status) : json(todoResponse);
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelector('#overviewBody .hero-val'), null, { timeout: 15000 });
+  return page.evaluate(() => [...document.querySelectorAll('#overviewBody .health-chip')].map(b => b.textContent.trim()));
+}
+test('SEAM-15 / HQ-16 the review, duplicate and recurring chips read hq_todo (no own queries); «Clear» resets the bank filter; the PDF chip opens from the date hq_todo counts', async ({ page }) => {
+  const chips = await overviewWithTodo(page, { since: '2026-09-01', review: [{ company: 'water-movements', n: 3 }, { company: 'manjar', n: 5 }], duplicates: 2, recurring_due: 1, no_pdf: [{ company: 'water-movements', n: 4 }] });
+  expect(chips).toEqual(expect.arrayContaining(['3 to review', '2 duplicates', '1 recurring due', '4 without PDF since Sept']));
+  await page.evaluate(() => { switchTab('invoices'); $('filter_bank').value = 'none'; goToInvoicesFilter('nopdf'); });
+  expect(await page.evaluate(() => [$('filter_bank').value, $('filter_from').value, $('filter_nopdf').checked])).toEqual(['__all__', '2026-09-01', true]);
+  // the lists behind the chips leave duplicates out, like the counts
+  await page.waitForFunction(() => window.__invListCache && JSON.parse(window.__invListCache.key)[2] === '2026-09-01', null, { timeout: 10000 });   // the chip's own read has landed
+  const kept = await page.evaluate(async () => {
+    const base = { invoice_date: '2026-10-01', company: 'x', amount: 1, amount_eur: 1, currency: 'EUR', payment_type: 'Card', paying_company: 'water-movements', location_slug: 'portugal', needs_review: true };
+    window.__invListCache = { key: JSON.stringify(['__all__', '', '2026-09-01', '', false]), rows: [{ ...base, id: 'a' }, { ...base, id: 'b', is_duplicate: true }], bankByInv: new Map() };
+    const out = {};
+    await renderInvoiceList({ reuse: true }); out.nopdf = window.__lastRenderedRows.map(r => r.id);
+    $('filter_nopdf').checked = false; $('filter_review').checked = true;
+    await renderInvoiceList({ reuse: true }); out.review = window.__lastRenderedRows.map(r => r.id);
+    return out;
+  });
+  expect(kept).toEqual({ nopdf: ['a'], review: ['a'] });
+});
+test('HQ-16 when hq_todo fails the strip says so instead of going quiet', async ({ page }) => {
+  const chips = await overviewWithTodo(page, { status: 500, body: { code: 'XX000', message: 'boom in hq_todo' } });
+  expect(chips.some(c => /Could not load pending items: boom in hq_todo/.test(c))).toBe(true);
+});

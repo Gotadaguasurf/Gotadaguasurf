@@ -754,16 +754,19 @@ async function renderOverview(){
   });
   const trendMax = Math.max(1, ...trendData.map(d => Math.abs(d.profit)));
 
-  // Health check — cheap counts + a fetch of the two tiny side tables so
-  // the chip strip can flag what needs Miguel's attention right now.
-  const [reviewRes, dupRes, recurRes] = await Promise.all([
-    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('needs_review', true).is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY),
-    sb.from('hq_invoices').select('id', { count:'exact', head:true }).eq('is_duplicate', true).is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY),
-    sb.from('hq_recurring_expenses').select('id, active, day_of_month, last_created_on').eq('active', true),
-  ]);
-  const reviewCount = reviewRes.count || 0;
-  const dupCount    = dupRes.count    || 0;
-  const recDue      = (recurRes.data || []).filter(isRecurringDue).length;
+  // Health check: every pending count comes from hq_todo() (supabase/hq-todo.sql) — one rule for the chip and the
+  // list it opens (audit SEAM-15); owners also get My tasks. A failure is said in the strip, never swallowed (HQ-16).
+  let todo = null, todoErr = null, tasksRes = null;
+  try {
+    const [t, mt] = await Promise.all([sb.rpc('hq_todo'), IS_OWNER ? MyTasks.load(sb) : Promise.resolve(null)]);
+    tasksRes = mt;
+    if (t.error) todoErr = t.error.message || t.error.code || 'error';
+    else if (t.data && typeof t.data === 'object' && !Array.isArray(t.data)) todo = t.data;
+  } catch (e) { todoErr = e.message || String(e); }
+  if (todo && todo.since) window.__todoSince = String(todo.since).slice(0, 10);
+  const reviewCount = todo ? (todo.review || []).filter(x => x.company !== NOT_HQ_COMPANY).reduce((n, x) => n + Number(x.n || 0), 0) : 0;
+  const dupCount    = todo ? Number(todo.duplicates || 0) : 0;
+  const recDue      = todo ? Number(todo.recurring_due || 0) : 0;
 
   // Period-over-period delta for the hero. Only meaningful when a specific
   // YYYY-MM is picked; All-time has nothing to compare against.
@@ -795,10 +798,10 @@ async function renderOverview(){
   if (recDue)       healthChips.push({label:`${recDue} recurring due`,         onclick:"openRecurringPanel()"});
   // The rest of the day's pending items come from hq_todo() (supabase/hq-todo.sql) — same chips, no separate panel
   // (Miguel, 22 Oct 2026: the hub «Hoje» panel was too much; this strip is enough).
+  if (todoErr) healthChips.push({ label: `Could not load pending items: ${escapeHtml(todoErr)}`, onclick: "renderOverview()" });
   try {
     // Statements: owners get one «My tasks: N» chip (overdue + due, hq_my_tasks() in supabase/hq-my-tasks.sql);
     // everyone else — and owners until that SQL is run — keeps the per-bank «statement Nd old» chips.
-    const [{ data: todo }, tasksRes] = await Promise.all([sb.rpc('hq_todo'), IS_OWNER ? MyTasks.load(sb) : Promise.resolve(null)]);
     const tasksOk = !!(tasksRes && tasksRes.state === 'ok');
     if (tasksOk) {
       const t = MyTasks.summarize(tasksRes.data);
@@ -818,7 +821,7 @@ async function renderOverview(){
       const { count: mailReview } = await sb.from('mail_ingest_items').select('id', { count:'exact', head:true }).eq('status', 'review');
       if (mailReview) healthChips.push({label:`${mailReview} emailed invoices to decide`, onclick:"switchTab('fecho')"});
     }
-  } catch (_e) {}
+  } catch (e) { healthChips.push({ label: `Could not load pending items: ${escapeHtml(e.message || String(e))}`, onclick: "renderOverview()" }); }
 
   body.innerHTML = `
     <div class="hero-profit ${businessProfit>=0?'pos':'neg'}">
@@ -2341,7 +2344,7 @@ function goToInvoicesFilter(which){
     const el = document.getElementById(target);
     if (el) el.checked = true;
     // The «without PDF since Sept» chip counts from 1 Sep — show the same lines.
-    if (which === 'nopdf') { const f = document.getElementById('filter_from'); if (f) f.value = new Date().getFullYear() + '-09-01'; }
+    if (which === 'nopdf') { const f = document.getElementById('filter_from'); if (f) f.value = window.__todoSince || '2026-09-01'; }   // the date hq_todo counts from (HQ-16)
     renderInvoiceList();
   }
 }
@@ -2356,6 +2359,7 @@ function clearAllFilters(){
   set('filter_from', '');
   set('filter_to', '');
   set('filter_category', '__all__');
+  set('filter_bank', '__all__');
   set('filter_review', false);
   set('filter_nopdf', false);
   set('filter_personal', false);
@@ -4708,12 +4712,12 @@ async function renderInvoiceList(opts = {}){
   if (catFilter && catFilter !== '__all__') {
     rows = rows.filter(r => r.category_id === catFilter);
   }
-  if (reviewOnly)    rows = rows.filter(r => r.needs_review);
+  if (reviewOnly)    rows = rows.filter(r => r.needs_review && r.is_duplicate !== true);   // duplicates have their own chip (SEAM-15)
   const bankFilter = $('filter_bank')?.value || '__all__';
   if (bankFilter === 'none') rows = rows.filter(r => !bankByInv.has(r.id) && r.payment_type !== 'Cash' && !isBankFeeLine(r));
   else if (bankFilter === 'cash') rows = rows.filter(r => !bankByInv.has(r.id) && r.payment_type === 'Cash');
   else if (bankFilter !== '__all__') rows = rows.filter(r => bankByInv.get(r.id)?.bank === bankFilter);
-  if ($('filter_nopdf')?.checked) rows = rows.filter(r => !r.file_url && docStatus(r) === 'falta');
+  if ($('filter_nopdf')?.checked) rows = rows.filter(r => !r.file_url && docStatus(r) === 'falta' && r.is_duplicate !== true);   // as the accountant's count (SEAM-12)
   if (personalOnly)  rows = rows.filter(r => personalCatIds.has(r.category_id));
   if (duplicateOnly) rows = rows.filter(r => r.is_duplicate);
   if (search) {
