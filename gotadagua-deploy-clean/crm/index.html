@@ -1921,9 +1921,12 @@ async function syncGmailInbox(opts = {}){
   const ctrl = new AbortController();
   const timeoutId = setTimeout(() => ctrl.abort(), 30000);
   try {
+    // The signed-in user's token goes along: gmail-sync will only answer
+    // the cron (shared secret) and CRM users once ENFORCE_CRON_SECRET is on.
+    const { data: { session: s } } = await getClient().auth.getSession();
     const resp = await fetch(`${cfg.url}/functions/v1/gmail-sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey || '' },
+      headers: { 'Content-Type': 'application/json', apikey: cfg.anonKey || '', ...(s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : {}) },
       signal: ctrl.signal,
     });
     const j = await resp.json().catch(() => ({}));
@@ -2512,8 +2515,18 @@ async function runBatchSend(){
   if(!tpl){ toast('Pick a template'); return; }
   const sender = pickedSender('batchSendAs');
   if(!sender){ toast('Pick a sender first'); return; }
-  const targets = BATCH_STATE.recipients.filter(r => r.include && r.email);
-  if(targets.length === 0){ toast('Nothing to send'); return; }
+  const picked = BATCH_STATE.recipients.filter(r => r.include && r.email);
+  if(picked.length === 0){ toast('Nothing to send'); return; }
+  // One email per ADDRESS. The same address sits on two company rows 31
+  // times (a club entered twice, two clubs sharing one inbox) and four of
+  // them received the same campaign twice. The first row keeps the email.
+  const firstByAddress = new Map();
+  const sameAddress = [];
+  const targets = picked.filter(r => {
+    const key = r.email.trim().toLowerCase();
+    if(firstByAddress.has(key)){ sameAddress.push([r, firstByAddress.get(key)]); return false; }
+    firstByAddress.set(key, r); return true;
+  });
   const dryRun = document.getElementById('batchDryRun').checked;
 
   // Large batch + not a dry-run → queue a drip campaign. The dispatcher
@@ -2521,7 +2534,7 @@ async function runBatchSend(){
   // 08:30–19:30 window with random gaps, auto-skipping anyone who
   // replies mid-campaign. Closing the browser doesn't stop it.
   if(!dryRun && targets.length > INSTANT_SEND_MAX){
-    await queueDripCampaign({ tpl, sender, targets });
+    await queueDripCampaign({ tpl, sender, targets, sameAddress: sameAddress.length });
     return;
   }
   const verb = dryRun ? 'simulate' : 'SEND';
@@ -2556,7 +2569,8 @@ async function runBatchSend(){
     (fresh || []).forEach(row => lastContactedById.set(row.id, row.last_contacted_at));
   }
 
-  let sentCount = 0, failedCount = 0, skippedCount = 0;
+  let sentCount = 0, failedCount = 0, skippedCount = sameAddress.length;
+  sameAddress.forEach(([r, first]) => { r.status = 'skipped'; r.message = `same address as ${first.contact.company}`; });
   for(const r of targets){
     if(!BATCH_STATE.inProgress) break;  // user closed
     r.status = 'sending';
@@ -2638,7 +2652,7 @@ function closeBatchSendModal(){
 // an in-flight campaign sends) and inserts campaign + queue rows. The
 // email-dispatch Edge Function does the actual sending on a 5-min cron.
 
-async function queueDripCampaign({ tpl, sender, targets }){
+async function queueDripCampaign({ tpl, sender, targets, sameAddress = 0 }){
   // A Re: template cannot reach a contact with no earlier email.
   const noThread = isReplyTemplate(tpl) ? targets.filter(r => !r.thread).length : 0;
   if(noThread){
@@ -2648,8 +2662,15 @@ async function queueDripCampaign({ tpl, sender, targets }){
   }
   const dailyCap = Number(document.getElementById('batchDailyCap')?.value) || 80;
   const days = Math.ceil(targets.length / dailyCap);
+  // Already waiting in another campaign? (A 499-contact follow-up was queued
+  // twice on 1 Oct.) Say so before it is queued; the person decides.
+  const waiting = await fetchAllRows(() => getClient().from('email_queue').select('to_email').eq('status','pending').order('id'));
+  const waitingSet = new Set((waiting.data || []).map(r => (r.to_email || '').trim().toLowerCase()));
+  const alreadyQueued = targets.filter(r => waitingSet.has(r.email.trim().toLowerCase())).length;
   if(!confirm(
     `Queue ${targets.length} emails as a drip campaign?\n\n` +
+    (sameAddress ? `• ${sameAddress} left out: same email address as another selected company\n` : '') +
+    (alreadyQueued ? `• ${alreadyQueued} of these already have an email waiting in another campaign — they would get both\n` : '') +
     `• Sender: ${sender.full_name} (groups@gotadaguasurf.com)\n` +
     `• Max ${dailyCap}/day · 08:30–19:30 Lisbon · ~1 email per 2 min\n` +
     `• Runs ~${days} day${days>1?'s':''} · auto-skips anyone who replies\n\n` +
@@ -4056,14 +4077,25 @@ async function loadTemplates(){
 // renders the activity section in place.
 async function loadActivity(contactId, limit = 50){
   const c = getClient();
-  const [actR, emailR] = await Promise.all([
-    c.from('outreach_activity').select('*').eq('contact_id', contactId)
+  // A bounce is one line per address. Until Nov 2026 the sync wrote the same
+  // bounce on every run (up to 658 rows for one contact), which filled the
+  // newest 50 and hid the real history — so bounces are read apart, oldest
+  // first, and only the first per address is shown.
+  const [actR, bounceR, emailR] = await Promise.all([
+    c.from('outreach_activity').select('*').eq('contact_id', contactId).neq('action', 'email_bounced')
       .order('created_at', { ascending: false }).limit(limit),
+    c.from('outreach_activity').select('*').eq('contact_id', contactId).eq('action', 'email_bounced')
+      .order('created_at', { ascending: true }).limit(200),
     c.from('email_messages').select('*').eq('company_id', contactId)
       .order('sent_at', { ascending: false, nullsFirst: false }).limit(limit),
   ]);
   if(actR.error) return [];
-  const activity = actR.data || [];
+  const bouncedSeen = new Set();
+  const bounces = (bounceR.data || []).filter(b => {
+    const addr = (b.meta?.email || '').toLowerCase();
+    return !bouncedSeen.has(addr) && bouncedSeen.add(addr);
+  });
+  const activity = [...(actR.data || []), ...bounces];
   // Map every email row into the same shape as an activity row so
   // the renderer doesn't have to branch on source. created_at uses
   // sent_at (real send time) falling back to created_at (when we
@@ -6486,6 +6518,8 @@ function activityLabel(a){
     case 'imported': return `Imported from xlsx`;
     case 'group_added': return `${uiIcon('people')} Group added: "${a.meta?.title||'untitled'}"${a.meta?.stage?` (${GROUP_STAGE_LABELS[a.meta.stage]||a.meta.stage})`:''}`;
     case 'group_updated': return `${uiIcon('people')} Group updated: "${a.meta?.title||'untitled'}"`;
+    case 'email_bounced': return `${uiIcon('warning')} Email bounced${a.meta?.email ? ` — ${escHtml(a.meta.email)} cannot receive mail` : ''}`;
+    case 'unsubscribed': return `${uiIcon('flag')} Asked to unsubscribe — no more emails`;
     case 'group_stage': return `${uiIcon('people')} Group stage: ${GROUP_STAGE_LABELS[a.old_value]||a.old_value||'—'} → ${GROUP_STAGE_LABELS[a.new_value]||a.new_value||'—'}${a.meta?.title?` (${a.meta.title})`:''}`;
     default: return a.action;
   }
