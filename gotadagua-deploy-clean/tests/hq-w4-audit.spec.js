@@ -108,3 +108,36 @@ test('HQ-05 «Add expense» from a bank debit links the saved line to that debit
   expect(await page.evaluate(() => window.__launchBankId)).toBeNull();
   expect(errs).toEqual([]);
 });
+
+// ── HQ-07 / PRT-12 (HQ half) ─────────────────────────────────────────────
+test('HQ-07 / PRT-12 Cash flow: a cancelled booking is not money in; duplicates and 2026 partner commissions already in the booking are not money out', async ({ page }) => {
+  const urls = [];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url(); urls.push(decodeURIComponent(url));
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.includes('/auth/v1/user')) return json({ id: 'u1', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/bookings')) return json(url.includes('select=month_key') ? [{ month_key: '2026-10' }] : [
+      { total: 1000, net_amount: 1000, month_key: '2026-10', location: 'Portugal', status: 'Paid' },
+      { total: 500, net_amount: 500, month_key: '2026-10', location: 'Portugal', status: null },
+      { total: 900, net_amount: 900, month_key: '2026-10', location: 'Portugal', status: 'Canceled' },
+    ]);
+    if (url.includes('/rest/v1/hq_invoices')) return json(url.includes('select=invoice_date') ? [] : [
+      { paying_company: 'water-movements', location_slug: 'portugal', amount_eur: 100, category_id: 'c1', category_name: 'Food', invoice_date: '2026-10-02', is_duplicate: false },
+      { paying_company: 'water-movements', location_slug: 'portugal', amount_eur: 100, category_id: 'c1', category_name: 'Food', invoice_date: '2026-10-02', is_duplicate: true },
+      { paying_company: 'water-movements', location_slug: 'portugal', amount_eur: 250, category_id: 'c2', category_name: 'Partners', invoice_date: '2026-10-05', is_duplicate: false, commission_in_booking: null },
+    ]);
+    return json([]);
+  });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderCashflow === 'function' && document.querySelector('#cashflowBody'));
+  await page.evaluate(() => renderCashflow());
+  await page.waitForFunction(() => /Water Movements/.test(document.querySelector('#cashflowBody tbody')?.textContent || ''), null, { timeout: 15000 });
+  const wm = await page.evaluate(() => [...document.querySelectorAll('#cashflowBody tbody tr')].find(tr => /Water Movements/.test(tr.textContent)).children[1].textContent + ' | ' + [...document.querySelectorAll('#cashflowBody tbody tr')].find(tr => /Water Movements/.test(tr.textContent)).children[3].textContent);
+  expect(wm).toBe('€1,500.00 | €100.00');
+  // the status comes from the booking payload, and every paged read has a unique tiebreak (HQ-09)
+  expect(urls.some(u => /\/bookings\?select=.*status:raw_payload->>status.*order=check_in_on\.asc,id\.asc/.test(u))).toBe(true);
+  expect(errs).toEqual([]);
+});

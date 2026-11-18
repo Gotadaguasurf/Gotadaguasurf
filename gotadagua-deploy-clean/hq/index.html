@@ -5163,6 +5163,8 @@ function exportPnlCsv(){
   setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
 }
 
+// The realized booking statuses of hq_overview_rollup (supabase/one-formula.sql); no status = Paid.
+const HQ_REALIZED = ['Paid', 'Confirmed', 'Deposit paid', 'paid', 'confirmed', 'deposit_paid'];
 async function renderCashflow(){
   const cfBody = $('cashflowBody');
   const trBody = $('transferListBody');
@@ -5195,9 +5197,9 @@ async function renderCashflow(){
   trBody.innerHTML = `<div class="loading">Loading…</div>`;
 
   const [invRows, transferRows, bkRows] = await Promise.all([
-    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, invoice_date').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false})),
-    fetchAllPaged(() => sb.from('internal_transfers').select('id, transfer_date, from_company, to_company, amount, currency, amount_eur, purpose, reference, notes').order('transfer_date',{ascending:false})),
-    fetchAllPaged(() => sb.from('bookings').select('total, net_amount, month_key, location').order('check_in_on',{ascending:true}))
+    fetchAllPaged(() => sb.from('hq_invoices').select('paying_company, location_slug, amount_eur, category_id, category_name, invoice_date, is_duplicate, commission_in_booking').is('deleted_at', null).neq('paying_company', NOT_HQ_COMPANY).order('invoice_date',{ascending:false}).order('id')),
+    fetchAllPaged(() => sb.from('internal_transfers').select('id, transfer_date, from_company, to_company, amount, currency, amount_eur, purpose, reference, notes').order('transfer_date',{ascending:false}).order('id')),
+    fetchAllPaged(() => sb.from('bookings').select('total, net_amount, month_key, location, status:raw_payload->>status').order('check_in_on',{ascending:true}).order('id'))
   ]);
 
   const personalCatIds = new Set(CATEGORIES.filter(c => c.is_personal).map(c => c.id));
@@ -5209,15 +5211,20 @@ async function renderCashflow(){
 
   // Bookings revenue: all money hits Water Movements first per the model.
   const wm = ensureCo('water-movements');
+  // Same rows as the Overview (hq_overview_rollup, audit HQ-07 / PRT-12): realized bookings only — a cancelled one is not money in.
   bkRows.forEach(r => {
     if (!inPeriod(r.month_key)) return;
+    if (!HQ_REALIZED.includes(r.status ?? 'Paid')) return;
     wm.bookingsIn += Number(r.net_amount ?? r.total ?? 0);
   });
 
-  // Expenses out: HQ invoices bucketed by paying_company (excl. personal).
+  // Expenses out: HQ invoices bucketed by paying_company (excl. personal, duplicates, and the 2026 partner
+  // commissions already netted out of the booking revenue — the same rule as the Overview).
   invRows.forEach(r => {
     if (!inPeriod(r.invoice_date)) return;
     if (personalCatIds.has(r.category_id)) return;
+    if (r.is_duplicate === true) return;
+    if (r.commission_in_booking ?? (r.category_name === 'Partners' && String(r.invoice_date || '') >= '2026-01-01')) return;
     const co = r.paying_company || payingCompanyFor(r.location_slug) || 'water-movements';
     ensureCo(co).expensesOut += Number(r.amount_eur || 0);
   });
@@ -5252,7 +5259,7 @@ async function renderCashflow(){
   // When Water Movements pays for a Morocco expense, WM has effectively lent
   // €X to MGRP that still needs to be reconciled via a real transfer.
   invRows.forEach(r => {
-    if (personalCatIds.has(r.category_id)) return;
+    if (personalCatIds.has(r.category_id) || r.is_duplicate === true) return;
     const derivedCo = payingCompanyFor(r.location_slug);
     if (r.paying_company && r.paying_company !== derivedCo) {
       bumpPair(r.paying_company, derivedCo, Number(r.amount_eur || 0));
