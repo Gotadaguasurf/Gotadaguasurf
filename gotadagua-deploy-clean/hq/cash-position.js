@@ -24,7 +24,10 @@
   };
   const WINDOW_DAYS = 30;   // «next 30 days»
   const BUFFER = 2000;      // lowest point under this (or under zero) is shown in red
-  const LEFT_SHARE = 0.5;   // this month's counts as paid once half the usual amount has left (leasing and IRS leave in pieces)
+  // Leasing and IRS leave in pieces (instalment + fees, several contracts): the month counts as paid once half the
+  // usual amount has left. Everything else is one debit a month, so any amount means it left (IVA changes a lot).
+  const PIECES = { leasing: true, state_irs: true };
+  const LEFT_SHARE = 0.5;
 
   // ── Dates (UTC calendar days) ───────────────────────────────────────────
   const DAY = 86400000;
@@ -41,46 +44,54 @@
   }
 
   // ── The rule ────────────────────────────────────────────────────────────
-  // data = { today, accounts: [{key, balance, as_of, currency}], payments: [{key, name, account, amount, day,
+  // data = { today, accounts: [{key, balance, as_of, currency}], payments: [{key, name, account, month, amount, day,
   //          recent, months, this_month_amount, this_month_date}] }
-  // → { today, until, accounts, toLeave (in the window, by date), paid (this month's left, next one after the window), lows }
+  // «This month» of a payment is the month its account's statement has reached (payment.month), not today's:
+  // a balance of 17 Nov read on 1 Dec still has November's salaries to pay.
+  // → { today, until, accounts, toLeave (every occurrence in the window, by date), paid (that month's left and
+  //     the next one falls after the window), lows }
   function plan(data){
     const today = String((data && data.today) || '').slice(0, 10);
     const t0 = toDay(today);
     const accounts = (data && Array.isArray(data.accounts) ? data.accounts : []).map(a => ({ ...a, label: ACCOUNTS[a.key] || a.key, balance: num(a.balance) }));
     if (t0 == null) return { today, until: null, accounts, toLeave: [], paid: [], lows: [] };
     const end = t0 + WINDOW_DAYS * DAY;
-    const T = new Date(t0), y = T.getUTCFullYear(), m = T.getUTCMonth();
+    const toLeave = [], paid = [];
 
-    const rows = (data && Array.isArray(data.payments) ? data.payments : []).map(p => {
+    (data && Array.isArray(data.payments) ? data.payments : []).forEach(p => {
       const usual = num(p.amount);
       const leftAmt = num(p.this_month_amount);
-      const left = usual > 0 && leftAmt >= LEFT_SHARE * usual;
+      const left = leftAmt > 0 && (!PIECES[p.key] || leftAmt >= LEFT_SHARE * usual);
       const months = Array.isArray(p.months) && p.months.length ? p.months.map(Number) : null;   // fixed calendar (e.g. Jul · Sep · Dec)
       const day = Math.min(31, Math.max(1, Math.round(num(p.day)) || 1));
-      let due = null, late = false, amount = usual;
-      for (let k = 0; k < 13 && due == null; k++) {
-        const mm = (m + k) % 12, yy = y + Math.floor((m + k) / 12);
-        if (months && !months.includes(mm + 1)) continue;
-        if (k === 0 && left) continue;                        // this month's already left → the next one
-        due = dayIn(yy, mm, day);
-        if (k === 0) { amount = Math.max(usual - leftAmt, 0); late = due < t0; }
-        else if (left && !months) amount = median([leftAmt].concat(Array.isArray(p.recent) ? p.recent.slice(0, 2) : [usual]));
-      }
-      const when = late ? t0 : due;                           // expected day passed and not seen: it can leave any day now
-      return {
+      const acc = accounts.find(a => a.key === p.account);
+      const base = new Date(toDay(p.month) ?? toDay(acc && acc.as_of) ?? t0);
+      const y = base.getUTCFullYear(), m = base.getUTCMonth();
+      const row = {
         key: p.key, account: p.account, accountLabel: ACCOUNTS[p.account] || p.account,
         label: p.key === 'rent' && p.name ? `Rent · ${p.name}` : (PAYMENTS[p.key] || p.key),
-        amount: round2(amount), due: due == null ? null : iso(due), when: when == null ? null : iso(when), late,
-        inWindow: when != null && when <= end,
-        left, leftDate: leftAmt > 0 ? (p.this_month_date || null) : null, leftAmount: round2(leftAmt),
+        month: MONTH[m], left, leftDate: leftAmt > 0 ? (p.this_month_date || null) : null, leftAmount: round2(leftAmt),
       };
+      let found = 0;
+      for (let k = 0; k < 14; k++) {
+        const mm = (m + k) % 12, yy = y + Math.floor((m + k) / 12);
+        if (months && !months.includes(mm + 1)) continue;
+        if (k === 0 && left) continue;                        // that month's already left → the next one
+        const due = dayIn(yy, mm, day);
+        const late = due < t0;                                // expected day passed and not in the statement: it can leave any day now
+        const when = late ? t0 : due;
+        if (when > end) break;
+        const amount = k === 0 ? Math.max(usual - leftAmt, 0)
+          : (left && !months && !found) ? median([leftAmt].concat(Array.isArray(p.recent) ? p.recent.slice(0, 2) : [usual]))
+          : usual;
+        if (amount <= 0) continue;
+        toLeave.push({ ...row, amount: round2(amount), due: iso(due), when: iso(when), late, first: !found });
+        found++;
+      }
+      if (!found && left) paid.push(row);
     });
-
-    const toLeave = rows.filter(r => r.inWindow && r.amount > 0)
-      .sort((a, b) => (toDay(a.when) - toDay(b.when)) || (b.amount - a.amount));
-    const paid = rows.filter(r => !r.inWindow && r.left)
-      .sort((a, b) => (toDay(a.leftDate) || 0) - (toDay(b.leftDate) || 0));
+    toLeave.sort((a, b) => (toDay(a.when) - toDay(b.when)) || (Number(b.late) - Number(a.late)) || (b.amount - a.amount));
+    paid.sort((a, b) => (toDay(a.leftDate) || 0) - (toDay(b.leftDate) || 0));
 
     // lowest point per account: the balance minus every payment of the list, in date order (no money in)
     const lows = accounts.map(a => {
@@ -140,10 +151,10 @@
     </div>`;
   }
   function payRow(r, today){
-    const month = MONTH[new Date(toDay(today)).getUTCMonth()];
     const sub = [r.accountLabel];
     if (r.late) sub.push(`expected ${fmtDate(r.due, today)}, not in the statement yet`);
-    else if (r.left) sub.push(`${month} paid`);
+    else if (!r.first) { /* a second one inside the window: nothing to add */ }
+    else if (r.left) sub.push(`${r.month} paid`);
     else if (r.leftAmount > 0) sub.push(`${money(r.leftAmount, 'EUR', 0)} already paid`);
     return `<div class="cp-row" data-key="${esc(r.key)}" data-account="${esc(r.account)}" data-state="${r.late ? 'due' : 'todo'}">
       <div class="cp-when">${r.late ? 'Now' : '≈ ' + esc(fmtDate(r.when, today))}</div>

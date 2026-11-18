@@ -29,7 +29,7 @@ function fixture() {
       { key: 'cgd', currency: 'EUR', balance: 120300, as_of: '2026-11-16', loaded_at: '2026-11-17T15:00:00Z' },
     ],
     payments: [
-      { key: 'leasing', name: null, account: 'santander', amount: 3100.5, day: 1, n: 3, recent: [3100.5, 3100.5, 3100.5], this_month_date: '2026-11-02', this_month_amount: 3100.5, months: null },
+      { key: 'leasing', name: null, account: 'santander', amount: 3100.5, day: 1, n: 3, recent: [3100.5, 3100.5, 3100.5], this_month_date: '2026-11-02', this_month_amount: 3100.5, months: null, month: '2026-11-01' },
       { key: 'rent', name: 'Casa Azul Lda', account: 'santander', amount: 900, day: 1, n: 3, recent: [900, 900, 900], this_month_date: '2026-11-03', this_month_amount: 900, months: null },
       { key: 'social_security', name: null, account: 'santander', amount: 4000, day: 10, n: 3, recent: [4400, 4000, 4000], this_month_date: '2026-11-11', this_month_amount: 4400, months: null },
       { key: 'state_irs', name: null, account: 'santander', amount: 1500, day: 10, n: 3, recent: [1500, 1500, 1500], this_month_date: '2026-11-11', this_month_amount: 1500, months: null },
@@ -99,12 +99,17 @@ test('cash position rule: late, partly paid, paid early, fixed calendar, short m
   const one = (today, pay, acc = [{ key: 'santander', balance: 5000, as_of: today }]) => CashPosition.plan({ today, accounts: acc, payments: [pay] });
   const base = { key: 'leasing', account: 'santander', amount: 2000, day: 20, recent: [2000, 2000, 2000], this_month_amount: null, this_month_date: null, months: null };
   // expected on the 20th, today the 22nd, nothing in the statement → still to leave, counted from today
+  // (December's, on the 20th, is inside the 30 days too)
   let p = one('2026-11-22', base);
-  expect(p.toLeave[0]).toMatchObject({ late: true, due: '2026-11-20', when: '2026-11-22', amount: 2000 });
-  expect(p.lows[0]).toMatchObject({ lowest: 3000, on: '2026-11-22', alert: false });
+  expect(p.toLeave.map(r => `${r.when} ${r.late ? 'late' : 'ok'} ${r.amount}`)).toEqual(['2026-11-22 late 2000', '2026-12-20 ok 2000']);
+  expect(p.toLeave[0]).toMatchObject({ due: '2026-11-20', first: true });
+  expect(p.lows[0]).toMatchObject({ lowest: 1000, on: '2026-12-20', alert: true, belowZeroFrom: null });
   // a small part left (under half): the rest is still expected this month
   p = one('2026-11-08', { ...base, this_month_amount: 500, this_month_date: '2026-11-06' });
   expect(p.toLeave[0]).toMatchObject({ left: false, when: '2026-11-20', amount: 1500, leftAmount: 500 });
+  // one debit a month (IVA, salaries…): any amount means this month's left, however small against the usual
+  p = one('2026-10-20', { ...base, key: 'state_iva', amount: 19000, day: 17, recent: [8800, 19000, 20000], this_month_amount: 9300, this_month_date: '2026-10-16' });
+  expect(p.toLeave.map(r => `${r.when} ${r.late ? 'late' : 'ok'} ${r.amount}`)).toEqual(['2026-11-17 ok 9300']);
   // paid early this month and the next one falls after the window → «Paid», out of the lowest point
   p = one('2026-11-12', { ...base, day: 25, this_month_amount: 2100, this_month_date: '2026-11-11' });
   expect(p.toLeave).toEqual([]);
@@ -125,6 +130,25 @@ test('cash position rule: late, partly paid, paid early, fixed calendar, short m
   expect(p.lows[0]).toMatchObject({ lowest: 5000, on: null });
   expect(CashPosition.money(-19620.3, 'EUR', 0)).toBe('−€19,620');
   expect(CashPosition.money(9480.2, 'EUR', 2)).toBe('€9,480.20');
+});
+
+test('cash position rule: «this month» is the month the statement has reached, not today (1 Dec, statement of 17 Nov)', () => {
+  const p = CashPosition.plan({ today: '2026-12-01',
+    accounts: [{ key: 'santander', currency: 'EUR', balance: 9000, as_of: '2026-11-17' }],
+    payments: [
+      // November's salaries are not in the statement: still to leave (now), and December's is inside the 30 days too
+      { key: 'salaries', account: 'santander', month: '2026-11-01', amount: 8200, day: 28, recent: [8200, 8200, 8200], this_month_amount: null, this_month_date: null, months: null },
+      // November's leasing left on the 2nd: the next is 1 Dec, today, not late
+      { key: 'leasing', account: 'santander', month: '2026-11-01', amount: 3000, day: 1, recent: [3000, 3000, 3000], this_month_amount: 3000, this_month_date: '2026-11-02', months: null },
+    ] });
+  expect(p.toLeave.map(r => `${r.when} ${r.key} ${r.late ? 'late' : 'ok'} ${r.amount}`)).toEqual([
+    '2026-12-01 salaries late 8200',
+    '2026-12-01 leasing ok 3000',
+    '2026-12-28 salaries ok 8200',
+  ]);
+  expect(p.toLeave[0]).toMatchObject({ due: '2026-11-28', month: 'November', left: false });
+  expect(p.toLeave[1]).toMatchObject({ month: 'November', left: true, first: true });
+  expect(p.lows[0]).toMatchObject({ lowest: -10400, on: '2026-12-28', belowZeroFrom: '2026-12-01', alert: true });
 });
 
 // ── owner, phone ──────────────────────────────────────────────────────────
@@ -200,6 +224,7 @@ test('cash position: a payment expected days ago and not in the statement shows 
   await fakeSession(page, OWNER);
   await openHq(page, '/hq/?tab=cashflow');
   const cp = page.locator('#cashPosition');
+  await expect(cp.locator('.cp-row[data-key="leasing"]')).toHaveCount(2);   // November's (not seen yet) and December's
   const due = cp.locator('.cp-row[data-state="due"]');
   await expect(due).toHaveCount(1);
   await expect(due.locator('.badge')).toHaveText('Due');
@@ -208,8 +233,9 @@ test('cash position: a payment expected days ago and not in the statement shows 
   await expect(paid.locator('.badge')).toHaveText('Paid');
   await expect(paid).toContainText('Thu 12 Nov');
   await expect(paid).toContainText('€6,400.00');
-  await expect(cp.locator('.cp-low')).toHaveText('Lowest point: Santander ≈ €3,000 on Sun 22 Nov');
-  await expect(cp.locator('.cp-low')).not.toHaveClass(/neg/);
+  await expect(cp.locator('.cp-low')).toHaveText('Lowest point: Santander ≈ €1,000 on Sun 20 Dec');
+  await expect(cp.locator('.cp-low')).toHaveClass(/neg/);   // above zero but under the buffer
+  if (SHOTS) await cp.screenshot({ path: path.join(SHOTS, 'cash-due-paid-390.png') });
 });
 
 // ── before the SQL is run / errors ────────────────────────────────────────

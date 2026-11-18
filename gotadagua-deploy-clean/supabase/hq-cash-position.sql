@@ -41,13 +41,17 @@
 --     camps and salaries paid one by one are NOT in the set.
 --
 --     Per rule × account, by calendar month (several debits of one month are one
---     payment: leasing and IRS leave in pieces):
---       amount  median of the last 3 months it was paid, before this month
+--     payment: leasing and IRS leave in pieces). «This month» is the month the
+--     account's statement has reached (its last movement), not today's: on 1 Dec
+--     with a statement that stops in November, November's salaries are still to
+--     leave, not forgotten.
+--       month   that statement month (first day)
+--       amount  median of the last 3 months it was paid, before that month
 --               (looks back 6 months)
 --       day     median day of the month of the biggest debit of those months
 --       recent  the monthly totals behind that median, newest first
---       this_month_amount / this_month_date   what already left this month
---     A rule is returned only if something left this month, or last month's was at
+--       this_month_amount / this_month_date   what already left in that month
+--     A rule is returned only if something left in that month, or the month before's was at
 --     least half the usual amount (catering stopped on 30 Sep, so it is silent from
 --     November; a seasonal rent that shrank to a few euros goes silent too), and
 --     only from 500 a month. At most 3 rent rows.
@@ -62,9 +66,6 @@ language plpgsql stable security definer set search_path = public as $$
 declare
   v json;
   v_today date := (now() at time zone 'Europe/Lisbon')::date;
-  v_month date := date_trunc('month', (now() at time zone 'Europe/Lisbon')::date)::date;
-  v_prev  date := (date_trunc('month', (now() at time zone 'Europe/Lisbon')::date) - interval '1 month')::date;
-  v_from  date := (date_trunc('month', (now() at time zone 'Europe/Lisbon')::date) - interval '6 months')::date;
 begin
   if auth.uid() is not null and not public.is_global_admin() then
     raise exception 'Owner required' using errcode = '42501';
@@ -101,10 +102,11 @@ begin
       from anchor a join last_day l on l.bank = a.bank
   ),
   deb as (
-    select m.bank, m.movement_date as d, -m.amount as amt, r.key,
+    select m.bank, m.movement_date as d, -m.amount as amt, r.key, date_trunc('month', l.d)::date as ref,
            case when r.key = 'rent' then lower(trim(i.company)) else '' end as party,
            case when r.key = 'rent' then initcap(trim(i.company)) end as name
       from hq_bank_movements m
+      join last_day l on l.bank = m.bank
       left join hq_invoices i on i.id = m.hq_invoice_id and i.deleted_at is null
       cross join lateral (
         select case
@@ -120,38 +122,38 @@ begin
      where m.paying_company = 'water-movements'
        and m.balance is not null
        and m.amount < 0
-       and m.movement_date >= v_from and m.movement_date <= v_today
+       and m.movement_date >= date_trunc('month', l.d) - interval '6 months' and m.movement_date <= v_today
        and r.key is not null
   ),
   per_month as (
-    select key, party, bank, date_trunc('month', d)::date as mon, max(name) as name,
+    select key, party, bank, ref, date_trunc('month', d)::date as mon, max(name) as name,
            sum(amt) as total, (array_agg(d order by amt desc, d))[1] as main_date
-      from deb group by key, party, bank, date_trunc('month', d)
+      from deb group by key, party, bank, ref, date_trunc('month', d)
   ),
   hist as (
     select * from (
       select pm.*, row_number() over (partition by key, party, bank order by mon desc) as rn
-        from per_month pm where mon < v_month) t
+        from per_month pm where mon < ref) t
      where rn <= 3
   ),
   stat as (
-    select key, party, bank, max(name) as name, count(*)::int as n, max(mon) as last_month,
+    select key, party, bank, ref, max(name) as name, count(*)::int as n, max(mon) as last_month,
            round((percentile_cont(0.5) within group (order by total))::numeric, 2) as amount,
            round((percentile_cont(0.5) within group (order by extract(day from main_date)))::numeric)::int as day,
            (array_agg(main_date order by mon desc))[1] as last_date,
            (array_agg(total order by mon desc))[1] as last_amount,
            array_agg(total order by mon desc) as recent
-      from hist group by key, party, bank
+      from hist group by key, party, bank, ref
   ),
   pay as (
-    select s.key, s.name, s.bank as account, s.amount, s.day, s.n, s.last_date, s.last_amount, s.recent,
+    select s.key, s.name, s.bank as account, s.ref as month, s.amount, s.day, s.n, s.last_date, s.last_amount, s.recent,
            t.main_date as this_month_date, t.total as this_month_amount,
            case when s.key = 'state_irc' then '[7,9,12]'::json end as months,
            row_number() over (partition by s.key order by s.amount desc) as rk
       from stat s
-      left join per_month t on t.key = s.key and t.party = s.party and t.bank = s.bank and t.mon = v_month
+      left join per_month t on t.key = s.key and t.party = s.party and t.bank = s.bank and t.mon = s.ref
      where s.amount >= 500
-       and (s.key = 'state_irc' or t.total is not null or (s.last_month = v_prev and s.last_amount >= 0.5 * s.amount))
+       and (s.key = 'state_irc' or t.total is not null or (s.last_month = (s.ref - interval '1 month')::date and s.last_amount >= 0.5 * s.amount))
   )
   select json_build_object(
     'generated_at', now(),
@@ -160,7 +162,7 @@ begin
         'key', a.key, 'currency', a.currency, 'balance', a.balance, 'as_of', a.as_of, 'loaded_at', a.loaded_at)
         order by (a.key = 'santander') desc, a.key) from accounts a), '[]'::json),
     'payments', coalesce((select json_agg(json_build_object(
-        'key', p.key, 'name', p.name, 'account', p.account, 'amount', p.amount, 'day', p.day, 'n', p.n,
+        'key', p.key, 'name', p.name, 'account', p.account, 'month', p.month, 'amount', p.amount, 'day', p.day, 'n', p.n,
         'last_date', p.last_date, 'last_amount', p.last_amount, 'recent', to_json(p.recent),
         'this_month_date', p.this_month_date, 'this_month_amount', p.this_month_amount, 'months', p.months)
         order by p.day, p.key, p.account) from pay p where p.key <> 'rent' or p.rk <= 3), '[]'::json)
