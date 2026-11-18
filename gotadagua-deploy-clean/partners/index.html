@@ -964,9 +964,31 @@ function openBalanceTotals(bookings){
   const r2=x=>+x.toFixed(2);
   return {toUs:r2(toUs), toPartner:r2(toPartner), paidToUs:r2(paidToUs), paidToPartner:r2(paidToPartner)};
 }
+// Money already in the bank (partner_ledger «received») for months still open to us.
+// Only reported, never subtracted: a month leaves «still owe us» when it is marked
+// Paid (Miguel, 16 Sep 2026; a partial payment is reported, not marked — PRT-04).
+// Partners paid by advances keep theirs in the advance balance. Spellings of one
+// company match through lib/partner-alias.js.
+function receivedOnOpenMonths(bookings){
+  const A = window.PartnerAlias;
+  const key = (name, m) => A.key(name) + '||' + m;
+  const byMonth = {};
+  bookings.forEach(b => { const k = key(b.partner, getMonth(b)); (byMonth[k] = byMonth[k] || []).push(b); });
+  const open = new Set(Object.keys(byMonth).filter(k => {
+    const bs = byMonth[k];
+    return !monthIsPaid(bs[0].partner, getMonth(bs[0])) && monthSplit(bs).owedToUs > 0.004;
+  }));
+  let sum = 0;
+  Object.values(partnerLedger).forEach(rows => {
+    if(rows.some(r => r.kind !== 'received')) return;
+    rows.forEach(r => { if(open.has(key(r.partner_name, ledgerMonth(r)))) sum += +r.amount || 0; });
+  });
+  return +sum.toFixed(2);
+}
 function renderKPIs(id) {
   const fb=filtered();
   const open = openBalanceTotals(fb);
+  const inBank = receivedOnOpenMonths(fb);
   // Revenue tiles count realized bookings only (Paid / Confirmed / Deposit paid),
   // the same rule as the HQ Overview (hq_overview_rollup): a cancelled booking
   // stays visible in the statement with its grey badge but is not revenue.
@@ -979,7 +1001,7 @@ function renderKPIs(id) {
   const totalRevenue = tN + directTotal; // net from partners + 100% from direct = your real take-home
   const commissionPaid = grossTotal - totalRevenue;
   document.getElementById(id).innerHTML=`
-    <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not · received ${eur(open.paidToUs)}</div></div>
+    <div class="kpi"><div class="kpi-label">Partners still owe us</div><div class="kpi-value kv-green">${eur(open.toUs)}</div><div class="kpi-sub">every month not marked Paid, invoiced or not${inBank > 0.004 ? ` · <b>${eur(inBank)}</b> of it already in the bank` : ''} · received ${eur(open.paidToUs)}</div></div>
     <div class="kpi"><div class="kpi-label">We still owe partners</div><div class="kpi-value kv-amber">${eur(open.toPartner)}</div><div class="kpi-sub">commission not marked Paid · paid ${eur(open.paidToPartner)}</div></div>
     <div class="kpi"><div class="kpi-label">Total gross (Bookinglayer)</div><div class="kpi-value">${eur(grossTotal)}</div><div class="kpi-sub">Partner gross + direct · realized bookings, as in the HQ</div></div>
     <div class="kpi"><div class="kpi-label">Partner gross revenue</div><div class="kpi-value">${eur(tG)}</div><div class="kpi-sub">${activeMonth==='all'?'All months':monthLabel(activeMonth)}</div></div>

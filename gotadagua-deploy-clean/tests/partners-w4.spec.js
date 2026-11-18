@@ -210,3 +210,16 @@ test('bookings are read with the few columns the page uses, and a burst of realt
   expect(errs).toEqual([]);
   await ctx.close();
 });
+
+// ── PRT-04 ───────────────────────────────────────────────────────────────────
+test('«Partners still owe us» says how much of it is already in the bank (reported, not subtracted)', async ({ browser }) => {
+  const { ctx, page, errs } = await openPartners(browser);
+  const tile = page.locator('#kpiStrip .kpi').filter({ hasText: 'Partners still owe us' });
+  expect(await kpi(page, 'Partners still owe us')).toBe('€1,200.00');   // Sep 800 + Oct 400, neither marked Paid
+  await expect(tile.locator('.kpi-sub')).toContainText('€300.00 of it already in the bank');
+  // a month view without receipts says nothing extra
+  await page.evaluate(() => setMonth('2026-10'));
+  await expect(tile.locator('.kpi-sub')).not.toContainText('in the bank');
+  expect(errs).toEqual([]);
+  await ctx.close();
+});
