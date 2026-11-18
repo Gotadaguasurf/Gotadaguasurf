@@ -104,3 +104,25 @@ test('revenue tiles count realized bookings only, like the HQ Overview (cancelle
   expect(errs).toEqual([]);
   await ctx.close();
 });
+
+// ── PRT-18 (part A) ──────────────────────────────────────────────────────────
+test('+ invoice saves the row but leaves the month status alone; errors are a toast, not a blocking alert', async ({ browser }) => {
+  const { ctx, page, calls, errs } = await openPartners(browser);
+  const answers = ['FT T/700', '1234.50', ''];
+  page.removeAllListeners('dialog');
+  page.on('dialog', d => d.type() === 'prompt' ? d.accept(answers.shift()) : d.dismiss());
+  await page.evaluate(() => window.addPartnerInvoice('Blue Wave Travel', '2026-10'));
+  const ins = calls.find(c => c.write === 'partner_invoices' && c.method === 'POST');
+  expect(ins.body).toMatchObject({ partner_name: 'Blue Wave Travel', month_key: '2026-10', invoice_number: 'FT T/700', amount: 1234.5 });
+  expect(calls.filter(c => c.rpc)).toEqual([]);                 // no advance_partner_month_status / upsert_partner_month_status
+  await expect(page.locator('#toast')).toContainText('Invoice FT T/700 saved');
+  // a failed save says so in a red toast that stays readable
+  await page.route(/rest\/v1\/partner_invoices/, r => r.request().method() === 'POST' ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ message: 'duplicate key value' }) }) : r.fallback());
+  answers.push('FT T/701', '10', '');
+  await page.evaluate(() => window.addPartnerInvoice('Blue Wave Travel', '2026-10'));
+  await expect(page.locator('#toast.err')).toContainText('Could not save the invoice: duplicate key value');
+  await page.waitForTimeout(3500);
+  await expect(page.locator('#toast.err')).toBeVisible();      // still there after the default 3.2 s
+  expect(errs).toEqual([]);
+  await ctx.close();
+});

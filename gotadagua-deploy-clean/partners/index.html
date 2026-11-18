@@ -450,6 +450,12 @@ let expandedPartner = null;
 let expandedLocation = null; // location filter inside expanded partner
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
+// Messages use the shared toast; an error stays 6 s so it can be read (no blocking alert boxes).
+function notify(msg, kind = 'err'){
+  AppShell.toast(String(msg).replace(/\n/g, ' '), kind);
+  const t = document.getElementById('toast');
+  if(t && kind === 'err'){ clearTimeout(t._t); t._t = setTimeout(() => { t.className = 'toast'; }, 6000); }
+}
 const eur = v => '€' + (+v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const getMonth = b => b.checkin.slice(0,7);
 const monthLabel = m => { const [y,mo]=m.split('-'); return new Date(+y,+mo-1,1).toLocaleString('en',{month:'long',year:'numeric'}); };
@@ -610,16 +616,12 @@ window.addPartnerInvoice = async function(partner, month){
     });
     if(error) throw error;
     await reloadPartnerInvoices();
-    // An invoice on the month = "Invoice Sent" (Miguel, 9 Nov 2026: «estas
-    // coisas têm de ser automáticas»). The DB trigger does the same; this
-    // keeps the screen in step and covers a database without the trigger.
-    const cur = getStatus(partner, month);
-    if(cur !== 'Paid' && cur !== 'Invoice Sent'){
-      try { setStatus(partner, month, await advanceStatusOnServer(partner, month, 'Invoice Sent')); }
-      catch(err){ console.error('[Partners] could not mark Invoice Sent', err); }
-    }
+    // The month stays where it is: «Invoice Sent» only once the reply with the
+    // invoice has really gone out (Miguel, 9 Nov 2026 — the row trigger was
+    // dropped by supabase/partner-status-no-invoice-trigger.sql for that reason).
     renderPartnersPage();
-  }catch(e){ alert('Could not save the invoice: ' + (e && e.message || e)); }
+    notify(`Invoice ${num.trim()} saved — set «Invoice Sent» once the email with it has gone out`, 'ok');
+  }catch(e){ notify('Could not save the invoice: ' + (e && e.message || e)); }
 };
 
 // ── ADVANCE BALANCE (partner_ledger) ──────────────────────────────────────────
@@ -744,21 +746,21 @@ window.addLedgerEntry = async function(partner, kind){
   const step = () => `Step ${++n} of ${total} — `;
   const date = prompt(`${label} · ${partner}\n${step()}Date (YYYY-MM-DD)`, new Date().toISOString().slice(0,10));
   if(!date) return;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())){ alert('Date must look like 2026-10-13'); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())){ notify('Date must look like 2026-10-13'); return; }
   const amt = prompt(step() + (kind === 'adjustment' ? 'Amount — positive = in our favour (less to pay / more credit), negative = we owe more' : 'Amount in € (as on the bank statement)'));
   if(amt === null) return;
   const amount = Number(String(amt).replace(/\s/g,'').replace(',', '.'));
-  if(!Number.isFinite(amount) || amount === 0 || (kind !== 'adjustment' && amount < 0)){ alert('Not a valid amount'); return; }
+  if(!Number.isFinite(amount) || amount === 0 || (kind !== 'adjustment' && amount < 0)){ notify('Not a valid amount'); return; }
   let bank = null, bankRef = null;
   if(kind !== 'adjustment'){
     // Only money that really moved counts ("quando metes pago tem mesmo de estar pago no banco").
     bank = (prompt(step() + 'Which bank? Type santander or cgd', 'santander') || '').trim().toLowerCase() || null;
     bankRef = (prompt(step() + 'Statement line as printed (e.g. TRF.IMED. P/ Juvigo-E01613117)') || '').trim();
-    if(!bank || !bankRef){ alert('A payment needs the bank and the statement line — only money that is on the statement goes in.'); return; }
+    if(!bank || !bankRef){ notify('A payment needs the bank and the statement line — only money that is on the statement goes in.'); return; }
   }
   const ref = (prompt(step() + (kind === 'adjustment' ? 'Short reference (e.g. "Acerto Nicolas 3 Set")' : 'Partner invoice number (optional)')) || '').trim() || null;
   const appliesTo = (prompt(step() + 'Bookings month it belongs to, if not the month of the date (YYYY-MM, optional)') || '').trim() || null;
-  if(appliesTo && !/^\d{4}-\d{2}$/.test(appliesTo)){ alert('Month must look like 2026-08'); return; }
+  if(appliesTo && !/^\d{4}-\d{2}$/.test(appliesTo)){ notify('Month must look like 2026-08'); return; }
   const notes = (prompt(step() + 'Note (what it is / why)') || '').trim() || null;
   try{
     const client = getAuthClient();
@@ -770,7 +772,7 @@ window.addLedgerEntry = async function(partner, kind){
     if(error) throw error;
     await reloadPartnerLedger();
     renderPartnersPage();
-  }catch(e){ alert('Could not save: ' + (e && e.message || e)); }
+  }catch(e){ notify('Could not save: ' + (e && e.message || e)); }
 };
 window.removeLedgerEntry = async function(id){
   if(!confirm('Remove this movement from the advance balance? (it is kept in the database as removed)')) return;
@@ -779,7 +781,7 @@ window.removeLedgerEntry = async function(id){
     if(error) throw error;
     await reloadPartnerLedger();
     renderPartnersPage();
-  }catch(e){ alert('Could not remove: ' + (e && e.message || e)); }
+  }catch(e){ notify('Could not remove: ' + (e && e.message || e)); }
 };
 
 // Who collected the money for THIS booking. Bookinglayer tells us per
@@ -929,7 +931,7 @@ window.handleStatusChange = async function(partner, month, el) {
     el.value = previous;
     el.className = 'status-select '+(STATUS_CLS[previous]||'s-none');
     renderPartnersPage();
-    alert('Could not save the status. ' + (err?.message || ''));
+    notify('Could not save the status. ' + (err?.message || ''));
   }
 };
 
@@ -1886,7 +1888,7 @@ async function sendStatementEmail(ctxArg){
   const ctx = (ctxArg && ctxArg.partner) ? ctxArg : (window.currentStatementContext || {});
   const em = ctx.email || getEmail(ctx.partner);
   if(!em){
-    alert(`No email for ${ctx.partner || 'this partner'}.\nAdd it in Partners & Rates.`);
+    notify(`No email for ${ctx.partner || 'this partner'}.\nAdd it in Partners & Rates.`);
     return;
   }
 
@@ -1953,7 +1955,7 @@ async function markOverviewSent(partner, month){
     console.error('[Partners] could not mark Overview Sent', err);
     setStatus(partner, month, previous);
     renderPartnersPage();
-    alert('The email opened, but the month could not be marked "Overview Sent". ' + (err?.message || ''));
+    notify('The email opened, but the month could not be marked "Overview Sent". ' + (err?.message || ''));
   }
 }
 
@@ -2076,7 +2078,7 @@ window.openStatement = function(partner, month, locationFilter) {
     sendBtn.disabled = true;
     sendBtn.style.opacity='0.4';
     sendBtn.title='No email set — add it in Partners & Rates';
-    sendBtn.onclick=function(){alert('No email for '+partner+'.\nAdd it in Partners & Rates.');};
+    sendBtn.onclick=function(){notify('No email for '+partner+'.\nAdd it in Partners & Rates.');};
   }
 
   window.currentStatementContext = { partner, month, locationFilter, email: em, bookings: sendBks, viewBookings: bks, periodLabel: period2 };
@@ -2095,10 +2097,10 @@ window.saveStatementPDF = async () => {
     console.error(e);
     try {
       window.print();
-      alert('Automatic PDF generation failed, so the print dialog was opened as a fallback. You can choose "Save as PDF" there.');
+      notify('Automatic PDF generation failed, so the print dialog was opened instead — choose "Save as PDF" there.', 'info');
     } catch (printErr) {
       console.error(printErr);
-      alert('Could not create the PDF.');
+      notify('Could not create the PDF.');
     }
   }
 };
@@ -2339,7 +2341,7 @@ window.saveSettings = async () => {
     Array.prototype.push.apply(allBookings, prev.bookings);
     renderPartnersPage();
     renderSettingsModal();
-    alert('Could not save partner settings. ' + (err?.message || ''));
+    notify('Could not save partner settings. ' + (err?.message || ''));
   }
 };
 
