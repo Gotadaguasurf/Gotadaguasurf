@@ -298,6 +298,13 @@
       sub: s[i + 1] ? `then ${s[i + 1].r ? s[i + 1].r.label : OUTSIDE}, ${fd(s[i + 1].from)}` : i > 0 ? `from ${s[i - 1].r ? s[i - 1].r.label : OUTSIDE}, ${fd(x.from)}` : (moveUnknown(g) ? `from ${movedRooms(g)[0]}` : '') };
   }
   const moveUnknown = g => roomNames(g.accommodation).length > 1 && !moveDay(g);
+  // The room lines of the camp report (lib/bl-report.js guestSegments: room, from, to, bed), or null for a Guests-export row.
+  const reportSegs = g => g.raw && g.raw.source === 'bl-report' && Array.isArray(g.raw.segments) && g.raw.segments.length ? g.raw.segments.map(s => ({ ...s, r: roomInfo(s.room) })) : null;
+  // Week's nights (room, dates, the bed of a shared room) are the report's — no guess left to confirm.
+  function sameAsReport(g) {
+    const key = x => x.map(s => `${s.r ? s.r.key : ''}|${s.from}|${s.to}|${s.r && s.r.shared ? String(s.bed || '') : ''}`).join(';');
+    return key(segments(g)) === key(reportSegs(g));
+  }
   const sameRoom = (a, b) => (a ? a.key : '') === (b ? b.key : '');
   const OUTSIDE = 'Outside of camp';
   const nightsNote = n => `${n} ${n === 1 ? 'night' : 'nights'}`;
@@ -696,7 +703,13 @@
     const noPhone = groupPeople(ws, rows, true).filter(x => !x.phone);
     if (noPhone.length) items.push({ tab: 'guests', short: `${noPhone.length} without a phone`, text: `${plural(noPhone.length, 'guest')} without a valid phone – not in the week group contacts`, who: noPhone.map(x => x.g.guest_name + (x.g.phone ? ` (${x.g.phone})` : '')).join(', ') });
     const moves = live.filter(g => movedRooms(g));
-    const fixed = moves.filter(g => !moveUnknown(g)), open = moves.filter(moveUnknown);
+    // The camp report dates every room line (raw.segments): a move Week shows exactly as Bookinglayer has it is no question;
+    // one it shows on another day, or with another bed, is (audit 18 Nov 2026, WEEK-04). Old Guests-export rows keep the
+    // two items below, the file having no move date.
+    const fromReport = moves.filter(g => reportSegs(g));
+    const differ = fromReport.filter(g => !sameAsReport(g));
+    if (differ.length) items.push({ tab: 'rooms', short: `${plural(differ.length, 'room move')} to check`, text: `${plural(differ.length, 'room move')} shown on another day or bed than Bookinglayer's – follow Bookinglayer, check the Day Planner`, who: differ.map(g => `${g.guest_name} (Bookinglayer: ${reportSegs(g).map(s => `${s.r ? s.r.label : s.room}${s.r && s.r.shared && s.bed ? ' bed ' + s.bed : ''} ${fd(s.from)}`).join(' → ')})`).join(', ') });
+    const fixed = moves.filter(g => !reportSegs(g) && !moveUnknown(g)), open = moves.filter(g => !reportSegs(g) && moveUnknown(g));
     if (fixed.length) items.push({ tab: 'rooms', short: `${plural(fixed.length, 'room move')} to confirm`, text: `${plural(fixed.length, 'room move')} taken on the Saturday – the file has no move date, check the Day Planner`, who: fixed.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')}, ${fd(moveDay(g))})`).join(', ') });
     if (open.length) items.push({ tab: 'rooms', short: `${plural(open.length, 'room move')} without date`, text: `${plural(open.length, 'room move')} without a date – check the Day Planner`, who: open.map(g => `${g.guest_name} (${movedRooms(g).join(' → ')})`).join(', ') });
     // Transfers not yet checked on their Bookinglayer booking page — the same count as Transport's chip (every upcoming
