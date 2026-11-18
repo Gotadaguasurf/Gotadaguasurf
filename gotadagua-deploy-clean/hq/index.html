@@ -4219,7 +4219,7 @@ async function quickUpdateInvoice(id, field, value, el){
 
 async function openEditInvoice(id){
   const { data: row, error } = await sb.from('hq_invoices')
-    .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_id, category_name, file_url, file_name, file_mime, needs_review, notes, supplier_nif, fx_rate')
+    .select('id, location_slug, paying_company, invoice_date, company, description, amount, currency, amount_eur, payment_type, invoice_number, category_id, category_name, file_url, file_name, file_mime, needs_review, notes, supplier_nif, fx_rate, drive_link')
     .eq('id', id).maybeSingle();
   if (error || !row) { alert('Could not load the expense: '+(error?.message||'not found')); return; }
 

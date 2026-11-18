@@ -20,15 +20,11 @@ insert into storage.buckets (id, name, public)
 values ('backups', 'backups', false)
 on conflict (id) do nothing;
 
--- Lock it down: only service role can read/write. RLS on storage.objects
--- already defaults to denying anon/authenticated for non-public buckets,
--- so no extra policy is strictly required, but we make the intent explicit.
--- (The Edge Function uses SERVICE_ROLE_KEY which bypasses these.)
+-- Lock it down: only the service role can read/write. RLS on storage.objects already denies anon and
+-- authenticated on a private bucket with no policy, so NO policy is created here.
+-- (Until 18 Nov 2026 this file created a permissive policy «bucket_id <> 'backups'» for anon and
+-- authenticated, which opened every OTHER bucket to anyone without a login. Never bring it back.)
 drop policy if exists "backups_no_public_access" on storage.objects;
-create policy "backups_no_public_access" on storage.objects
-  for all to authenticated, anon
-  using (bucket_id <> 'backups')
-  with check (bucket_id <> 'backups');
 
 -- ── 2. Enable pg_cron + pg_net extensions ─────────────────────────────────
 create extension if not exists pg_cron;

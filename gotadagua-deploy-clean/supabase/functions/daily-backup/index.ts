@@ -64,9 +64,97 @@ const BACKUP_TABLES = [
   'invitation_workspace_access',
   'workspaces',
   'locations',
-  // Audit
+  // Camp week, transport, cash (18 Nov 2026: every business table is in the copy)
+  'camp_week_guests',
+  'camp_week_messages',
+  'camp_trips',
+  'camp_drivers',
+  'camp_cash_counts',
+  'camp_transport_payments',
+  // Bookings history, prices, surf school, Dipløria, investments
+  'bookings_snapshots',
+  'bl_report_runs',
+  'bl_report_settings',
+  'daily_fx_rates',
+  'pricing_catalog',
+  'pricing_areas',
+  'tour_zones',
+  'accommodation_packs',
+  'accommodation_prices',
+  'accommodation_room_types',
+  'accommodation_rooms',
+  'accommodation_seasons',
+  'surf_school_rentals',
+  'surf_school_settings',
+  'diploria_stock_moves',
+  'diploria_expenses',
+  'hq_assets',
+  'hq_invoice_audit',
+  'accountant_month_marks',
+  'mail_ingest_items',
+  // CRM
+  'outreach_contacts',
+  'contacts',
+  'contact_pipeline',
+  'outreach_activity',
+  'outreach_groups',
+  'outreach_templates',
+  'outreach_sequences',
+  'outreach_sequence_runs',
+  'outreach_saved_views',
+  'pipelines',
+  'pipeline_stages',
+  'email_campaigns',
+  'email_messages',
+  'email_queue',
+  'email_suppression',
+  'meetings',
+  'tasks',
+  'team_users',
+  // Audit (only the last AUDIT_DAYS days per file: the monthly files, kept forever, overlap and cover every day)
   'audit_log',
 ];
+// NOT in the copy on purpose: gmail_account, drive_account, mail_ingest_account, accountant_portal_tokens,
+// password_reset_requests (they hold tokens) and auth.users.
+
+// Primary key of each table, to read it page by page in a stable order. Default: id.
+const PK: Record<string, string[]> = {
+  accountant_drive_folders: ['company', 'month_key'],
+  hq_companies: ['slug'],
+  hq_month_checks: ['month_key', 'item'],
+  camp_transport_payments: ['entry_id'],
+  surf_school_settings: ['key'],
+  accountant_month_marks: ['month_key'],
+};
+const PAGE = 1000;          // the API never returns more than 1,000 rows per call
+const AUDIT_DAYS = 35;
+
+// Every row of a table, 1,000 at a time. The old single call stopped at the first 1,000 rows
+// (18 Nov 2026 audit: 13% of the ledger was in the copy).
+// deno-lint-ignore no-explicit-any
+async function readAll(supabase: any, table: string): Promise<{ rows: unknown[]; expected: number | null; error?: string }> {
+  const since = table === 'audit_log' ? new Date(Date.now() - AUDIT_DAYS * 86400000).toISOString() : null;
+  // deno-lint-ignore no-explicit-any
+  const scoped = (q: any) => since ? q.gte('at', since) : q;
+  const head = await scoped(supabase.from(table).select('*', { count: 'exact', head: true }));
+  const expected = head.error ? null : (head.count ?? null);
+  const rows: unknown[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = scoped(supabase.from(table).select('*'));
+    for (const col of (PK[table] || ['id'])) q = q.order(col, { ascending: true });
+    const { data, error } = await q.range(from, from + PAGE - 1);
+    if (error) return { rows, expected, error: error.message };
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+    if (from > 2_000_000) return { rows, expected, error: 'stopped at 2,000,000 rows' };
+  }
+  return { rows, expected };
+}
+
+async function gzip(text: string): Promise<Blob> {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Blob([await new Response(stream).arrayBuffer()], { type: 'application/gzip' });
+}
 
 // Retention tiers (Grandfather-Father-Son):
 //   daily/   → keep last 30 days, granularity = 1 day
@@ -114,36 +202,39 @@ Deno.serve(async (req) => {
     if (dayOfWk === 1)  targets.push({ tier: 'weekly',  folder: `weekly/${isoWeek}` });
     if (dayOfMth === 1) targets.push({ tier: 'monthly', folder: `monthly/${monthKey}` });
 
-    const summary: Record<string, { rows: number; bytes: number; uploaded: boolean; error?: string }> = {};
+    const summary: Record<string, { rows: number; expected: number | null; complete: boolean; bytes: number; uploaded: boolean; error?: string }> = {};
 
     // 1. Dump each table once, then upload the same blob to every target tier
     for (const table of BACKUP_TABLES) {
       try {
-        const { data, error } = await supabase.from(table).select('*').limit(50000);
+        const { rows, expected, error } = await readAll(supabase, table);
         if (error) {
-          summary[table] = { rows: 0, bytes: 0, uploaded: false, error: error.message };
+          summary[table] = { rows: rows.length, expected, complete: false, bytes: 0, uploaded: false, error };
           continue;
         }
         const json = JSON.stringify({
           table,
           backed_up_at: new Date().toISOString(),
-          rows: data?.length ?? 0,
-          data: data ?? []
+          rows: rows.length,
+          ...(table === 'audit_log' ? { only_last_days: AUDIT_DAYS } : {}),
+          data: rows
         }, null, 0);
-        const blob = new Blob([json], { type: 'application/json' });
+        const blob = await gzip(json);
         let allOk = true;
         let lastErr = '';
         for (const t of targets) {
-          const path = `${t.folder}/${table}.json`;
+          const path = `${t.folder}/${table}.json.gz`;
           const upload = await supabase.storage.from(BUCKET_NAME).upload(path, blob, {
-            contentType: 'application/json',
+            contentType: 'application/gzip',
             upsert: true
           });
           if (upload.error) { allOk = false; lastErr = upload.error.message; }
         }
-        summary[table] = { rows: data?.length ?? 0, bytes: json.length, uploaded: allOk, error: allOk ? undefined : lastErr };
+        // complete = every row the table had when counted is in the file (rows can only be >= on a busy table)
+        const complete = allOk && expected != null && rows.length >= expected;
+        summary[table] = { rows: rows.length, expected, complete, bytes: blob.size, uploaded: allOk, error: allOk ? undefined : lastErr };
       } catch (e) {
-        summary[table] = { rows: 0, bytes: 0, uploaded: false, error: e instanceof Error ? e.message : 'Unknown error' };
+        summary[table] = { rows: 0, expected: null, complete: false, bytes: 0, uploaded: false, error: e instanceof Error ? e.message : 'Unknown error' };
       }
     }
 
@@ -163,6 +254,9 @@ Deno.serve(async (req) => {
       tables_total: BACKUP_TABLES.length,
       tables_ok: Object.values(summary).filter(s => s.uploaded).length,
       tables_failed: Object.values(summary).filter(s => !s.uploaded).length,
+      tables_incomplete: Object.entries(summary).filter(([, v]) => !v.complete).map(([k]) => k),
+      rows_total: Object.values(summary).reduce((n, v) => n + v.rows, 0),
+      format: 'one <table>.json.gz per table (gzip of {table, backed_up_at, rows, data})',
       retention: {
         daily_days: RETAIN_DAILY_DAYS,
         weekly_days: RETAIN_WEEKLY_DAYS,

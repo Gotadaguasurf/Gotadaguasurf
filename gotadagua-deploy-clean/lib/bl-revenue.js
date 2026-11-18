@@ -79,7 +79,7 @@
   const CODE_TO_NAME = { LK: 'Surf Camp Ahangama', MA: 'Tamraght Camp', PT: 'Surf Camp Portugal', JUN: 'Junior Camp Caparica', COL: 'Coliving Portugal Caparica', COLON: 'Kids Camp Caparica', CKC: 'Kids Camp Caparica', SC: 'Surf School Caparica' };
   // Names Bookinglayer may print in «List of locations» → code. Adjust with the real file.
   const NAME_TO_CODE = [
-    [/ahangama|sri\s*lanka/i, 'LK'], [/tamraght|morocco|marrocos|taghazout/i, 'MA'], [/junior/i, 'JUN'], [/kids/i, 'COLON'],
+    [/aha[mn]gama|sri\s*lanka/i, 'LK'], [/tamraght|morocco|marrocos|taghazout/i, 'MA'], [/junior/i, 'JUN'], [/kids/i, 'COLON'],
     [/coliving/i, 'COL'], [/surf\s*school/i, 'SC'], [/surf\s*camp\s*portugal|caparica|portugal/i, 'PT'],
   ];
   const STAY_FIRST = ['LK', 'MA', 'PT', 'JUN', 'COLON', 'SC'];
@@ -91,7 +91,12 @@
       if (!c) { const hit = NAME_TO_CODE.find(([re]) => re.test(p)); c = hit ? hit[1] : null; }
       if (c && !codes.includes(c)) codes.push(c);
     });
-    if (!codes.length) return { code: '', name: '', unknown: parts, codes };
+    if (!codes.length) {
+      // «List of locations» not recognised: the package name decides before giving up («Surf Camp Ahangama, Sri Lanka»)
+      const hit = NAME_TO_CODE.find(([re]) => re.test(String(packages || '')));
+      if (hit) return { code: hit[1], name: CODE_TO_NAME[hit[1]], unknown: parts, codes: [hit[1]] };
+      return { code: '', name: '', unknown: parts, codes };
+    }
     let code = codes[0];
     if (codes.length > 1) {
       const pk = String(packages || '').toLowerCase();

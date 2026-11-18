@@ -266,6 +266,10 @@ test('revenue: «List of locations» names → the stay wins (as the HQ import)'
   expect(RV.locationOf('Tamraght Camp', '')).toMatchObject({ code: 'MA', name: 'Tamraght Camp' });
   expect(RV.locationOf('PT, LK', '')).toMatchObject({ code: 'LK' });
   expect(RV.locationOf('Somewhere new', '')).toMatchObject({ code: '', unknown: ['Somewhere new'] });
+  // Bookinglayer spells the Sri Lanka location «Ahamgama» (18 Nov 2026: 16 bookings went to «Unknown»)
+  expect(RV.locationOf('Surf Camp Ahamgama', '')).toMatchObject({ code: 'LK', name: 'Surf Camp Ahangama' });
+  // an unrecognised location falls back to the package name before giving up
+  expect(RV.locationOf('Somewhere new', 'Surf Camp Ahangama, Sri Lanka')).toMatchObject({ code: 'LK', name: 'Surf Camp Ahangama', unknown: ['Somewhere new'] });
 });
 
 // ── reports.ts end to end (fake database + fake Gmail + fake download) ───────

@@ -41,6 +41,11 @@ declare
   v_partner_id uuid;
   v_current    text;
 begin
+  -- Only HQ / Partners members. A call with no session (auth.uid() null) is the agent's SQL routine or the
+  -- service role; anon and public cannot execute this function at all (revoked below, 18 Nov 2026).
+  if auth.uid() is not null and not (public.is_hq_member() or public.is_workspace_member('partners')) then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
   select id into v_partner_id from public.partners
    where lower(trim(name)) = lower(trim(p_partner_name)) limit 1;
   if v_partner_id is null then
@@ -68,7 +73,8 @@ begin
 end;
 $$;
 
-grant execute on function public.advance_partner_month_status(text, text, text, text) to authenticated;
+revoke execute on function public.advance_partner_month_status(text, text, text, text) from public, anon;
+grant execute on function public.advance_partner_month_status(text, text, text, text) to authenticated, service_role;
 grant execute on function public.partner_status_rank(text) to authenticated;
 
 -- Manual dropdown: same as before, but a call without notes keeps them.
@@ -87,6 +93,11 @@ declare
   v_partner_id uuid;
   v_clean_name text := trim(p_partner_name);
 begin
+  -- Only HQ / Partners members. A call with no session (auth.uid() null) is the agent's SQL routine or the
+  -- service role; anon and public cannot execute this function at all (revoked below, 18 Nov 2026).
+  if auth.uid() is not null and not (public.is_hq_member() or public.is_workspace_member('partners')) then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
   if v_clean_name = '' or v_clean_name is null then
     raise exception 'partner name is required';
   end if;
@@ -149,3 +160,6 @@ select public.advance_partner_month_status('KILROY', '2026-10', 'Invoice Sent',
   '[9 Nov 2026] KILROY: «All good – please issue invoice». 2026-1369 Nieuwenhuis Netherlands → Norway. 7 invoices FT IN2/17645–17651 (8.484,80) sent from accounting@ 9 Nov 10:19.');
 select public.advance_partner_month_status('SOLID SURF HOUSE CAPARICA', '2026-10', 'Invoice Sent',
   '[9 Nov 2026] Stefania: «Yes, all correct!». Invoice FT IN2/17653 (7.846,40).');
+
+revoke execute on function public.upsert_partner_month_status(text, text, text, text) from public, anon;
+grant execute on function public.upsert_partner_month_status(text, text, text, text) to authenticated, service_role;
