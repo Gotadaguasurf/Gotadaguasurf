@@ -126,3 +126,15 @@ test('CH-18: a euro row paid in cash in Sri Lanka moves the cash box by its own 
   const plain = await page.evaluate(() => drawerLocalAmount({ currency: 'EUR', fxRate: 1, amount: 10 }) === entryLocalDisplayAmount({ currency: 'EUR', fxRate: 1, amount: 10 }));
   expect(plain).toBe(true);
 });
+
+test('CT-08: the hub ignores a message from another site; the same message from its own Camp Tab is handled', async ({ page }) => {
+  seq = 0;
+  await openHub(page, [row('expense', 'Cash', 1000, 340)]);
+  const n0 = await page.evaluate(() => S.ledger.length);
+  const msg = { type: 'camp-tab-week-closed', entry: { id: 'cw-x', date: '2026-11-14', type: 'income', category: 'Bar', paymentMethod: 'Cash', currency: 'LKR', fxRate: 340, amountLocal: 3400, amount: 10, description: 'Closed week revenue' } };
+  // a foreign origin: dispatched as a MessageEvent from elsewhere
+  await page.evaluate(m => window.dispatchEvent(new MessageEvent('message', { data: m, origin: 'https://evil.example.com' })), msg);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => S.ledger.some(r => /Closed week revenue/.test(r.description || '')))).toBe(false);
+  expect(await page.evaluate(() => S.ledger.length)).toBe(n0);
+});

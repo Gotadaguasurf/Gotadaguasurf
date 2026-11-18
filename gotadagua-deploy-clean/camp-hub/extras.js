@@ -154,7 +154,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
       const sig = JSON.stringify(list);
       if (!force && sig === P.sentSig) return;
       P.pendingSig = sig;
-      win.postMessage({ type: 'camp-tab-sync-bookings', perGuest: true, weekStart: weekStart(today), bookings: list }, '*');
+      win.postMessage({ type: 'camp-tab-sync-bookings', perGuest: true, weekStart: weekStart(today), bookings: list }, location.origin);
     } finally { P.busy = false; }
   }
   function onSynced(data) {
@@ -218,6 +218,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
 
   window.addEventListener('message', (e) => {
     const d = e && e.data; if (!d || typeof d !== 'object') return;
+    if (e.origin !== location.origin) return;   // CT-08: only this site's Camp Tab
     const win = frameWin(); if (win && e.source && e.source !== win) return;
     if (d.type === 'camp-tab-state-changed') {
       if (!enabled()) return;

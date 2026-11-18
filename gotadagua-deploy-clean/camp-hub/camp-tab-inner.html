@@ -1162,7 +1162,7 @@ function notifyParentStateChanged(){
       state:cloneCampTabPayload(S),
       menu:cloneCampTabPayload(MENU),
       staff:cloneCampTabPayload(STAFF)
-    },'*');
+    },location.origin);
   }catch(_){}
 }
 const saveStaffState=()=>{queueStaffSync();notifyParentStateChanged();};
@@ -3803,7 +3803,7 @@ function delItem(idx){
         guest:{ id:g.id||g.name, name:g.name },
         item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
         date: String(item.paidAt).slice(0,10)
-      },'*');
+      },location.origin);
     }catch(err){
       console.warn('[CampTab] delItem cascade failed', err);
     }
@@ -4044,7 +4044,7 @@ function payItemOnGuest(g, idx){
       guest:{ id:g.id||g.name, name:g.name },
       item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
       date: nowIso.slice(0,10)
-    },'*');
+    },location.origin);
   }catch(err){
     console.warn('[CampTab] failed to send item-paid message',err);
   }
@@ -4105,7 +4105,7 @@ function unpayItemOnGuest(g, idx){
       guest:{ id:g.id||g.name, name:g.name },
       item:{ id:item.id, c:item.c, n:item.n, p:Number(item.p||0) },
       date: paidDate
-    },'*');
+    },location.origin);
   }catch(err){
     console.warn('[CampTab] failed to send item-unpaid message',err);
   }
@@ -4449,7 +4449,7 @@ function deleteGuestItem(id,idx){
         guest:{ id:g.id||g.name, name:g.name },
         item:{ id:target.id, c:target.c, n:target.n, p:Number(target.p||0) },
         date: String(target.paidAt).slice(0,10)
-      },'*');
+      },location.origin);
     }catch(err){
       console.warn('[CampTab] deleteGuestItem cascade failed', err);
     }
@@ -4488,7 +4488,7 @@ function deleteGuest(id){
         items: paidItems.map(i => ({
           id: i.id, n: i.n, p: Number(i.p||0), date: String(i.paidAt).slice(0,10)
         }))
-      },'*');
+      },location.origin);
     }catch(err){
       console.warn('[CampTab] deleteGuest cascade failed', err);
     }
@@ -4563,7 +4563,7 @@ function removeClosedWeekFromHubLedger(wk){
     campcloseIds,
     at:new Date().toISOString()
   };
-  try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start,campcloseIds},'*');}catch(e){}
+  try{window.parent?.postMessage({type:'camp-tab-history-deleted',weekId:wk.id||wk.start,weekStart:wk.start,campcloseIds},location.origin);}catch(e){}
 }
 
 function deleteHistoryWeek(id){
@@ -4811,7 +4811,7 @@ function deleteClosedGuest(id){
       items: paidItems.map(i => ({
         id: i.id, n: i.n, p: Number(i.p||0), date: String(i.paidAt).slice(0,10)
       }))
-    },'*');
+    },location.origin);
   }catch(err){
     console.warn('[CampTab] failed to send guest-deleted', err);
   }
@@ -5666,7 +5666,7 @@ function syncClosedWeekToHubLedger(wk){
     amountLocal:Number(group.total.toFixed(2)),
     amount:Number((group.total/(LOCAL_PER_EUR||1)).toFixed(2))
   }));
-  try{window.parent?.postMessage({type:'camp-tab-week-closed',weekId:wk.id||wk.start,entry:entries},'*');}catch(e){}
+  try{window.parent?.postMessage({type:'camp-tab-week-closed',weekId:wk.id||wk.start,entry:entries},location.origin);}catch(e){}
 }
 
 // ════════════════════════════════════════════════════════════
@@ -5679,6 +5679,8 @@ function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t
   document.getElementById(id).addEventListener('click',e=>{if(e.target.id===id)closeOv(id);});
 });
 window.addEventListener('message',async e=>{
+  // Only the hub of this site talks to the Camp Tab (audit CT-08): a message from another site is ignored.
+  if(e.origin!==location.origin) return;
   if(e.data?.type==='hub-campclose-week-delete'){
     // Hub deleted a campclose entry from Operations Ledger.
     // Cascade: remove the corresponding week from S.history (and propagate to Supabase + other computer).
@@ -5966,7 +5968,7 @@ window.addEventListener('message',async e=>{
   if(e.data?.type!=='camp-tab-sync-bookings') return;
   try{
     const result=await applyIncomingBookingsToCampTab(e.data);
-    try{window.parent?.postMessage({type:'camp-tab-bookings-synced',...result,weekStart:e.data?.weekStart||''},'*');}catch(_){}
+    try{window.parent?.postMessage({type:'camp-tab-bookings-synced',...result,weekStart:e.data?.weekStart||''},location.origin);}catch(_){}
     if(result.ok&&result.added){
       toast(result.perGuest?`${result.added} guest${result.added===1?'':'s'} from the Guests file added`:(result.added===1?'1 booking synced to Camp Tab':`${result.added} bookings synced to Camp Tab`));
     }else if(result.reason==='different-active-week'){
@@ -5974,7 +5976,7 @@ window.addEventListener('message',async e=>{
     }
   }catch(error){
     console.warn('Camp Tab booking sync failed',error);
-    try{window.parent?.postMessage({type:'camp-tab-bookings-synced',ok:false,added:0,reason:'error',message:error instanceof Error?error.message:'Unknown error'},'*');}catch(_){}
+    try{window.parent?.postMessage({type:'camp-tab-bookings-synced',ok:false,added:0,reason:'error',message:error instanceof Error?error.message:'Unknown error'},location.origin);}catch(_){}
   }
 });
 

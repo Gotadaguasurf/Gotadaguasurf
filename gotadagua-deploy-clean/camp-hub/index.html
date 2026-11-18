@@ -4891,7 +4891,7 @@ async function flushCampTabCheckouts(){
   CT_CHECKOUT_PENDING.clear();
   if(!batch.length) return;
   const triggers=batch.flatMap(p=>p.triggers);
-  const failAll=()=>triggers.forEach(t=>{ try{ t.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:t.guestId,itemId:t.itemId},'*'); }catch(_){} });
+  const failAll=()=>triggers.forEach(t=>{ try{ t.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:t.guestId,itemId:t.itemId},location.origin); }catch(_){} });
   try{
   const upserts=[]; const deletes=[];
   const serverByGuest=new Map();
@@ -5367,7 +5367,7 @@ function syncSelectedBookingsToCampTab(){
       ci:booking.ci,
       co:booking.co
     }))
-  },'*');
+  },location.origin);
   toast('Sending bookings to Camp Tab...');
 }
 function buildFoodControlCardHtml(weeks,allLedger,span){
@@ -9601,7 +9601,7 @@ function notifyCampTabRemoveHistoryWeek(weekRef){
   // This cascades: deleting a campclose entry in Operations Ledger removes the week from camp tab history.
   if(!weekRef) return;
   const frame=document.getElementById('campTabFrame');
-  try{ frame?.contentWindow?.postMessage({type:'hub-campclose-week-delete',weekRef},'*'); }catch(e){}
+  try{ frame?.contentWindow?.postMessage({type:'hub-campclose-week-delete',weekRef},location.origin); }catch(e){}
 }
 function extractWeekRefFromCampcloseId(id){
   const s=String(id||'');
@@ -9694,7 +9694,7 @@ async function delLedger(id,{confirmed=false}={}){
     if(grouped){
       const frame=document.getElementById('campTabFrame');
       grouped.items.forEach(it=>{
-        try{ frame?.contentWindow?.postMessage({type:'camp-tab-ledger-deleted',description:`Camp Tab · ${String(grouped.guest.name||'').trim()} · ${String(it.n||'').trim()}`,date:entry?.date||'',amountLocal:Number(it.p||0)},'*'); }catch(_e){}
+        try{ frame?.contentWindow?.postMessage({type:'camp-tab-ledger-deleted',description:`Camp Tab · ${String(grouped.guest.name||'').trim()} · ${String(it.n||'').trim()}`,date:entry?.date||'',amountLocal:Number(it.p||0)},location.origin); }catch(_e){}
       });
     }else if(isPerItem){
       const frame=document.getElementById('campTabFrame');
@@ -9706,7 +9706,7 @@ async function delLedger(id,{confirmed=false}={}){
           description: entry?.description||'',
           date:        entry?.date||'',
           amountLocal: Number(entry?.amountLocal||0)
-        },'*');
+        },location.origin);
       }
     }
   }catch(_e){} };
@@ -10256,7 +10256,7 @@ function sendCampTabBootstrap(){
       state:currentCampTabState(),
       menu:currentCampTabMenu(),
       staff:readJsonStorage(CAMPTAB_STAFF_KEY,[])
-    },'*');
+    },location.origin);
   }catch(_error){}
   // Phase 5: also push a dedicated tours-update so the iframe adopts the
   // catalog-sourced Tours even on subsequent bootstraps (the bootstrap
@@ -10290,7 +10290,7 @@ function sendCampTabToursUpdate(){
   const menu=currentCampTabMenu();
   const tours=Array.isArray(menu?.Tours)?menu.Tours:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-tours-update',tours},location.origin);
   }catch(_error){}
 }
 // Mirror of sendCampTabToursUpdate for Merch. Posts the full Merch array
@@ -10303,7 +10303,7 @@ function sendCampTabMerchUpdate(){
   const menu=currentCampTabMenu();
   const merch=Array.isArray(menu?.Merch)?menu.Merch:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-merch-update',merch},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-merch-update',merch},location.origin);
   }catch(_error){}
 }
 // Same shape for Drinks. Inner page sets __drinksCatalogManaged=true on
@@ -10314,7 +10314,7 @@ function sendCampTabDrinksUpdate(){
   const menu=currentCampTabMenu();
   const drinks=Array.isArray(menu?.Drinks)?menu.Drinks:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-drinks-update',drinks},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-drinks-update',drinks},location.origin);
   }catch(_error){}
 }
 // Same shape for Extras. Inner page sets __extrasCatalogManaged=true on
@@ -10326,7 +10326,7 @@ function sendCampTabExtrasUpdate(){
   const menu=currentCampTabMenu();
   const extras=Array.isArray(menu?.Extras)?menu.Extras:[];
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-extras-update',extras},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-extras-update',extras},location.origin);
   }catch(_error){}
 }
 // Sends the "any category" bucket (Add-ons + custom tabs from
@@ -10338,7 +10338,7 @@ function sendCampTabAnyUpdate(){
   const buckets = __catalogCampTabAny && typeof __catalogCampTabAny === 'object'
     ? __catalogCampTabAny : {};
   try{
-    frame.contentWindow.postMessage({type:'camp-tab-any-update',buckets},'*');
+    frame.contentWindow.postMessage({type:'camp-tab-any-update',buckets},location.origin);
   }catch(_error){}
 }
 async function mountCampTabFrame(){
@@ -10394,6 +10394,8 @@ function reloadCampTabFrame(){
 }
 
 window.addEventListener('message',e=>{
+  // Only the Camp Tab frame of this site talks to the hub (audit CT-08): a message from another site is ignored.
+  if(e.origin!==location.origin) return;
   if(e.data?.type==='camp-tab-week-closed'){
     if(e.data.entry) upsertClosedWeekIncome(e.data.entry);
     rerenderActivePageData();
@@ -10434,7 +10436,7 @@ window.addEventListener('message',e=>{
         // Tab must take the «Paid» back, or the money never reaches the books.
         if(entry) upsertClosedWeekIncome([entry]).then(ok=>{
           if(ok) return;
-          try{ e.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:guest.id,itemId:item.id},'*'); }catch(_){}
+          try{ e.source?.postMessage({type:'camp-tab-item-paid-failed',guestId:guest.id,itemId:item.id},location.origin); }catch(_){}
         });
       }
     }catch(err){ console.warn('[Hub] item-paid handler failed',err); }
