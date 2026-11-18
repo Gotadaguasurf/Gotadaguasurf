@@ -494,9 +494,11 @@ Deno.serve(async (req) => {
     // At most 500 downloads per run (the old one-page limit): a backlog of up
     // to 2,000 might not finish inside the function's time limit, and a run
     // cut off there stores nothing, so every later run would stall the same
-    // way. Gmail lists the newest first; the rest are neither stored nor
-    // seen, so the next run takes them (W4 review).
-    if (newIds.length > MAX_DOWNLOADS_PER_RUN) newIds.length = MAX_DOWNLOADS_PER_RUN
+    // way. Gmail lists the newest first, so the OLDEST 500 go now: an
+    // original comes before its reply or bounce (thread owner, bounce
+    // address) and nothing drops out of the 7-day window unread. The rest are
+    // neither stored nor seen, so the next run takes them (W4 review).
+    if (newIds.length > MAX_DOWNLOADS_PER_RUN) newIds.splice(0, newIds.length - MAX_DOWNLOADS_PER_RUN)
 
     // 4. Fetch FULL payload for each new id so we capture the body —
     //    the CRM's conversation panel renders the full email text, not
@@ -570,7 +572,13 @@ Deno.serve(async (req) => {
       // conversation panel shows WHY the contact went excluded.
       // Opt-out only ever applies to what THEY write, never to our own copy.
       const auto = !isOwn && isAutoReply(headers)
-      if (!isOwn && !auto) {
+      // A newsletter or mailing-list post (List-Unsubscribe, Precedence
+      // bulk/list) is never their opt-out — its own «Unsubscribe» line is the
+      // list's footer — unless it sits in a thread we wrote to (a reply that
+      // came through a group address) (W4 review).
+      const bulk = !!headers['list-unsubscribe'] || /^(bulk|list|junk)$/i.test((headers['precedence'] || '').trim())
+      const inOurThread = !!msg.threadId && threadOwners.has(msg.threadId)
+      if (!isOwn && !auto && (!bulk || inOurThread)) {
         const unsub = isUnsubscribe(fullBody || '')
         if (unsub.hit) unsubCandidates.push({ email: fromEmail, companyId, keyword: unsub.keyword || '' })
       }

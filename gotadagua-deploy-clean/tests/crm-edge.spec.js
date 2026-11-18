@@ -437,8 +437,24 @@ test('gmail-sync: a backlog bigger than 500 new messages is downloaded 500 per r
   const r1 = await run();
   expect(r1.body).toMatchObject({ ok: true, newInbound: 500 });
   expect(g.st.gets).toHaveLength(500);
+  expect(g.st.gets).not.toContain('b0');          // Gmail lists the newest first: the oldest 500 go first
+  expect(g.st.gets).toContain('b619');
   const r2 = await run();
   expect(r2.body).toMatchObject({ ok: true, newInbound: 120 });
   expect(g.st.gets).toHaveLength(620);
   expect(new Set(db.T.email_messages.map(m => m.provider_msg_id)).size).toBe(620);
+});
+
+test('gmail-sync: a newsletter from a contact\'s domain whose first line is «Unsubscribe» is not their opt-out; the same line in a reply in our thread through a group address is (W4 review)', async () => {
+  const footer = '\n' + 'Club news of the month, events and results. '.repeat(20);
+  const news = withHeaders(mail('n1', 'Club News <news@uni.example>', 'November newsletter', { body: 'Unsubscribe' + footer }), { 'List-Unsubscribe': '<mailto:leave@uni.example>', 'Precedence': 'bulk' });
+  const viaGroup = withHeaders(mail('g1', 'Board <board@uni2.example>', 'Re: Surf trip', { body: 'Unsubscribe', threadId: 'th-ours' }), { 'List-Id': '<board.uni2.example>', 'List-Unsubscribe': '<mailto:x@uni2.example>', 'Precedence': 'list' });
+  const db = fakeDb({
+    outreach_contacts: [{ ...CLUB }, { id: 'co-2', email: 'board@uni2.example', status: 'first_email' }],
+    email_messages: [{ id: 'e1', company_id: 'co-2', direction: 'outbound', to_addr: 'board@uni2.example', thread_id: 'th-ours', provider_msg_id: 'out-1', sent_at: new Date().toISOString() }],
+  });
+  const r = await loadFunction('gmail-sync', { db, gmail: fakeGmail([news, viaGroup]).fetch })();
+  expect(r.body).toMatchObject({ ok: true, unsubsSuppressed: 1 });
+  expect((db.T.email_suppression || []).map(x => x.email)).toEqual(['board@uni2.example']);
+  expect(db.T.outreach_contacts.find(c => c.id === 'co-1').status).not.toBe('excluded');
 });
