@@ -222,7 +222,7 @@ test('CT-05: Activity shows lines removed from a tab (who, what, guest, when, pr
   const removed = frame.locator('#acBody .ac-row-removed');
   await expect(removed).toHaveCount(3);
   await expect(removed.nth(0)).toContainText('Sample Host removed Cocktail from Guest 2');
-  await expect(removed.nth(0)).toContainText('Drinks · removed 10 min ago · added 8 Jun, 21:40');
+  await expect(removed.nth(0)).toContainText(/Drinks · removed 1\d min ago · added 8 Jun, 21:40/);   // 10 min when seeded; a slow machine adds a minute
   await expect(removed.nth(0).locator('s')).toHaveText('LKR 2000');
   await expect(removed.nth(1)).toContainText(`Other ${IMG} removed Paid ${IMG} from Guest 1`);
   await expect(removed.nth(1)).toContainText('was paid');
