@@ -237,6 +237,29 @@ td.loc-name{font-weight:600;color:var(--navy)}
   .mt-actions{width:100%}
   .mt-btn{flex:1;height:44px}
 }
+/* cash position (owners): bank balances + next 30 days, top of Cash flow — hq/cash-position.js */
+.cp-list{display:flex;flex-direction:column}
+.cp-row{display:grid;grid-template-columns:104px minmax(0,1fr) auto;gap:var(--sp-3);align-items:center;padding:var(--sp-3) var(--card-pad);border-bottom:1px solid var(--border)}
+.cp-row.cp-bal{grid-template-columns:minmax(0,1fr) auto}
+.cp-when{font-size:13px;font-weight:600;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums}
+.cp-name{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);font-size:14px;font-weight:600;color:var(--navy)}
+.cp-bal .cp-name{font-size:15px;font-weight:700}
+.cp-sub{font-size:12.5px;color:var(--muted);margin-top:1px}
+.cp-amt{font-size:14px;font-weight:700;color:var(--ink);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.cp-amt.cp-big{font-size:22px;letter-spacing:-.02em;color:var(--navy)}
+.cp-amt.neg{color:var(--red)}
+.cp-row[data-state="paid"] .cp-when,.cp-row[data-state="paid"] .cp-amt{color:var(--muted);font-weight:500}
+.cp-lows{padding:var(--sp-3) var(--card-pad) 0;display:flex;flex-direction:column;gap:var(--sp-1)}
+.cp-low{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}
+.cp-low.neg{color:var(--red);font-weight:500}
+.cp-note{font-size:12.5px;color:var(--muted);line-height:1.5;padding:var(--sp-3) var(--card-pad) var(--sp-4)}
+#cashPosition .status-msg{margin-bottom:var(--sp-5)}
+@media (max-width:700px){
+  .cp-row{grid-template-columns:86px minmax(0,1fr) auto;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4)}
+  .cp-row.cp-bal{grid-template-columns:minmax(0,1fr) auto}
+  .cp-amt.cp-big{font-size:20px}
+  .cp-lows,.cp-note{padding-left:var(--sp-4);padding-right:var(--sp-4)}
+}
 /* investments: label · value pairs */
 .ivs-def{border-collapse:collapse;font-size:14px}
 .ivs-def td{padding:3px 0;vertical-align:top}
@@ -321,6 +344,7 @@ AppShell.mount('appNav', { app:'hq', tabAttr:'data-tab', tabsId:'hqNavTabs', tab
 <script src="/lib/expense-form.js"></script>
 <script src="/hq/accountant-excel.js"></script>
 <script src="/hq/my-tasks.js"></script>
+<script src="/hq/cash-position.js"></script>
 <script>
 const cfg = window.__SUPABASE_CONFIG || {};
 const sb  = window.supabase.createClient(cfg.url, cfg.anonKey);
@@ -494,7 +518,7 @@ function switchTab(name){
   if (name === 'overview') { renderOverview(); }
   if (name === 'invoices') { renderInvoiceList(); }
   if (name === 'fecho') { renderFecho(); }
-  if (name === 'cashflow') { renderCashflow(); }
+  if (name === 'cashflow') { renderCashPosition(); renderCashflow(); }
   if (name === 'invest') { renderInvest(); }
   if (name === 'tasks') { renderMyTasks(); }
 }
@@ -505,6 +529,15 @@ async function renderMyTasks(){
   if (!IS_OWNER || !el) return;
   if (!el.innerHTML.trim()) el.innerHTML = '<div class="loading">Loading…</div>';
   MyTasks.render(el, await MyTasks.load(sb));
+}
+
+// ── Cash today and the next 30 days (owners only, top of Cash flow) — hq/cash-position.js + supabase/hq-cash-position.sql ──
+// Not awaited by the tab: the existing Cash flow content loads on its own. Before the SQL is run the block stays empty.
+async function renderCashPosition(){
+  const el = document.getElementById('cashPosition');
+  if (!IS_OWNER || !el) return;
+  if (!el.innerHTML.trim() && !el.hidden) el.innerHTML = '<div class="card"><div class="card-body"><div class="skeleton lg"></div></div></div>';
+  CashPosition.render(el, await CashPosition.load(sb));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -4687,6 +4720,8 @@ function cashflowTabHtml(){
         </label>
       </div>
     </div>
+
+    ${IS_OWNER ? '<div id="cashPosition"></div>' : ''}
 
     <div class="card">
       <div class="card-hdr">
