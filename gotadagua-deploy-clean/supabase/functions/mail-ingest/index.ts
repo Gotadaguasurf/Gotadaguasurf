@@ -47,7 +47,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { parseInvoice, bytesToBase64, mediaTypeFor, isCreditNote, type Parsed } from '../_shared/invoice-parse.ts'
 import { runReports, REPORT_ACCOUNT } from './reports.ts'
-import { routeByBuyer, findExisting, creditedInvoice, queueCreditNote, writeLine, type Outcome } from './route.ts'
+import { routeByBuyer, findExisting, creditedInvoice, queueCreditNote, writeLine, notAnInvoiceByName, type Outcome } from './route.ts'
 
 const CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || ''
 const CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || ''
@@ -277,6 +277,7 @@ async function run(db: Db, opts: RunOpts = {}) {
   const { data: accounts } = await q0
   const summary: Record<string, unknown> = { accounts: (accounts || []).length, processed: 0, inserted: 0, linked: 0, skipped: 0, review: 0, error: 0, details: [] as string[] }
   let budget = opts.budget || MAX_ATTACHMENTS_PER_RUN
+  let categories: string[] | null = null   // the app's active categories, read once per run for the reader (AUT-16)
   for (const acct of accounts || []) {
     const account = String(acct.email)
     const perAccount: string[] = []
@@ -321,13 +322,15 @@ async function run(db: Db, opts: RunOpts = {}) {
           try {
             if (/factura-?in2|fatura\s*in2|FT\s*IN2/i.test(a.filename) || /FT IN2/i.test(subject)) { await record(ctx, { status: 'skipped', reason: 'fatura de venda a parceiro (rotina: partner_invoices)' }, null); continue }
             if (a.size > MAX_BYTES) { await record(ctx, { status: 'skipped', reason: 'anexo acima de 15 MB' }, null); continue }
+            if (notAnInvoiceByName(a.filename)) { await record(ctx, { status: 'skipped', reason: 'não é fatura (nome do ficheiro)' }, null); continue }
             budget--; (summary.processed as number)++
             const att = await gmail(token, `messages/${id}/attachments/${a.attachmentId}`)
             const bytes = b64urlToBytes(String(att.data || ''))
             ctx.sha = await sha256(bytes)
             const { data: dup } = await db.from('mail_ingest_items').select('id, status, hq_invoice_id').eq('sha256', ctx.sha).in('status', ['inserted', 'linked', 'skipped']).limit(1)
             if (dup?.length) { await record(ctx, { status: 'skipped', reason: `mesmo ficheiro já tratado (${dup[0].status})`, hq_invoice_id: dup[0].hq_invoice_id }, null); continue }
-            const { parsed } = await parseInvoice(bytesToBase64(bytes), mediaTypeFor(a.filename, 'application/pdf'), ANTHROPIC_KEY)
+            categories ??= ((await db.from('hq_invoice_categories').select('name').eq('active', true)).data || []).map((c: { name: string }) => c.name)
+            const { parsed } = await parseInvoice(bytesToBase64(bytes), mediaTypeFor(a.filename, 'application/pdf'), ANTHROPIC_KEY, { categories })
             const route = routeByBuyer(parsed)
             let outcome: Outcome
             if (route.outcome) outcome = route.outcome
