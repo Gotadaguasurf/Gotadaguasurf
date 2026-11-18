@@ -20,8 +20,8 @@
   const CAMP_LABEL = { portugal: 'Portugal', morocco: 'Morocco', 'sri-lanka': 'Sri Lanka', 'junior-camp': 'Junior Camp', 'surf-school': 'Surf School' };
   // the place under each camp name, as on gotadaguasurf.com; photos from the website (assets/pricelist/)
   const CAMP_PLACE = { portugal: 'Costa da Caparica', morocco: 'Tamraght', 'sri-lanka': 'Ahangama', 'junior-camp': 'Junior Camp · Costa da Caparica', 'surf-school': 'Surf School · Costa da Caparica' };
-  const CAMP_PHOTO = { portugal: ['loc-portugal', 'pack-portugal', ''], morocco: ['loc-morocco', 'pack-morocco', 'tour-morocco'],
-    'sri-lanka': ['loc-srilanka', 'pack-srilanka', 'tour-srilanka'], 'junior-camp': ['loc-junior', 'loc-junior', ''], 'surf-school': ['pack-portugal', 'pack-portugal', ''] };   // the site's tour-portugal.jpg shows the Sri Lanka house: not used
+  const CAMP_PHOTO = { portugal: ['loc-portugal', 'pack-portugal', 'tour-portugal'], morocco: ['loc-morocco', 'pack-morocco', 'tour-morocco'],
+    'sri-lanka': ['loc-srilanka', 'pack-srilanka', 'tour-srilanka'], 'junior-camp': ['loc-junior', 'loc-junior', ''], 'surf-school': ['pack-portugal', 'pack-portugal', ''] };   // photos hand-picked from the team Drive (18 Nov 2026)
   const SECTION_LEAD = {
     seasons: 'When each price applies.',
     accommodation: 'Prices per person. Pick your room — the season sets the price.',
