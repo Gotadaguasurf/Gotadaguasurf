@@ -337,6 +337,14 @@
 
   // ── Data ───────────────────────────────────────────────────────────────
   const client = () => (typeof getHubSupabaseClient === 'function') ? getHubSupabaseClient() : null;
+  // A table that does not exist yet is a set-up job for Miguel; anything else (a dropped connection, a timeout) is a
+  // load that failed: say so, offer Retry, and keep the real error visible in small print (audit UXC-09).
+  const missingTable = e => !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
+  function loadErrorHtml(what, err, missing, retry) {
+    if (missing) return `<div class="status-msg status-warn">${h(what)} is not set up yet — tell Miguel.<div class="hint">${h(err)}</div></div>`;
+    return `<div class="status-msg status-warn">Couldn't load ${h(what)} — check the connection and try again. <button class="btn btn-s btn-sm" onclick="${retry}">Retry</button><div class="hint">${h(err)}</div></div>`;
+  }
+  function retry() { TR.error = ''; TR.errorMissing = false; TR.loading = null; render(); load(true).then(render); }
   async function load(force) {
     if (!enabled()) return;
     if (TR.loading && !force) return TR.loading;
@@ -361,10 +369,10 @@
         LOCAL ? Promise.resolve({ data: [] }) : all(() => c.from('camp_transport_payments').select('*').eq('location_id', loc).order('entry_id')),
       ]);
       const err = d.error || t.error || l.error;
-      if (err) { TR.error = err.message || String(err); TR.loaded = false; return; }
+      if (err) { TR.error = err.message || String(err); TR.errorMissing = missingTable(err); TR.loaded = false; return; }
       TR.drivers = d.data || []; TR.trips = t.data || []; TR.links = l.data || [];
       try { const { data: ss } = await c.auth.getSession(); TR.me = String((ss && ss.session && ss.session.user && ss.session.user.email) || '').toLowerCase(); } catch (_) { TR.me = ''; }
-      TR.error = ''; TR.loaded = true;
+      TR.error = ''; TR.errorMissing = false; TR.loaded = true;
     })();
     try { await TR.loading; } finally { TR.loading = null; }
     try { window.dispatchEvent(new CustomEvent('camp-checks-changed')); } catch (_) {}
@@ -466,10 +474,7 @@
     // One page head, no button row (16 Nov 2026 UX pass, Miguel: «van runs???? depois pay driver e depois add transfer???»):
     // what to add lives in the pill you are on, paying lives in «Owed to drivers», Drivers and Export month at the foot.
     const head = `<div class="section-head page-head"><div><div class="section-title">${LOCAL ? 'Drivers' : 'Transport'}</div><div class="section-sub tr-how">${h(LOCAL ? (CC.localDriversHow || '') : (CC.transportHow || ''))}</div></div></div>`;
-    if (TR.error) {
-      root.innerHTML = head + `<div class="status-msg status-warn">Transport is not set up yet (${h(TR.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>`;
-      return;
-    }
+    if (TR.error) { root.innerHTML = head + loadErrorHtml('Transport', TR.error, TR.errorMissing, 'TransportUI.retry()'); return; }
     if (!TR.loaded) { root.innerHTML = head + '<div class="loading">Loading trips…</div>'; return; }
     // One view (16 Nov 2026): Reconcile is gone — «Owed to drivers» opens Pay, two chips cover the rest.
     // Order on screen: what it is (the pills) → what needs doing (To do) → what is owed → the week, day by day.
@@ -3007,7 +3012,7 @@
 
   window.renderTransportPage = renderTransportPage;
   window.TransportUI = {
-    render, closeModal, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; TR.view = 'trips'; render(); },
+    render, closeModal, retry, loadErrorHtml, setView(v, f) { if (v === 'next') return toImport(); TR.view = v; if (f) TR.filter = f; render(); }, setFilter(f) { TR.filter = f; TR.view = 'trips'; render(); },
     toImport, setWeek,
     shiftWeek(n) { TR.week = GT.addDaysIso(TR.week, n); TR.filter = SPECIAL_FILTERS.includes(TR.filter) ? 'all' : TR.filter; render(); },
     ovMode, ovShift, ovMonth, ovMeasure, ovExport, ovData,

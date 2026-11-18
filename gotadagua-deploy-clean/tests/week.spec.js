@@ -560,7 +560,7 @@ test('changed since sent: a re-import that changes Tuesday dinner → chip, ambe
 test('no camp_week_messages yet (SQL not run): lists, Copy and Send still work, a soft line says it is not remembered', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openWeek(page, { noMessagesTable: true });
-  await expect(page.locator('.wk-soft')).toContainText('supabase/camp-week.sql');
+  await expect(page.locator('.wk-soft')).toContainText('Sent messages are not remembered yet — tell Miguel');
   await pick(page, 'Kitchen', '2026-11-17');
   await page.click('#wkSend');
   expect(await page.evaluate(() => window.__opened.length)).toBe(1);

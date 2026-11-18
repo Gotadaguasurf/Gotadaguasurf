@@ -598,7 +598,7 @@
     const c = client(); const loc = await ensureHubLocationId().catch(() => '');
     if (!c || !loc) return;
     const { data, error } = await c.from('camp_week_guests').select('import_id,updated_at').eq('location_id', loc).order('updated_at', { ascending: false }).limit(1);
-    if (error) { W.error = error.message || String(error); W.metaLoaded = true; return; }
+    if (error) { W.error = error.message || String(error); W.errorMissing = missingTable(error); W.metaLoaded = true; return; }
     const top = (data || [])[0];
     if (!top) { W.meta = null; W.metaLoaded = true; W.error = ''; return; }
     let min = null, max = null;
@@ -627,8 +627,8 @@
       c.from('camp_week_guests').select('*').eq('location_id', loc).lte('check_in', add(ws, 7)).gte('check_out', ws).order('check_in'),
       c.from('camp_week_messages').select('*').eq('location_id', loc).eq('week_start', ws).order('sent_at', { ascending: false }),
     ]);
-    if (g.error) { W.error = g.error.message || String(g.error); return null; }
-    W.error = '';
+    if (g.error) { W.error = g.error.message || String(g.error); W.errorMissing = missingTable(g.error); return null; }
+    W.error = ''; W.errorMissing = false;
     const entry = { rows: g.data || [], msgs: m.error ? [] : (m.data || []), msgsOk: !m.error, msgsMissing: missingTable(m.error) };
     W.cache[ws] = entry;
     return entry;
@@ -924,7 +924,7 @@
       const S = TR();
       let inner = '';
       if (!window.TransportUI || !TransportUI.importHtml) inner = '<div class="status-msg status-warn">Import not available.</div>';
-      else if (!S.loaded) inner = S.error ? `<div class="status-msg status-warn">Transport is not set up yet (${h(S.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>` : '<div class="loading">Loading…</div>';
+      else if (!S.loaded) inner = S.error ? TransportUI.loadErrorHtml('Transport', S.error, S.errorMissing, 'TransportUI.retry()') : '<div class="loading">Loading…</div>';
       else inner = TransportUI.importHtml({ title: 'Guests file' });
       const done = S.imp && S.imp.stage === 'done';
       // After saving: the two next steps right under the «Saved» line, not under the long list of the file.
@@ -936,7 +936,12 @@
       if (!S.loaded && !S.error && window.TransportUI) TransportUI.load().then(render);
       return;
     }
-    if (W.error && !W.cache[ws]) { root.innerHTML = head + `<div class="status-msg status-warn">Week is not set up yet (${h(W.error)}). Ask Miguel to run supabase/camp-trips.sql.</div>`; return; }
+    if (W.error && !W.cache[ws]) {
+      // UXC-09: a missing table is a set-up job; any other error is a failed load with Retry (the real error in small print)
+      root.innerHTML = head + (W.errorMissing ? `<div class="status-msg status-warn">Week is not set up yet — tell Miguel.<div class="hint">${h(W.error)}</div></div>`
+        : `<div class="status-msg status-warn">Couldn't load the week — check the connection and try again. <button class="btn btn-s btn-sm" onclick="WeekUI.retry()">Retry</button><div class="hint">${h(W.error)}</div></div>`);
+      return;
+    }
     if (!W.cache[ws]) { root.innerHTML = head + '<div class="loading">Loading the week…</div>'; return; }
     const rows = rowsOf(ws);
     const M = weekModel(ws, rows);
@@ -954,7 +959,7 @@
     const checks = toCheck(ws);
     const ch = changes(ws);
     const chHtml = ch.length ? `<div class="health-strip wk-changed"><span class="health-lbl">Changed since sent</span>${ch.map(c => `<button class="health-chip" onclick="WeekUI.go('${c.team}','${c.day}')">${h(changeLabel(c))}</button>`).join('')}</div>` : '';
-    const notSaved = (W.cache[ws].msgsMissing) ? `<div class="status-msg status-info wk-soft">Sent messages are not remembered yet — ask Miguel to run supabase/camp-week.sql.</div>` : '';
+    const notSaved = (W.cache[ws].msgsMissing) ? `<div class="status-msg status-info wk-soft">Sent messages are not remembered yet — tell Miguel.</div>` : '';
     const tabs = `<div class="pills wk-tabs" role="tablist">${TABS.map(t => {
       const n = checks.filter(c => c.tab === t.k).length;
       const dot = t.team && ch.some(c => c.team === t.team) ? '<span class="wk-dot" title="Changed since sent"></span>' : '';
@@ -1526,6 +1531,7 @@
 
   window.renderWeekPage = renderWeekPage;
   window.WeekUI = {
+    retry() { W.error = ''; W.errorMissing = false; W.cache = {}; render(); loadAll(true).then(render); },
     render, closeModal, openContacts, saveContacts, copy, send, undo, keep, notHere, toTransport,
     setMode(m) { W.mode = m; if (m === 'import' && window.TransportUI && TR().imp && TR().imp.stage === 'done') TR().imp = null; render(); },
     // After an import: Overview of the week Francisco imported for — the first check-in from today on

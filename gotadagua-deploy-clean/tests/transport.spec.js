@@ -553,7 +553,8 @@ test('transport: works with the tables missing (SQL not run yet) — a clear mes
   await open(page, { missingTables: true });
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.error, null, { timeout: 10000 });
   await page.evaluate(() => showPage('transport'));
-  await expect(page.locator('#transportRoot .status-warn')).toContainText('Ask Miguel to run supabase/camp-trips.sql');
+  await expect(page.locator('#transportRoot .status-warn')).toContainText('Transport is not set up yet — tell Miguel');
+  await expect(page.locator('#transportRoot .status-warn')).not.toContainText('supabase/');   // no file names for staff (UXC-09)
   expect(errors).toEqual([]);
 });
 

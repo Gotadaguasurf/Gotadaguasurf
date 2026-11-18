@@ -30,6 +30,7 @@ async function openHub(page, rows, opts = {}) {
       if (opts.locations !== undefined) return json(opts.locations);
       return json({ id: LOC, name: 'Sri Lanka', slug: 'sri-lanka', currency: 'LKR', default_fx_to_eur: 330, camp_tab_mode: 'per_guest' });
     }
+    if (opts.failTrips && /\/rest\/v1\/camp_trips/.test(url)) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'upstream connect error' }) });
     if (url.includes('/rest/v1/daily_fx_rates')) return method === 'GET' ? json(opts.rate ? { rate: opts.rate } : null) : json([]);
     if (url.includes('/rest/v1/location_state_store')) {
       if (method !== 'GET') { let b = null; try { b = JSON.parse(req.postData() || 'null'); } catch (_) {} stateWrites.push(b); }
@@ -137,4 +138,16 @@ test('CT-08: the hub ignores a message from another site; the same message from 
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => S.ledger.some(r => /Closed week revenue/.test(r.description || '')))).toBe(false);
   expect(await page.evaluate(() => S.ledger.length)).toBe(n0);
+});
+
+test('UXC-09: a dropped connection is not «ask Miguel to run a .sql file» — it says so, keeps the error visible and offers Retry', async ({ page }) => {
+  seq = 0;
+  await openHub(page, [], { failTrips: true });
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.error, null, { timeout: 10000 });
+  await page.evaluate(() => showPage('transport'));
+  const box = page.locator('#transportRoot .status-warn');
+  await expect(box).toContainText("Couldn't load Transport — check the connection");
+  await expect(box).toContainText('upstream connect error');
+  await expect(box).not.toContainText('supabase/');
+  await expect(box.locator('button', { hasText: 'Retry' })).toBeVisible();
 });
