@@ -2335,7 +2335,7 @@
   // have the bookings made since. Many at once = a broken file: nothing held.
   function reportHolds(parsed) {
     const w = reportFileWindow(parsed); if (!w || !BlIngest.vanished || (parsed.export_date || '') < cToday()) return [];
-    const v = BlIngest.vanished(TR.trips, parsed.refs_active, w, colomboNow()).inside;
+    const v = BlIngest.vanished(TR.trips, parsed.refs_active, BlIngest.judgeWindow ? BlIngest.judgeWindow(w) : w, colomboNow()).inside;
     if (new Set(v.map(a => a.booking_ref)).size > BlIngest.vanishCap((parsed.refs_active || []).length)) return [];
     return BlIngest.vanishHolds(v, cToday());
   }

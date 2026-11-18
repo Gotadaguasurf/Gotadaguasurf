@@ -146,6 +146,16 @@ test('window guard: only future, unpaid trips of a booking that left the report 
   expect(again.hold.map(x => [x.id, x.patch.import_flags])).toEqual([['t-flag', ['night arrival: lands 02:45', I.GONE_FLAG]]]);
 });
 
+test('window guard: a check-out on the window\'s last day is not judged — Bookinglayer cuts the file at 00:00 UTC, the window is camp time (WEEK-21)', () => {
+  const text = csvPriced([maBk('2026-100', '2026-11-20', '2026-11-27', 'Ann A')]);
+  // sent 18 Nov (camp time) → window to 20 Dec; the file may still end on 19 Dec
+  const app = [appTrip('t-last', '2026-210', '2026-12-13', '2026-12-20'), appTrip('t-before', '2026-211', '2026-12-12', '2026-12-19')];
+  const r = I.planCampReport({ text, fileName: 'r.csv', slug: 'morocco', appTrips: app, appGuests: [], catalog: MA_CAT, now: '2026-11-18T00:30', receivedYmd: '2026-11-18' });
+  expect(r.window.to).toBe('2026-12-20');
+  expect(r.hold.map(x => x.id)).toEqual(['t-before']);
+  expect(r.vanishOutside.map(a => a.id)).toEqual(['t-last']);
+});
+
 test('window guard: many bookings leaving at once (a truncated file?) cancels nothing', () => {
   const text = csvPriced([maBk('2026-100', '2026-11-20', '2026-11-27', 'Ann A')]);
   const app = [1, 2, 3, 4, 5].map(n => appTrip('t' + n, '2026-30' + n, '2026-11-25', '2026-12-01'));

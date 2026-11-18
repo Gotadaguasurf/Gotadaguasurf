@@ -219,7 +219,7 @@
     // Week asks «cancelled?» only for a stored guest whose check-out is inside the report window.
     guestPlan.wouldDrop = guestPlan.wouldDrop.filter(a => insideWindow(a.check_out, win));
     // ── Vanished bookings (window guard) ──
-    const V = vanished(appTrips, parsed.refs_active, win, now);
+    const V = vanished(appTrips, parsed.refs_active, judgeWindow(win), now);
     const vanish = V.inside, outside = V.outside;
     const vanishRefs = [...new Set(vanish.map(a => a.booking_ref))];
     const cap = o.vanishCap != null ? o.vanishCap : vanishCap(parsed.refs_active.length);
@@ -250,6 +250,10 @@
       && LIVE.includes(a.status) && !a.payment_entry_id && !refs.has(a.booking_ref) && future(a));
     return { inside: c.filter(a => insideWindow(a.booking_checkout, win)), outside: c.filter(a => !insideWindow(a.booking_checkout, win)) };
   }
+  // The window is dated in the camp's time zone, but Bookinglayer cuts the report at 00:00 UTC (audit WEEK-21: Sri Lanka's
+  // window moves at 00:30 Colombo, the file 5.5 hours later). A booking checking out on the window's last day may simply not
+  // be in the file yet: it is never judged «left the report».
+  const judgeWindow = win => win && win.to ? { from: win.from, to: GT().addDaysIso(win.to, -1) } : win;
   const vanishCap = nRefs => Math.max(3, Math.ceil((nRefs || 0) * 0.15));
   // A booking that left the report keeps its trips, on hold: missing_since (out of «Send the whole day», in the chip «not in
   // the latest Bookinglayer file») + the question below on the trip. «Still needed» in Transport answers it for good
@@ -323,5 +327,5 @@
     return { text: `Last import: ${when} ${at.slice(11, 16)} · ${who}`, amber };
   }
 
-  return { routeEmail, reportLink, safeReportUrl, unwrap, allowedRedirect, looksLikeCsv, linkForLog, fromBookinglayer, SENDER, DOWNLOAD_HOST, titleOf, norm, isPdf, isCsv, orderReports, olderThanLast, localNow, reportWindow, insideWindow, WINDOW, pricesFromCatalog, planCampReport, vanished, vanishCap, vanishHolds, GONE_FLAG, KEPT_MARK, summarize, lastImportLine, STALE_HOURS };
+  return { routeEmail, reportLink, safeReportUrl, unwrap, allowedRedirect, looksLikeCsv, linkForLog, fromBookinglayer, SENDER, DOWNLOAD_HOST, titleOf, norm, isPdf, isCsv, orderReports, olderThanLast, localNow, reportWindow, insideWindow, WINDOW, pricesFromCatalog, planCampReport, vanished, judgeWindow, vanishCap, vanishHolds, GONE_FLAG, KEPT_MARK, summarize, lastImportLine, STALE_HOURS };
 });
