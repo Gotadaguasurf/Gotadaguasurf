@@ -151,7 +151,7 @@ test('surf school: a save with no answer (connection dropped) asks to check the 
   await fillRental(page);
   await page.click('#saveBtn');
   await expect(page.locator('#toast')).toContainText('Not sure it saved');
-  expect(await toastText(page)).toContain('before saving again');
+  expect(await toastText(page)).toContain('Check Boards out before saving again');
   await expect(page.locator('#fld_name')).toHaveValue('Ana Example');
   await expect(page.locator('#saveBtn')).toBeEnabled();
   expect(errs).toEqual([]);

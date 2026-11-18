@@ -1614,7 +1614,7 @@ async function saveEntry(){
     const answered = !!(rentalErr.code && String(rentalErr.code).trim());
     toast(answered
       ? 'Not saved — nothing was recorded. Tap Save again. (' + rentalErr.message + ')'
-      : 'Not sure it saved — the connection dropped. Check Boards out / Camp before saving again. (' + (rentalErr.message || 'no connection') + ')', 'err');
+      : 'Not sure it saved — the connection dropped. Check ' + (CURRENT_KIND === 'rental' ? 'Boards out' : 'History') + ' before saving again. (' + (rentalErr.message || 'no connection') + ')', 'err');   // lessons / activities only show in History
     btn.disabled = false; btn.textContent = 'Save rental';
     return;
   }
