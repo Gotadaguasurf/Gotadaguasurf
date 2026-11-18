@@ -398,3 +398,52 @@ test('HQ-12 «Pack sent» says how many lines of the month came in after the tic
   expect(dialogs[0]).toMatch(/has not ended yet/);
   expect(cur).toBe(0);
 });
+
+// ── PRT-06 / SEAM-06 / AUT-06 (My tasks) ─────────────────────────────────
+test('PRT-06 / SEAM-06 / AUT-06 My tasks: the revenue report has its own card (Due with what to decide, Overdue after a day), and emailed invoices that failed show up', async ({ page }) => {
+  const MyTasks = require('../hq/my-tasks.js');
+  const now = Date.parse('2026-11-18T20:00:00Z');
+  const st = (r) => MyTasks.status(r, '2026-11-18', now);
+  expect(st({ kind: 'daily', last_run_at: '2026-11-18T08:15:00Z' })).toEqual({ code: 'auto', why: '' });
+  expect(st({ kind: 'daily', last_run_at: '2026-11-18T08:15:00Z', warning: 'Location not recognised: Surf Camp Ahamgama' })).toEqual({ code: 'due', why: 'Location not recognised: Surf Camp Ahamgama' });
+  expect(st({ kind: 'daily', last_run_at: '2026-11-17T08:15:00Z' }).code).toBe('overdue');    // 36 h: no report today
+  expect(st({ kind: 'daily', last_run_at: '2026-11-18T08:15:00Z', error: 'refused' }).code).toBe('overdue');
+  expect(st({ kind: 'run', last_run_at: '2026-11-18T19:15:00Z', warning: 'x' }).code).toBe('due');
+  expect(st({ kind: 'check', error: '1 emailed invoice failed to import: a.pdf (22 Oct)' }).code).toBe('due');
+  expect(st({ kind: 'check' }).code).toBe('auto');
+  // before audit-w4-hq.sql runs these rows simply do not exist; after, they render like the others
+  const sources = [
+    { key: 'santander', block: 'water-movements', kind: 'bank2', last_date: '2026-11-17', loaded_at: '2026-11-17T16:08:56Z' },
+    { key: 'mail_items', block: 'water-movements', kind: 'check', error: '1 emailed invoice failed to import: Invoice-0009.pdf (22 Oct)' },
+    { key: 'bl_reports', block: 'water-movements', kind: 'run', last_run_at: new Date(Date.now() - 20 * 60000).toISOString() },
+    { key: 'bl_revenue', block: 'water-movements', kind: 'daily', last_run_at: new Date(Date.now() - 3 * 3600000).toISOString(), warning: 'Location not recognised: Surf Camp Ahamgama · 5 commission differences' },
+  ];
+  await page.route(/supabase\.co\/(auth|rest)\/v1\/.*/, async route => {
+    const url = route.request().url();
+    const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    const single = /vnd\.pgrst\.object/.test(route.request().headers()['accept'] || '');
+    if (url.includes('/auth/v1/user')) return json({ id: '00000000-0000-4000-8000-000000000001', email: 'miguel@gotadaguasurf.com', aud: 'authenticated', role: 'authenticated' });
+    if (url.includes('/rest/v1/platform_profiles')) { const o = { id: '00000000-0000-4000-8000-000000000001', email: 'miguel@gotadaguasurf.com', full_name: 'Test', platform_role: 'super_admin' }; return json(single ? o : [o]); }
+    if (url.includes('/rest/v1/rpc/hq_overview_rollup')) return json({ bookings: [], invoices: [], ledger: [] });
+    if (url.includes('/rest/v1/rpc/hq_my_tasks')) return json({ generated_at: new Date().toISOString(), today: MyTasks.localToday(), sources });
+    return json([]);
+  });
+  await fakeOwnerSession(page);
+  await page.goto('/hq/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof renderMyTasks === 'function' && document.querySelector('#tab-tasks'));
+  await page.evaluate(() => switchTab('tasks'));
+  await page.waitForFunction(() => document.querySelector('.mt-row[data-key="bl_revenue"]'), null, { timeout: 15000 });
+  const rev = page.locator('.mt-row[data-key="bl_revenue"]');
+  await expect(rev.locator('.badge')).toHaveText('Due');
+  await expect(rev).toContainText('Bookinglayer revenue report');
+  await expect(rev).toContainText('Location not recognised: Surf Camp Ahamgama · 5 commission differences');
+  const mail = page.locator('.mt-row[data-key="mail_items"]');
+  await expect(mail.locator('.badge')).toHaveText('Due');
+  await expect(mail).toContainText('Invoice-0009.pdf');
+  await expect(page.locator('.mt-row[data-key="bl_reports"] .badge')).toHaveText('Automatic');
+  if (SHOTS) {
+    await page.screenshot({ path: `${SHOTS}/my-tasks-w4-390.png`, fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.screenshot({ path: `${SHOTS}/my-tasks-w4-1280.png`, fullPage: true });
+  }
+});

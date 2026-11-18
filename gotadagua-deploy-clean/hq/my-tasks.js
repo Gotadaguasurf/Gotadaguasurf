@@ -30,6 +30,8 @@
     google_ads:     { name: 'Google Ads',       sub: 'Billing documents', url: 'https://ads.google.com/aw/billing/documents?ocid=214208330' },
     meta_ads:       { name: 'Meta Ads',         sub: 'Payment activity', url: 'https://adsmanager.facebook.com/adsmanager/billing_hub/payment_activity/?asset_id=814598912211070&business_id=2279734382295092' },
     bl_reports:     { name: 'Bookinglayer reports', sub: 'Camp reports by email, every hour' },
+    bl_revenue:     { name: 'Bookinglayer revenue report', sub: 'Revenue report by email, every morning' },
+    mail_items:     { name: 'Emailed invoices', sub: 'Invoices read from the mailboxes' },
   };
   const RULE = {
     bank2:   'Every 2 working days',
@@ -37,12 +39,15 @@
     monthly: 'Last month by the 10th',
     doc:     'Fetched daily by the automatic routine',
     run:     'Overdue after 2 h without a run',
+    daily:   'Overdue after a day without a report',
+    check:   'What failed in the last 30 days',
   };
   const BLOCKS = [
     { id: 'water-movements', label: 'Water Movements' },
     { id: 'manjar',          label: 'Manjar' },
   ];
   const RUN_MAX_MS = 2 * 3600 * 1000;   // automatic imports: overdue after 2 h without a run
+  const DAILY_MAX_MS = 26 * 3600 * 1000; // the daily revenue report: overdue after 26 h without one
   const DOC_GRACE_DAY = 8;              // automatic documents: last month must have one after the 8th
   const CARD_DAY = 10;                  // card statement: last month missing on the 10th = overdue
 
@@ -66,13 +71,17 @@
     const kind = row && row.kind;
     const now = nowMs == null ? Date.now() : nowMs;
     const last = row && row.last_date && toDay(row.last_date) <= toDay(today) ? row.last_date : null;   // a future date never counts
-    if (kind === 'run') {
+    if (kind === 'run' || kind === 'daily') {
       if (row.error) return { code: 'overdue', why: 'Last run failed' };
       const t = row.last_run_at ? Date.parse(row.last_run_at) : NaN;
       if (!isFinite(t)) return { code: 'overdue', why: 'Never ran' };
-      if (now - t > RUN_MAX_MS) return { code: 'overdue', why: 'No run for more than 2 hours' };
+      if (kind === 'run' && now - t > RUN_MAX_MS) return { code: 'overdue', why: 'No run for more than 2 hours' };
+      if (kind === 'daily' && now - t > DAILY_MAX_MS) return { code: 'overdue', why: 'No report since yesterday' };
+      // the run worked but left something to decide (audit PRT-06 / SEAM-06): amber, with what it is
+      if (row.warning) return { code: 'due', why: String(row.warning) };
       return { code: 'auto', why: '' };
     }
+    if (kind === 'check') return row.error ? { code: 'due', why: String(row.error) } : { code: 'auto', why: '' };
     if (kind === 'doc') {
       if (dayOfMonth(today) > DOC_GRACE_DAY && !Number(row.prev_month_docs || 0)) return { code: 'overdue', why: 'No document for last month' };
       return { code: 'auto', why: '' };
@@ -142,7 +151,9 @@
 
   function meta(r, today){
     const facts = [];
-    if (r.kind === 'run') {
+    if (r.kind === 'check') {
+      facts.push(r.error ? 'Add these by hand in Expenses' : 'Nothing failed');
+    } else if (r.kind === 'run' || r.kind === 'daily') {
       facts.push(`Last run ${r.last_run_at ? fmtStamp(r.last_run_at, today) : 'never'}`);
     } else if (r.kind === 'doc') {
       facts.push(`Last document ${r.last_date ? fmtDate(r.last_date, today) : 'none'}`);
@@ -165,13 +176,13 @@
     if (s.url) actions.push(`<a class="btn btn-s mt-btn" href="${esc(s.url)}" target="_blank" rel="noopener" data-act="open">${icon('external')} Open</a>`);
     if (s.upload === 'santander') actions.push(`<button class="btn btn-s mt-btn" type="button" data-act="upload" onclick="MyTasks.upload('santander')">${icon('upload')} Upload</button>`);
     if (s.upload === 'bcp') actions.push(`<a class="btn btn-s mt-btn" href="/suk/?import=1#bank" data-act="upload">${icon('upload')} Upload</a>`);
-    const why = r.error ? esc(String(r.error).replace(/^conta:\s*/, '').slice(0, 160)) : esc(r.st.why || '');
+    const why = r.error ? esc(String(r.error).replace(/^conta:\s*/, '').slice(0, 160)) : esc(String(r.st.why || '').slice(0, 240));
     return `<div class="mt-row" data-key="${esc(r.key)}" data-status="${r.st.code}">
       <div class="mt-main">
         <div class="mt-name">${esc(s.name)}<span class="badge ${cls} mt-badge">${word}</span></div>
         <div class="mt-sub">${esc(s.sub)}${s.sub && rule ? ' · ' : ''}${esc(rule)}</div>
         <div class="mt-facts">${meta(r, today).map(esc).join(' · ')}</div>
-        ${why ? `<div class="mt-why ${r.st.code === 'overdue' ? 'neg' : ''}">${why}</div>` : ''}
+        ${why ? `<div class="mt-why ${r.st.code === 'overdue' ? 'neg' : r.st.code === 'due' ? 'kv-amber' : ''}">${why}</div>` : ''}
       </div>
       ${actions.length ? `<div class="mt-actions">${actions.join('')}</div>` : ''}
     </div>`;
