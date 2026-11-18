@@ -9,7 +9,9 @@ import './lib-globals.ts'
 import './lib/credit-notes.js'   // lib/credit-notes.js (synced copy): the one «is this a credit note» rule
 
 // The model in one place: the project secret PARSE_MODEL wins, so a model change needs no code (AUT-16).
-export const PARSE_MODEL = Deno.env.get('PARSE_MODEL') || 'claude-sonnet-4-5'
+// (read through globalThis: tests import this file in Node, where there is no Deno)
+// deno-lint-ignore no-explicit-any
+export const PARSE_MODEL = (globalThis as any).Deno?.env?.get('PARSE_MODEL') || 'claude-sonnet-4-5'
 
 // Fallback list only. The callers pass the live list (hq_invoice_categories, active) so a category added in
 // the app reaches the reader the same day; this copy matches the app on 18 Nov 2026 (AUT-16).
