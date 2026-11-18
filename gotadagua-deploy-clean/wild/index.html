@@ -20,6 +20,9 @@
   .wild-night-grid>*,.wild-comm-grid>*{min-width:0}
   .wild-night-grid>:last-child{grid-column:1/-1}
 }
+/* a night that lost money reads red, with a real minus (SA-23) */
+.sumbox .row.big b.neg{color:var(--red)}
+.wild-comm-del{width:auto}
 </style>
 </head>
 <body>
@@ -142,7 +145,8 @@ const pad = (n) => String(n).padStart(2, '0');
 const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const lastWednesday = () => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 4) % 7)); return iso(d); };
 const dmy = (s) => { const [y, m, d] = String(s).split('-'); return `${d}/${m}`; };
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = AppShell.esc;   // one HTML escape for every page (lib/app-shell.js)
+const signedEur = (n) => Number(n) < 0 ? '−' + eur(-Number(n)) : eur(n);   // −€40.00, not €-40.00
 
 function toast(msg, kind){ const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (kind === 'err' ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 3200); }
 function showPage(name){
@@ -212,6 +216,10 @@ function loadNightIntoForm(){
   const pick = (cat, type) => rows.filter(r => r.category === cat && r.type === type);
   const sumA = (arr) => arr.reduce((s, r) => s + Number(r.amount_eur || 0), 0);
   const sumQ = (arr) => arr.reduce((s, r) => s + Number(r.qty || 0), 0);
+  // The ticket price of a saved night comes back from its rows (amount / tickets),
+  // so re-saving never re-prices it at the default; a night with none starts at 10.
+  const tickets = rows.filter(r => r.type === 'revenue' && [CAT.gota, CAT.pure, CAT.surfin, CAT.lisbon].includes(r.category) && Number(r.qty) > 0);
+  $('n_price').value = tickets.length ? +(sumA(tickets) / sumQ(tickets)).toFixed(2) : $('n_price').defaultValue;
   const price = num('n_price') || 10;
   const gotaTop = pick(CAT.gota, 'revenue');
   const set = (id, v) => { $(id).value = v; };
@@ -255,8 +263,8 @@ function recalcNight(){
     <div class="row"><span>Revenue</span><b>${eur(rev)}</b></div>
     <div class="row"><span>Costs of the night</span><b>${eur(cash)}</b></div>
     ${pending ? `<div class="row"><span>of which pending invoice</span><b>${eur(pending)}</b></div>` : ''}
-    <div class="row"><span>Cash in − cash out</span><b>${eur(cashIn - cashOut)}</b></div>
-    <div class="row big"><span>Night result</span><b>${eur(rev - cash)}</b></div>`;
+    <div class="row"><span>Cash in − cash out</span><b>${signedEur(cashIn - cashOut)}</b></div>
+    <div class="row big"><span>Night result</span><b class="${rev - cash < 0 ? 'neg' : ''}">${signedEur(rev - cash)}</b></div>`;
 }
 
 async function saveNight(){
@@ -293,10 +301,14 @@ async function saveNight(){
   if (!rows.length) { toast('Enter a date and an amount', 'err'); return; }
   $('saveNightBtn').disabled = true;
   try {
-    const old = manualRowsOf(date);
-    if (old.length) { const { error: delErr } = await sb.from('ledger_entries').delete().in('id', old.map(r => r.id)); if (delErr) throw delErr; }
+    // New rows first, old ones only after: a failed insert leaves the closed night as it was (SA-09).
+    const oldIds = manualRowsOf(date).map(r => r.id);
     const { error } = await sb.from('ledger_entries').insert(rows);
     if (error) throw error;
+    if (oldIds.length) {
+      const { error: delErr } = await sb.from('ledger_entries').delete().in('id', oldIds);
+      if (delErr) { await loadRows(); loadNightIntoForm(); renderNightsList(); renderSeason(); toast(`Night ${dmy(date)} saved, but the previous ${oldIds.length} lines could not be removed — it shows twice until you save again (${delErr.message})`, 'err'); return; }
+    }
     toast(`Night ${dmy(date)} saved · ${rows.length} lines`);
     await loadRows(); loadNightIntoForm(); renderNightsList(); renderSeason();
   } catch (e) { toast("Couldn't save the night — " + (e.message || e), 'err'); }
@@ -336,7 +348,18 @@ async function saveCommission(){
 }
 function renderCommissions(){
   const rows = ROWS.filter(r => r.category === CAT.commission).sort((a, b) => a.entry_date < b.entry_date ? 1 : -1);
-  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Paid by</th><th class="r">Amount</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged yet.</div>';
+  const del = (r) => CAN_EDIT ? `<button class="btn btn-s btn-sm wild-comm-del" title="Delete this commission line" aria-label="Delete" onclick="deleteCommission('${esc(r.id)}')">✕</button>` : '';
+  $('commList').innerHTML = rows.length ? `<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Paid by</th><th class="r">Amount</th>${CAN_EDIT ? '<th></th>' : ''}</tr></thead><tbody>${rows.map(r => `<tr><td>${r.entry_date}</td><td>${esc(r.description)}</td><td>${esc(r.payment_method || 'Cash')}</td><td class="r"><b>${eur(r.amount_eur)}</b></td>${CAN_EDIT ? `<td class="r">${del(r)}</td>` : ''}</tr>`).join('')}</tbody></table></div>` : '<div class="hint">No commissions logged yet.</div>';
+}
+// A mistyped commission can be taken out again (the Ledger tab that had this went on 22 Oct); the deleted row is kept in audit_log.
+async function deleteCommission(id){
+  if (!CAN_EDIT) return;
+  const r = ROWS.find(x => x.id === id); if (!r) return;
+  if (!confirm(`Delete «${r.description}» (${eur(r.amount_eur)}, ${r.entry_date})?`)) return;
+  const { error } = await sb.from('ledger_entries').delete().eq('id', id);
+  if (error) { toast("Couldn't delete the commission — " + error.message, 'err'); return; }
+  toast('Commission deleted');
+  await loadRows(); renderCommissions(); renderSeason();
 }
 
 // ── Overview ─────────────────────────────────────────────────────
