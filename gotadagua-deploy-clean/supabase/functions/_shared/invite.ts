@@ -69,6 +69,10 @@ export function inviteEmailContent(args: { fullName: string; invitedBy: string; 
 // An 'accepted' row whose person never set a password is still open: until
 // 6 Nov 2026 the auth trigger marked invites accepted the moment the user was
 // created (supabase/team-access-invites.sql).
+// An 'accepted' row with NO account behind it (no profile) is not open: it is a
+// leftover whose person was removed, and its token would create a brand-new
+// account with the old areas (audit 18 Nov 2026, SEC-20: one such row, May 2026,
+// still carried Owner access). Since 6 Nov every invite creates the account first.
 export function inviteState(
   invite: { status?: string | null; expires_at?: string | null },
   profile: { password_set_at?: string | null } | null,
@@ -77,6 +81,7 @@ export function inviteState(
   const status = String(invite.status || '').toLowerCase();
   if (profile?.password_set_at) return 'already_set';
   if (!['pending', 'sent', 'accepted'].includes(status)) return 'canceled';
+  if (status === 'accepted' && !profile) return 'canceled';
   if (invite.expires_at && new Date(invite.expires_at).getTime() < now && status !== 'accepted') return 'expired';
   return 'open';
 }
@@ -87,3 +92,29 @@ export const INVITE_STATE_MESSAGE: Record<string, string> = {
   expired: 'This invite is too old. Ask Miguel to send it again — the new link works straight away.',
   already_set: 'This account already has a password. Log in with it, or use «Forgot password?».',
 };
+
+// ── Who may give what (SA-03 / SEC-10, audit 18 Nov 2026) ──────────────────
+// The same rule as the Settings form (index.html inviteGuardProblem): anyone who is not Miguel
+// (platform super_admin, or the owner list) cannot change their own access, cannot give HQ or
+// Settings the person does not already hold, and cannot make someone Owner / Admin they are not
+// already. It only stops NEW grants: nobody loses access, a resend is unchanged.
+// Returns '' when the invite may go out, else the message the form shows.
+export const INVITE_ROLES = ['owner', 'admin', 'location_manager', 'local_manager', 'head_social_host', 'camp_tab_staff', 'bar_man', 'finance', 'viewer']
+const GUARDED_AREAS: Record<string, string> = { hq: 'HQ (owner view)', settings: 'Settings' }
+const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Admin' }
+export function ownerEmails(): string[] {
+  return String(Deno.env.get('PLATFORM_OWNER_EMAILS') || 'miguel@gotadaguasurf.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
+}
+export function inviteRuleProblem(a: {
+  callerRole: string; callerEmail: string; targetEmail: string; role: string;
+  requestedSlugs: string[]; heldSlugs: string[]; targetRole: string | null;
+}): string {
+  if (!INVITE_ROLES.includes(a.role)) return `Unknown role «${a.role}».`
+  if (a.callerRole === 'super_admin' || ownerEmails().includes(String(a.callerEmail || '').toLowerCase())) return ''
+  if (a.callerEmail && a.targetEmail.toLowerCase() === a.callerEmail.toLowerCase()) return "You can't change your own access here — ask Miguel."
+  const held = new Set(a.heldSlugs)
+  const newly = Object.keys(GUARDED_AREAS).filter(s => a.requestedSlugs.includes(s) && !held.has(s))
+  if (newly.length) return `Only Miguel can give ${newly.map(s => GUARDED_AREAS[s]).join(' or ')} access.`
+  if (ROLE_LABEL[a.role] && a.targetRole !== a.role) return `Only Miguel can make someone ${ROLE_LABEL[a.role]}.`
+  return ''
+}

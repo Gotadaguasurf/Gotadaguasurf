@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildRaw } from '../_shared/mail.ts';
-import { acceptLink, inviteEmailContent, inviteExpiry, inviteSiteBase } from '../_shared/invite.ts';
+import { acceptLink, inviteEmailContent, inviteExpiry, inviteSiteBase, inviteRuleProblem } from '../_shared/invite.ts';
+import { refuseOrLog } from '../_shared/auth.ts';
+import { gmailAccessToken } from '../_shared/gmail.ts';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Settings → Team Access → «Send invite» / «Resend invite».
@@ -17,33 +19,15 @@ import { acceptLink, inviteEmailContent, inviteExpiry, inviteSiteBase } from '..
 //     (no Supabase email), pre-create the memberships, and send the link
 //     through the shared Gmail mailbox (gmail_account, groups@).
 //   • if Gmail cannot send, the link comes back to the admin to forward by hand.
+//
+//  Who may give what (SA-03 / SEC-10, 18 Nov 2026): the Settings form's rule,
+//  checked here too (inviteRuleProblem in _shared/invite.ts) — nobody but Miguel
+//  changes their own access, gives HQ / Settings, or makes someone Owner / Admin.
+//  STAGED: refused only when the project secret ENFORCE_INVITE_RULES = 'true';
+//  until then a call that breaks the rule is logged («would refuse») and served.
 // ════════════════════════════════════════════════════════════════════════════
 
-const GOOGLE_CLIENT_ID     = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID') || '';
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET') || '';
-
-// deno-lint-ignore no-explicit-any
-async function gmailAccessToken(supa: any): Promise<{ token: string; email: string; display: string }> {
-  const { data: acct, error } = await supa.from('gmail_account').select('*').limit(1).single();
-  if (error || !acct) throw new Error('No gmail_account row — connect the shared mailbox via /gmail-oauth/start first');
-  const expiresAt = acct.access_expires_at ? new Date(acct.access_expires_at).getTime() : 0;
-  if (acct.access_token && expiresAt > Date.now() + 60_000) {
-    return { token: acct.access_token, email: acct.email, display: acct.display_name || "Gota Dagua" };
-  }
-  const resp = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: acct.refresh_token, grant_type: 'refresh_token',
-    }),
-  });
-  if (!resp.ok) throw new Error(`Gmail token refresh failed: HTTP ${resp.status} ${await resp.text()}`);
-  const tk = await resp.json() as { access_token: string; expires_in: number };
-  const newExpiry = new Date(Date.now() + (tk.expires_in - 30) * 1000).toISOString();
-  await supa.from('gmail_account').update({ access_token: tk.access_token, access_expires_at: newExpiry, updated_at: new Date().toISOString() }).eq('id', acct.id);
-  return { token: tk.access_token, email: acct.email, display: acct.display_name || "Gota Dagua" };
-}
+// The shared mailbox's token: one copy in _shared/gmail.ts (SEC-18 / UXC-19).
 
 // deno-lint-ignore no-explicit-any
 async function sendInviteViaGmail(supa: any, args: { to: string; fullName: string; actionLink: string; invitedBy: string }) {
@@ -124,6 +108,27 @@ Deno.serve(async (req) => {
     if (role === 'super_admin') return json({ ok: false, error: 'super_admin is not an invitable role' }, 400);
     const name = String(fullName || '').trim();
     const rows: Record<string, unknown>[] = Array.isArray(accessRows) ? accessRows : [];
+
+    // ── Who may give what (SA-03 / SEC-10) ───────────────────────────────
+    {
+      const wsIds = rows.map((r) => String(r.workspace_id || '')).filter(Boolean);
+      const { data: wsRows } = wsIds.length
+        ? await supabaseAdmin.from('workspaces').select('id, slug').in('id', wsIds)
+        : { data: [] };
+      const { data: target } = await supabaseAdmin.from('platform_profiles').select('id, platform_role').eq('email', lowerEmail).maybeSingle();
+      let heldSlugs: string[] = [];
+      if (target?.id) {
+        const { data: held } = await supabaseAdmin.from('workspace_memberships').select('workspace_id').eq('user_id', target.id).eq('active', true);
+        const heldIds = (held || []).map((h: { workspace_id: string }) => h.workspace_id);
+        const { data: heldWs } = heldIds.length ? await supabaseAdmin.from('workspaces').select('slug').in('id', heldIds) : { data: [] };
+        heldSlugs = (heldWs || []).map((w: { slug: string }) => w.slug);
+      }
+      const problem = inviteRuleProblem({
+        callerRole, callerEmail: String(caller.email || ''), targetEmail: lowerEmail, role: String(role),
+        requestedSlugs: (wsRows || []).map((w: { slug: string }) => w.slug), heldSlugs, targetRole: target?.platform_role ?? null,
+      });
+      if (problem && refuseOrLog('create-platform-invite', problem, 'ENFORCE_INVITE_RULES')) return json({ ok: false, error: problem }, 403);
+    }
 
     // ── RATE LIMITING ────────────────────────────────────────────────────
     //   A) no more than 20 invites created in the last 5 minutes (all admins)
