@@ -1999,16 +1999,25 @@ let __accomAllOccs = false;
 window.onAccomAllOccs = ()=>{ __accomAllOccs = !__accomAllOccs; renderAccommodation(); };
 
 // «Our rooms» — the physical rooms (accommodation_rooms), folded under the prices.
+// floor holds either a floor («Ground», «1st») or a house («House 1 · bikes 1–25»): a house
+// label adds the people it sleeps (sum of max_capacity) after its name.
+function floorLabel(floor, rooms){
+  const parts = String(floor).split('·').map(x => x.trim()).filter(Boolean);
+  if (!/^house\b/i.test(parts[0] || '')) return floor + ' floor';
+  const pax = rooms.reduce((n, r) => n + (Number(r.max_capacity) || 0), 0);
+  return [parts[0], pax ? `max ${pax} people` : '', ...parts.slice(1)].filter(Boolean).join(' · ');
+}
 function renderRoomsInventory(){
   const inv = accomData?.inventory || [];
   if (!inv.length) return '';
   const byFloor = new Map();
   for (const r of inv) { const k = r.floor || ''; if (!byFloor.has(k)) byFloor.set(k, []); byFloor.get(k).push(r); }
   const allTags = new Set(); inv.forEach(r => (r.tags || []).forEach(t => allTags.add(t)));
-  const intro = [allTags.has('bath') && 'private ensuite bathroom', allTags.has('ac') && 'air conditioning'].filter(Boolean);
+  const everyRoom = t => inv.every(r => (r.tags || []).includes(t));
+  const intro = [everyRoom('bath') && 'private ensuite bathroom', everyRoom('ac') && 'air conditioning'].filter(Boolean);
   const TAG = { shared:['Shared dorm', 'badge-blue'], bath:['Private bathroom', 'badge-green'], ac:['AC', 'badge-blue'], ocean:['Ocean / jungle view', 'badge-amber'], rv:['Riad view', 'badge-amber'] };
   const floors = [...byFloor.entries()].map(([floor, rooms]) => `
-    ${floor ? `<div class="floor-lbl">${escapeHtml(floor)} floor</div>` : ''}
+    ${floor ? `<div class="floor-lbl">${escapeHtml(floorLabel(floor, rooms))}</div>` : ''}
     <div class="rooms-grid">${rooms.map(r => `<div class="room">
       <div class="room-name">${escapeHtml(r.name || '')}</div>
       ${r.config_text ? `<div class="room-config">${escapeHtml(r.config_text)}</div>` : ''}
