@@ -108,17 +108,18 @@ test('morocco transport: van runs — day, driver, vehicle (from /prices), tap w
   await expect(page.locator('#trOv .tr-people')).toHaveCount(0);
   await expect(page.locator('#tk_veh .pill')).toHaveText(['Car', 'Minivan', 'Big Van']);   // the vehicles /prices has, smallest first
   await expect(page.locator('#tk_veh .pill.active')).toHaveText('Minivan');
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 500 · Minivan');
+  await expect(page.locator('.tr-tap-main[data-key="van|surf"]')).toHaveCount(0);   // 20 Nov 2026: surf spots are people rows
+  await expect(page.locator('#trOv .tr-sp[data-key="van|surf"] .tr-sp-price')).toHaveText('from MAD 300');
   await expect(page.locator('.tr-tap-main[data-key="van|paradise-souk"] .hint')).toHaveText('MAD 1,100 · Minivan');   // Paradise Valley van 700 + Souk van 400, no special price
   await expect(page.locator('.tr-tap-main[data-key="van|taghazout-party"]')).toHaveCount(0);              // guests pay those drivers directly
-  await expect(page.locator('.tr-tap-main[data-key="van|tamri"] .hint')).toHaveText('MAD 600 · Minivan');
+  await expect(page.locator('#trOv .tr-sp[data-key="van|tamri"] .tr-sp-price')).toHaveText('from MAD 400');
   await page.click('#tk_veh .pill[data-v="Big Van"]');
   await expect(page.locator('#tk_veh .pill.active')).toHaveText('Big Van');
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .hint')).toHaveText('MAD 700 · Big Van');
-  await page.locator('.tr-tap-main[data-key="van|surf"]').click();
+  await expect(page.locator('.tr-tap-main[data-key="van|dunes"] .hint')).toHaveText('MAD 800 · Big Van');
+  await page.evaluate(k => TransportUI.tap(k), 'van|surf');
   const ins = (await H.call(st, 'trip_insert')).rows[0];
   expect(ins).toMatchObject({ kind: 'other', route: 'Surf', purpose: 'surf', pax: null, expected_price: 700, vehicle: 'Big Van', status: 'done', currency: 'MAD', driver_id: H.D.fat });
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('1');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"van|surf\"]')).toHaveAttribute('data-logged', '1');
   await expect(page.locator('#trOv .tr-tuk-total')).toHaveText(/^Sat 14 Nov · 1 run\s*MAD\s700$/);   // «day · N runs · MAD X», no people
   // Plan tomorrow: 2 vans of 8 to the surf spot at 08:00 → the order for Fathoune
   await page.click('#tk_mode .pill:has-text("Plan the day")');
@@ -477,7 +478,7 @@ test('morocco plan the day: default TOMORROW → send to Fathoune (Sent 10:00 �
   const owed0 = await page.evaluate(id => TransportUI._state.trips.filter(t => t.driver_id === id && TransportUI.reconcileStatus(t) === 'owed').reduce((s, t) => s + Number(t.expected_price || 0), 0), H.D.fat);
   await page.click('#trDay-2026-11-15 [data-log-day]');
   await expect(page.locator('#tk_planlog')).toHaveAttribute('data-n', '3');
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-plan')).toHaveText('+3 planned');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"van|surf\"]')).toHaveAttribute('data-planned', '3');
   await expect(page.locator('#tk_allplan')).toHaveClass(/btn-p/);
   await shot('ma-log-sheet-planned');
   const nUp = st.calls.filter(c => c.t === 'trip_update').length;
@@ -488,7 +489,7 @@ test('morocco plan the day: default TOMORROW → send to Fathoune (Sent 10:00 �
   await page.evaluate(() => TransportUI.allAsPlanned());
   expect(st.calls.filter(c => c.t === 'trip_update').length).toBe(nUp + 3);
   expect(st.trips.filter(t => t.kind === 'other').length).toBe(before);              // the same trips, never new ones
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('3');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"van|surf\"]')).toHaveAttribute('data-logged', '3');
   await page.click('#trOv #tk_done');
   await expect(page.locator('#trDay-2026-11-15 .tr-dstate')).toContainText('Logged ✓ · 3 runs');
   // Owed / Pay: the same 3 runs, once, at their price (they were owed by time already — the tap writes it down)
@@ -546,11 +547,11 @@ test('morocco run time: ONE departure time per day (08:00, editable) in «Log ru
   await page.click('#transportRoot [data-add-runs="vans"]');
   await expect(page.locator('#tk_ses')).toHaveCount(0);                                  // no Morning / Afternoon in Morocco
   await expect(page.locator('#tk_st')).toHaveValue('08:00');
-  await page.locator('.tr-tap-main[data-key="van|surf"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'van|surf');
   expect((await H.call(st, 'trip_insert')).rows[0]).toMatchObject({ trip_time: '08:00', status: 'done' });
   await page.selectOption('#tk_st', '08:30'); await page.locator('#tk_st').dispatchEvent('change');
   await page.waitForTimeout(350);
-  await page.locator('.tr-tap-main[data-key="van|surf"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'van|surf');
   expect((await H.call(st, 'trip_insert', 2)).rows[0]).toMatchObject({ trip_time: '08:30' });
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(PLAN_SHOTS, 'ma-time-picker-390.png') });

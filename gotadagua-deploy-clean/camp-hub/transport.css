@@ -90,18 +90,20 @@
 .tr-tap-main:active { background: var(--ocean-soft); border-color: var(--ocean); }
 .tr-tap-n { text-align: right; font-size: 18px; color: var(--ocean); }
 .tr-tap-minus { height: 52px; width: 44px; }
-/* People per surf spot → vans / tuk-tuks (19 Nov 2026): a stepper under each surf spot, the answer in one line */
-.tr-sp { margin: -2px 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-2); }
-.tr-tap + .tr-sp { margin-top: calc(-1 * var(--sp-1)); }
+/* People per surf spot → vans / tuk-tuks (19 Nov 2026; one row per spot 20 Nov): the name and its price left, the people
+   stepper right, and — only with people — a thin answer line under it inside the same row */
+.tr-sp { margin: 0 0 var(--sp-2); padding: 6px var(--sp-3) 6px var(--sp-4); border: 1px solid var(--border-2); border-radius: var(--r-sm); background: var(--surface); }
 .tr-sp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 44px; }
-.tr-sp-lbl { min-width: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
-.tr-sp-had { font-weight: 500; }
+.tr-sp-l { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.tr-sp-name { font-size: 15px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.tr-sp-price, .tr-sp-had { font-size: 12px; line-height: 1.3; }
+.tr-sp-had { color: var(--ocean); font-weight: 600; }
 .tr-sp-step { flex: none; gap: 6px; }
 .tr-sp-n { width: 52px; height: 40px; padding: 0 4px; text-align: center; font: inherit; font-size: 17px; font-weight: 700; color: var(--ocean); border: 1px solid var(--border-2); border-radius: var(--r-xs); background: var(--surface); -moz-appearance: textfield; }
 .tr-sp-n::-webkit-outer-spin-button, .tr-sp-n::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.tr-sp-ans { display: grid; grid-template-columns: 1fr auto 16px; align-items: center; gap: var(--sp-2); width: 100%; min-height: 40px; margin-top: 6px; padding: 6px var(--sp-3); border: 1px solid var(--ocean-border, var(--border-2)); border-radius: var(--r-xs); background: var(--ocean-soft); font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
+.tr-sp-ans { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); width: 100%; min-height: 40px; margin: 4px 0 0; padding: 4px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }
 .tr-sp-ans b { color: var(--ocean); white-space: nowrap; }
-.tr-sp-ans .ic { width: 14px; height: 14px; color: var(--muted); }
+.tr-sp-ans .ic { width: 14px; height: 14px; color: var(--muted); flex: none; }
 .tr-sp-what { min-width: 0; overflow-wrap: anywhere; }
 .tr-sp-amt { font-weight: 600; white-space: nowrap; }
 .tr-sp-warn { margin-top: 6px; color: var(--amber); font-weight: 600; }

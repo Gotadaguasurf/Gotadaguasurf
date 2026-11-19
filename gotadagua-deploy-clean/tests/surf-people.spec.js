@@ -85,7 +85,10 @@ test('Sri Lanka: people per surf spot — 7 → 3 tuk-tuks (3 + 2 + 2) saved as 
   const ah = page.locator('#trOv .tr-sp[data-key="surf|Ahangama"]');
   const we = page.locator('#trOv .tr-sp[data-key="surf|Weligama"]');
   await expect(page.locator('#trOv .tr-sp')).toHaveCount(3);                         // the three surf spots, not the camp runs or tours
-  await expect(page.locator('#trOv .tr-tap-main[data-key="surf|Ahangama"]')).toHaveCount(1);   // the tap line stays (one tap = one run)
+  await expect(page.locator('#trOv .tr-tap-main[data-key^="surf|"]')).toHaveCount(0);   // one row per spot: no tap counter beside the stepper
+  await expect(ah.locator('.tr-sp-name')).toHaveText('Ahangama');                    // no «Camp →» in the surf section
+  await expect(ah.locator('.tr-sp-price')).toHaveText('LKR 500 per tuk-tuk');
+  await expect(page.locator('#trOv .tr-tap-main[data-key="camp|Laundry"]')).toHaveCount(1);   // camp runs keep one tap = one run
   await expect(ah.locator('input')).toHaveValue('0');
   await expect(ah.locator('[data-sp-ans]')).toHaveCount(0);                         // 0 people → no answer, nothing to save
   await expect(page.locator('#tk_spsave')).toHaveCount(0);
@@ -94,27 +97,27 @@ test('Sri Lanka: people per surf spot — 7 → 3 tuk-tuks (3 + 2 + 2) saved as 
   // 7 people to Ahangama: + seven times
   for (let i = 0; i < 7; i++) await ah.locator('button[title="One person more"]').click();
   await expect(ah.locator('input')).toHaveValue('7');
-  await expect(ah.locator('[data-sp-ans]')).toContainText('7 people → 3 tuk-tuks');
+  await expect(ah.locator('[data-sp-ans]')).toContainText('→ 3 tuk-tuks · LKR 1,500');
   await expect(ah.locator('[data-sp-ans] .tr-sp-amt')).toHaveText(/1,500/);
   await expect(page.locator('#tk_spsave')).toHaveText('Save 3 tuk-tuks');
   await expect(page.locator('#trOv .btn-p')).toHaveCount(1);                         // the save is now the one blue button
   await expect(page.locator('#tk_done')).toHaveClass(/btn-s/);
   // 3 people typed to Weligama → 1 tuk-tuk
   await we.locator('input').fill('3');
-  await expect(we.locator('[data-sp-ans]')).toContainText('3 people → 1 tuk-tuk');
+  await expect(we.locator('[data-sp-ans]')).toContainText('→ 1 tuk-tuk');
   await expect(page.locator('#tk_spsave')).toHaveText('Save 4 tuk-tuks');
   expect(await noHScroll(page)).toBe(true);
-  await shot(page, 'sl-sheet-typed');
+  await shot(page, 'sl-sheet-typed-v2');
   // change before saving: Weligama one tuk-tuk more (two tuk-tuks for 3 people)
   await we.locator('[data-sp-ans]').click();
   await expect(we.locator('[data-sp-edit] .tr-sp-vrow')).toHaveCount(1);
   await expect(we.locator('[data-sp-edit] .tr-sp-vrow')).toContainText('Tuk-tuk · 3 seats');
   await we.locator('[data-sp-edit] button[title="One more"]').click();
-  await expect(we.locator('[data-sp-ans]')).toContainText('3 people → 2 tuk-tuks');
+  await expect(we.locator('[data-sp-ans]')).toContainText('→ 2 tuk-tuks');
   await expect(we.locator('[data-sp-ans]')).toContainText('changed');
   await shot(page, 'sl-sheet-change');
   await we.locator('.tr-sp-auto').click();                                           // back to the automatic choice
-  await expect(we.locator('[data-sp-ans]')).toContainText('3 people → 1 tuk-tuk');
+  await expect(we.locator('[data-sp-ans]')).toContainText('→ 1 tuk-tuk');
   await page.click('#tk_spsave');
   await expect.poll(() => inserts(st).length).toBe(4);
   const rows = inserts(st);
@@ -122,8 +125,8 @@ test('Sri Lanka: people per surf spot — 7 → 3 tuk-tuks (3 + 2 + 2) saved as 
   rows.forEach(r => expect(r).toMatchObject({ kind: 'tuktuk', purpose: 'surf', vehicle: 'Tuk-tuk', status: 'done', source: 'manual', driver_id: SAMPATH, trip_date: '2026-11-13', trip_time: '07:30', tour_name: null }));
   // after the save: the steppers are back at 0, the tap lines count the runs, the people are shown
   await expect(ah.locator('input')).toHaveValue('0');
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('3');
-  await expect(ah.locator('.tr-sp-had')).toContainText('7 in saved runs');
+  await expect(ah).toHaveAttribute('data-logged', '3');
+  await expect(ah.locator('.tr-sp-had')).toHaveText('3 tuk-tuks already logged · 7 people');
   await expect(page.locator('#tk_spsave')).toHaveCount(0);
   await expect(page.locator('#trOv .tr-tuk-total')).toContainText('4 runs');
   // the WhatsApp order is the same as for tapped runs
@@ -131,10 +134,10 @@ test('Sri Lanka: people per surf spot — 7 → 3 tuk-tuks (3 + 2 + 2) saved as 
   await expect(page.locator('#trOv .btn-p')).toHaveCount(1);
   await page.click('#tk_send');
   expect(decodeURIComponent(await page.evaluate(() => window.__opened[0])).split('?text=')[1]).toBe('*TUK TUKS - MORNING FRI 13 NOV · PICKUP 07:30*\n\n- Ahangama: 3 tuk-tuks (7 people)\n- Weligama: 1 tuk-tuk (3 people)');
-  // a tap still adds one run with no people typed (pax 1 as before)
-  await page.locator('.tr-tap-main[data-key="surf|South Beach"]').click();
+  // the camp runs still tap: one tap = one run (pax 1 as before)
+  await page.locator('.tr-tap-main[data-key="camp|Laundry"]').click();
   await expect.poll(() => inserts(st).length).toBe(5);
-  expect(inserts(st)[4]).toMatchObject({ route: 'South Beach', pax: 1, expected_price: 500 });
+  expect(inserts(st)[4]).toMatchObject({ route: 'Laundry', purpose: 'laundry', pax: 1, expected_price: 500 });
   expect(errors).toEqual([]);
 });
 
@@ -155,11 +158,12 @@ test('Morocco: Plan the day — people per surf spot with the real seats: 4 → 
   await expect(page.locator('#tk_pday .pill.active')).toHaveAttribute('data-day', '2026-11-15');      // tomorrow
   const spots = page.locator('#trOv .tr-sp');
   await expect(spots).toHaveCount(3);                                                // Surf Taghazout · Tamri / Anza · Imsouane
-  await expect(spots.locator('.tr-sp-lbl')).toHaveText(['Surf Taghazout', 'Surf Tamri / Anza', 'Surf Imsouane']);
+  await expect(spots.locator('.tr-sp-name')).toHaveText(['Taghazout', 'Tamri / Anza', 'Imsouane']);
+  await expect(spots.locator('.tr-sp-price')).toHaveText(['from MAD 300', 'from MAD 400', 'from MAD 800']);
   await expect(page.locator('#tk_spt')).toHaveValue('08:00');
   const tag = page.locator('#trOv .tr-sp[data-key="van|surf"]');
   const ans = tag.locator('[data-sp-ans]');
-  for (const [n, want, amt] of [[4, '4 people → 1 Minivan', '500'], [8, '8 people → 1 Minivan', '500'], [12, '12 people → 1 Big Van', '700'], [20, '20 people → 1 Big Van + 1 Minivan', '1,200']]) {
+  for (const [n, want, amt] of [[4, '→ 1 Minivan', '500'], [8, '→ 1 Minivan', '500'], [12, '→ 1 Big Van', '700'], [20, '→ 1 Big Van + 1 Minivan', '1,200']]) {
     await tag.locator('input').fill(String(n));
     await expect(ans).toContainText(want);
     await expect(ans.locator('.tr-sp-amt')).toHaveText(new RegExp(amt));
@@ -169,25 +173,25 @@ test('Morocco: Plan the day — people per surf spot with the real seats: 4 → 
   // Imsouane 4 people → a Minivan at Imsouane's price
   const ims = page.locator('#trOv .tr-sp[data-key="van|imsouane"]');
   for (let i = 0; i < 4; i++) await ims.locator('button[title="One person more"]').click();
-  await expect(ims.locator('[data-sp-ans]')).toContainText('4 people → 1 Minivan');
+  await expect(ims.locator('[data-sp-ans]')).toContainText('→ 1 Minivan');
   await expect(ims.locator('[data-sp-ans] .tr-sp-amt')).toHaveText(/900/);
   await expect(page.locator('#tk_spsave')).toHaveText('Add 3 vans to the order');
   expect(await noHScroll(page)).toBe(true);
-  await shot(page, 'ma-plan-typed');
+  await shot(page, 'ma-plan-typed-v2');
   // change before saving: Imsouane a Car + a Car instead of the Minivan → 1,600, «changed»
   await ims.locator('[data-sp-ans]').click();
   await expect(ims.locator('[data-sp-edit] .tr-sp-vrow')).toHaveCount(3);
   await ims.locator('.tr-sp-vrow[data-v="Car"] button[title="One more"]').click();
   await ims.locator('.tr-sp-vrow[data-v="Car"] button[title="One more"]').click();
   await ims.locator('.tr-sp-vrow[data-v="Minivan"] button[title="One less"]').click();
-  await expect(ims.locator('[data-sp-ans]')).toContainText('4 people → 2 Cars');
+  await expect(ims.locator('[data-sp-ans]')).toContainText('→ 2 Cars');
   await expect(ims.locator('[data-sp-ans] .tr-sp-amt')).toHaveText(/1,600/);
   await shot(page, 'ma-plan-change');
   // one Car only → 3 seats for 4 people: warned
   await ims.locator('.tr-sp-vrow[data-v="Car"] button[title="One less"]').click();
   await expect(ims.locator('[data-sp-short]')).toHaveText('Only 3 seats for 4 people — add a vehicle');
   await ims.locator('.tr-sp-auto').click();
-  await expect(ims.locator('[data-sp-ans]')).toContainText('4 people → 1 Minivan');
+  await expect(ims.locator('[data-sp-ans]')).toContainText('→ 1 Minivan');
   await page.selectOption('#tk_spt', '07:45'); await page.dispatchEvent('#tk_spt', 'change');
   await expect(page.locator('#tk_pt')).toHaveValue('07:45');                          // one time for the order
   await page.click('#tk_spsave');
@@ -216,13 +220,16 @@ test('Morocco: Log runs — the people stepper sits under each surf tap line; sa
   await page.evaluate(() => TransportUI.openTuktuk());
   await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');
   await expect(page.locator('#tk_veh .pill')).toHaveText(['Car', 'Minivan', 'Big Van']);      // tours and manual taps keep the vehicle pills
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-plan')).toHaveText('+1 planned');
+  await expect(page.locator('#trOv .tr-sp[data-key="van|surf"]')).toHaveAttribute('data-planned', '1');
+  await expect(page.locator('#trOv .tr-sp[data-key="van|surf"] .tr-sp-had')).toHaveText('1 Minivan planned');
+  await expect(page.locator('#trOv .tr-tap-main[data-key="van|surf"]')).toHaveCount(0);
+  await expect(page.locator('#trOv .tr-tap-main[data-key="van|tamri"]')).toHaveCount(1);   // no seats → the manual tap line
   await expect(page.locator('#trOv .tr-sp[data-key="van|tamri"]')).toHaveCount(0);
   await expect(page.locator('#trOv [data-sp-none="van|tamri"]')).toHaveText('seats unknown in /prices — choose the vehicle');
   await expect(page.locator('#trOv .tr-sp[data-key="van|dunes"]')).toHaveCount(0);           // tours: no people
   const tag = page.locator('#trOv .tr-sp[data-key="van|surf"]');
   await tag.locator('input').fill('12');
-  await expect(tag.locator('[data-sp-ans]')).toContainText('12 people → 1 Big Van');
+  await expect(tag.locator('[data-sp-ans]')).toContainText('→ 1 Big Van');
   await expect(page.locator('#tk_spsave')).toHaveText('Save 1 van');
   await expect(page.locator('#tk_allplan')).toBeHidden();                            // one decision at a time: the save first
   await expect(page.locator('#trOv .btn-p:visible')).toHaveCount(1);
@@ -233,12 +240,12 @@ test('Morocco: Log runs — the people stepper sits under each surf tap line; sa
   expect(up.id).toBe(planned.id);
   expect(up.body).toMatchObject({ status: 'done', needs_resend: false, pax: 12, vehicle: 'Big Van', expected_price: 700 });
   expect(st.calls.filter(c => c.t === 'trip_insert')).toHaveLength(0);
-  await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('1');
+  await expect(tag).toHaveAttribute('data-logged', '1');
   await expect(page.locator('#tk_spsave')).toHaveCount(0);
-  await expect(tag.locator('.tr-sp-had')).toContainText('12 in saved runs');
+  await expect(tag.locator('.tr-sp-had')).toHaveText('1 Big Van already logged · 12 people');
   // a second save on the same spot (no planned run left) inserts new runs
   await tag.locator('input').fill('5');
-  await expect(tag.locator('[data-sp-ans]')).toContainText('5 people → 1 Minivan');
+  await expect(tag.locator('[data-sp-ans]')).toContainText('→ 1 Minivan');
   await page.click('#tk_spsave');
   const ins = (await H.call(st, 'trip_insert')).rows[0];
   expect(ins).toMatchObject({ kind: 'other', route: 'Surf', purpose: 'surf', vehicle: 'Minivan', expected_price: 500, pax: 5, status: 'done', trip_date: '2026-11-14', trip_time: '08:00', currency: 'MAD' });

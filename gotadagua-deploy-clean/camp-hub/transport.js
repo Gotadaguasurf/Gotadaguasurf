@@ -1880,12 +1880,14 @@
     const body = `${seg}${SESSIONS ? sendBox(day, drv) : ''}<div class="g2 tr-tuk-head"><div class="mfield"><label>Day</label>${SESSIONS ? `<div class="pills tr-seg tr-dayseg" id="tk_dday">${dchip(today, 'Today')}${dchip(tm, 'Tomorrow')}</div>` : ''}<input type="date" id="tk_d" value="${h(day)}" onchange="TransportUI.tukSet('date', this.value)"></div>
       <div class="mfield"><label>Driver</label><select id="tk_dr" onchange="TransportUI.tukSet('driver', this.value)">${driverOptions(drv)}</select></div></div>
       ${sesBox}${planBox}
-      ${IS_SL ? '' : pricesError() || !vanLabels().length ? `<div class="status-msg status-warn" data-prices-not-loaded>Van prices not loaded from /prices${pricesError() ? ` (${h(pricesError())})` : ''} — a run would be saved without a price.</div>`
+      ${IS_SL || !(R.tour.length || R.surf.some(r => !spCan(r))) ? '' : pricesError() || !vanLabels().length ? `<div class="status-msg status-warn" data-prices-not-loaded>Van prices not loaded from /prices${pricesError() ? ` (${h(pricesError())})` : ''} — a run would be saved without a price.</div>`
         : `<div class="mfield"><label>Vehicle</label><div class="pills tr-seg" id="tk_veh">${vanLabels().map(v => `<button type="button" class="pill${v === tukVehicle() ? ' active' : ''}" data-v="${h(v)}" onclick="TransportUI.tukVehicle('${h(v).replace(/'/g, '&#39;')}')">${h(v)}</button>`).join('')}</div><div class="hint">The price is the vehicle's (/prices). Then tap where the van went.</div></div>`}
       ${(() => { const SP = spList();
-        // each surf spot: its tap line (one tap = one run), then the people going → the vans / tuk-tuks (19 Nov 2026)
+        // each surf spot: ONE row — the people going → the vans / tuk-tuks (19–20 Nov 2026). The tap line («one tap = one
+        // run») only where there are no people to type: no seats in /prices (said under it), or an area you may not run
+        // (Nadith: read-only). Camp runs and tours keep their tap lines.
         const spot = r => { const i = SP.findIndex(x => x.key === r.key);
-          return btn(r) + (i >= 0 ? spRow(r, i, 'People going') : !IS_SL && canRun(r) && vanVehicles(r).length ? `<div class="hint tr-sp-none" data-sp-none="${h(r.key)}">${h(GT.SEATS_UNKNOWN)}</div>` : ''); };
+          return i >= 0 ? spRow(r, i) : btn(r) + (!IS_SL && canRun(r) && vanVehicles(r).length ? `<div class="hint tr-sp-none" data-sp-none="${h(r.key)}">${h(GT.SEATS_UNKNOWN)}</div>` : ''); };
         const surfH = R.surf.length ? `<div class="section-lbl">Surf</div>${R.surf.map(spot).join('')}${SP.length ? spBarHtml() : ''}` : '';
         const campH = R.camp.length || IS_SL ? `<div class="section-lbl">Camp runs</div>${R.camp.map(btn).join('')}` : '';
         const tourH = R.tour.length ? `<div class="section-lbl">${IS_SL ? 'Tour' : 'Tours and trips'}</div>${R.tour.map(btn).join('')}` : '';
@@ -2064,15 +2066,24 @@
   }
   // The spots of the open sheet that take people, in screen order (the handlers get the index).
   const spList = () => (TR.tuk.mode === 'plan' ? planRoutes() : catRoutes()).surf.filter(spCan);
-  // The people already in this sheet's saved runs of a spot (Sri Lanka: only when typed — older runs carry 1 each).
-  function spSavedPeople(r) {
-    if (TR.tuk.mode === 'plan') return 0;
-    const ses = SESSIONS ? tukSession() : null;
-    const rs = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === TR.tuk.date && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose && !runOff(t)
-      && (!ses || batchOf(t.trip_time) === ses.key));
-    const p = rs.reduce((s, t) => s + (runPax(t) || 0), 0);
-    return IS_SL && p <= rs.length ? 0 : p;
+  // What this spot already has, so the row can say it (20 Nov 2026, Miguel: «está um bocado estranho» — one row per
+  // spot, never two counters): «Log runs» = this day, driver and session, logged / still planned; «Plan the day» = the
+  // runs of the spot already in the order. data-logged / data-planned carry the counts (as the old tap line did).
+  function spHas(r) {
+    const plan = TR.tuk.mode === 'plan'; const ses = !plan && SESSIONS ? tukSession() : null;
+    const day = plan ? TR.tuk.planDate : TR.tuk.date;
+    const rs = TR.trips.filter(t => t.kind === RUN.kind && t.trip_date === day && (t.driver_id || '') === TR.tuk.driver && t.route === r.route && t.purpose === r.purpose && !runOff(t)
+      && (plan ? inDay(t) : (!ses || batchOf(t.trip_time) === ses.key)));
+    const logged = plan ? [] : rs.filter(t => !LIVE_RUN.includes(t.status)); const planned = plan ? rs : rs.filter(t => LIVE_RUN.includes(t.status));
+    const words = list => { if (IS_SL) return plural(list.length, 'tuk-tuk'); const by = new Map(); list.forEach(t => by.set(t.vehicle || 'van', (by.get(t.vehicle || 'van') || 0) + 1));
+      return [...by.entries()].sort((a, b) => vehRank(b[0]) - vehRank(a[0])).map(([v, n]) => plural(n, v)).join(' + '); };
+    const people = list => { const p = list.reduce((a, t) => a + (runPax(t) || 0), 0); return list.length && !list.some(t => runPax(t) == null) && !(IS_SL && p <= list.length) ? p : 0; };
+    const bit = (list, what) => list.length ? `${words(list)} ${what}${people(list) ? ` · ${ppl(people(list))}` : ''}` : '';
+    const text = [bit(logged, 'already logged'), bit(planned, plan ? 'already in the order' : 'planned')].filter(Boolean).join(' · ');
+    return { logged: logged.length, planned: planned.length, text };
   }
+  // The unit price under the spot's name: «LKR 500 per tuk-tuk» / Morocco the cheapest vehicle, «from MAD 300».
+  const spPrice = r => IS_SL ? `${money(Number(r.price) || 0)} per tuk-tuk` : `from ${money(Math.min(...spVehicles(r).map(v => v.price)))}`;
   function spOut(r, i) {
     const n = spN(r); if (!n) return '';
     const P = spPlan(r); const open = TR.tuk.sp.open === r.key;
@@ -2081,13 +2092,14 @@
       return `<div class="tr-sp-vrow" data-v="${h(v.label)}"><span class="tr-sp-vl">${h(v.label)}<span class="hint"> · ${v.capacity} seats · ${money(v.price)}</span></span>
         <span class="tr-step"><button type="button" class="btn btn-s btn-icon" title="One less" onclick="TransportUI.spVeh(${i},${j},-1)" ${c ? '' : 'disabled'}>${ic('minus')}</button><b class="num">${c}</b><button type="button" class="btn btn-s btn-icon" title="One more" onclick="TransportUI.spVeh(${i},${j},1)">${ic('plus')}</button></span></div>`; }).join('')}
       ${P.changed ? `<button type="button" class="btn-link tr-sp-auto" onclick="TransportUI.spAuto(${i})">Back to the automatic choice</button>` : ''}</div>`;
-    return `<button type="button" class="tr-sp-ans" data-sp-ans aria-expanded="${open}" title="Change the vehicles" onclick="TransportUI.spOpen(${i})"><span class="tr-sp-what">${ppl(n)} → <b>${h(spWords(P))}</b>${P.changed ? ' <span class="hint">· changed</span>' : ''}</span>
-      <span class="tr-sp-amt num">${money(P.total)}</span>${ic(open ? 'chevron-up' : 'chevron-down')}</button>${short}${edit}`;
+    // a thin line under the row: «→ 2 tuk-tuks · LKR 1,000» (tap = change the vehicles)
+    return `<button type="button" class="tr-sp-ans" data-sp-ans aria-expanded="${open}" title="Change the vehicles" onclick="TransportUI.spOpen(${i})"><span class="tr-sp-what">→ <b>${h(spWords(P))}</b> · <span class="tr-sp-amt num">${money(P.total)}</span>${P.changed ? ' <span class="hint">· changed</span>' : ''}</span>${ic(open ? 'chevron-up' : 'chevron-down')}</button>${short}${edit}`;
   }
-  function spRow(r, i, label) {
-    const n = spN(r); const saved = spSavedPeople(r);
-    return `<div class="tr-sp" data-sp="${i}" data-key="${h(r.key)}"><div class="tr-sp-row"><span class="tr-sp-lbl">${label}${saved ? `<span class="hint tr-sp-had"> · ${saved} in saved runs</span>` : ''}</span>
-      <span class="tr-step tr-sp-step"><button type="button" class="btn btn-s btn-icon" title="One person less" onclick="TransportUI.spStep(${i},-1)">${ic('minus')}</button><input type="number" inputmode="numeric" min="0" max="99" class="tr-sp-n num" id="tk_spn${i}" value="${n}" aria-label="People to ${h(r.label)}" onfocus="this.select()" oninput="TransportUI.spInput(${i}, this.value)"><button type="button" class="btn btn-s btn-icon" title="One person more" onclick="TransportUI.spStep(${i},1)">${ic('plus')}</button></span></div>
+  // One row per surf spot: the name and its price on the left, the people stepper on the right (the only input).
+  function spRow(r, i) {
+    const n = spN(r); const has = spHas(r);
+    return `<div class="tr-sp" data-sp="${i}" data-key="${h(r.key)}" data-logged="${has.logged}" data-planned="${has.planned}"><div class="tr-sp-row"><span class="tr-sp-l"><b class="tr-sp-name">${h(spotName(r.label))}</b><span class="hint tr-sp-price">${h(spPrice(r))}</span>${has.text ? `<span class="hint tr-sp-had">${h(has.text)}</span>` : ''}</span>
+      <span class="tr-step tr-sp-step"><button type="button" class="btn btn-s btn-icon" title="One person less" onclick="TransportUI.spStep(${i},-1)">${ic('minus')}</button><input type="number" inputmode="numeric" min="0" max="99" class="tr-sp-n num" id="tk_spn${i}" value="${n}" aria-label="People to ${h(spotName(r.label))}" onfocus="this.select()" oninput="TransportUI.spInput(${i}, this.value)"><button type="button" class="btn btn-s btn-icon" title="One person more" onclick="TransportUI.spStep(${i},1)">${ic('plus')}</button></span></div>
       <div class="tr-sp-out" id="tk_spo${i}">${spOut(r, i)}</div></div>`;
   }
   // The one save for every spot typed: «Save 3 tuk-tuks» / «Add 2 vans to the order» — in the sheet's footer (always in
@@ -2378,7 +2390,7 @@
       ${(() => { const SP = spList(); if (!SP.length) return '';
         return `<div class="section-lbl">Surf · people per spot</div>
         <div class="mfield tr-sp-time"><label>${SESSIONS ? 'Pickup' : 'Leaves at'}</label>${timeSelect('tk_spt', TR.tuk.planTime, 'onchange="TransportUI.spSetTime(this.value)"')}</div>
-        ${SP.map((r, i) => spRow(r, i, h(r.label))).join('')}${spBarHtml()}`; })()}
+        ${SP.map((r, i) => spRow(r, i)).join('')}${spBarHtml()}`; })()}
       <div class="section-lbl">Add a run</div>
       <div class="tr-plan-add"><div class="mfield"><label>Time</label>${timeSelect('tk_pt', TR.tuk.planTime, `onchange="TransportUI.tukSet('planTime', this.value)"`)}</div>
         <div class="mfield"><label>Route</label><select id="tk_pr" onchange="TransportUI.tukSet('planRoute', this.value)">${routeOptions(TR.tuk.planRoute, 'plan', IS_SL ? '' : planVehicle())}</select></div>

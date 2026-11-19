@@ -382,22 +382,24 @@ test('tuk-tuk: one tap = one run saved as done; a double tap saves one; minus re
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk runs');
   await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');   // opens on today's log, as before
   await expect(page.locator('#tk_dr')).toHaveValue(D.sampath);
-  const ahangama = page.locator('.tr-tap-main[data-key="surf|Ahangama"]');
-  await ahangama.click();
-  await expect(ahangama.locator('.tr-tap-n')).toHaveText('1');
+  // 20 Nov 2026: a surf spot is one row with the people stepper — no tap line; TransportUI.tap is still one run
+  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"]')).toHaveCount(0);
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Ahangama');
+  await expect(page.locator('#trOv .tr-sp[data-key="surf|Ahangama"]')).toHaveAttribute('data-logged', '1');
+  await expect(page.locator('#trOv .tr-sp[data-key="surf|Ahangama"] .tr-sp-had')).toHaveText('1 tuk-tuk already logged');
   await page.waitForTimeout(350);
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"]').click();
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('2');
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Ahangama');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-logged', '2');
   await page.waitForTimeout(350);
   // double tap: the second tap lands while the first is still saving
   await page.evaluate(() => { TransportUI.tap('surf|Ahangama'); TransportUI.tap('surf|Ahangama'); });
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('3');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-logged', '3');
   const inserts = st.calls.filter(c => c.t === 'trip_insert').map(c => c.rows[0]);
   expect(inserts.length).toBe(3);
   expect(inserts[0]).toMatchObject({ kind: 'tuktuk', route: 'Ahangama', purpose: 'surf', expected_price: 500, status: 'done', driver_id: D.sampath, trip_date: '2026-11-13', trip_time: '07:30' });   // 17 Nov 2026: the Morning session's pickup (now = 10:00, before 12:00)
   await expect(page.locator('.tr-tuk-total')).toContainText('3 runs');
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"] + .tr-tap-minus').click();
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('2');
+  await page.evaluate(k => TransportUI.untap(k), 'surf|Ahangama');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-logged', '2');
   expect(st.calls.filter(c => c.t === 'trip_delete').length).toBe(1);
   await page.locator('.tr-tap-main[data-key="tour|River Safari"]').click();
   await expect(page.locator('.tr-tap-main[data-key="tour|River Safari"] .tr-tap-n')).toHaveText('1');
@@ -785,7 +787,7 @@ test('tuk-tuks by session (Sri Lanka): tap the runs → «Send to Sampath»; the
   // Morning by the clock (10:00 < 12:00), pickup 07:30; the counts are the session's
   await expect(page.locator('#tk_ses .pill.active')).toHaveText('Morning');
   await expect(page.locator('#tk_st')).toHaveValue('07:30');
-  const tapK = async k => { await page.locator(`.tr-tap-main[data-key="${k}"]`).click(); await page.waitForTimeout(350); };
+  const tapK = async k => { if (/^(surf|van)\|/.test(k)) await page.evaluate(x => TransportUI.tap(x), k); else await page.locator(`.tr-tap-main[data-key="${k}"]`).click(); await page.waitForTimeout(350); };
   await tapK('surf|Ahangama'); await tapK('surf|Ahangama'); await tapK('surf|Weligama');
   await expect(page.locator('#tk_batches [data-batch="morning"]')).toContainText('Not sent');
   await expect(page.locator('#tk_send')).toHaveText('Send to Sampath on WhatsApp');
@@ -804,7 +806,7 @@ test('tuk-tuks by session (Sri Lanka): tap the runs → «Send to Sampath»; the
   // Afternoon: its own batch, its own message
   await page.click('#tk_ses .pill[data-ses="afternoon"]');
   await expect(page.locator('#tk_st')).toHaveValue('14:00');
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('0');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-logged', '0');
   await tapK('surf|Ahangama'); await tapK('camp|Market / food');
   await expect(page.locator('#tk_batches [data-batch="afternoon"]')).toContainText('Not sent');
   await page.click('#tk_send');
@@ -866,7 +868,7 @@ test('tuk-tuks: a run logged on a day with nothing planned still works (done, ow
   await page.click('#transportRoot [data-add="2026-11-12"]');
   await expect(page.locator('#tk_send')).toHaveCount(0);
   await expect(page.locator('#tk_planlog')).toHaveCount(0);
-  await page.locator('.tr-tap-main[data-key="surf|Weligama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Weligama');
   const ins = (await call(st, 'trip_insert')).rows[0];
   expect(ins).toMatchObject({ status: 'done', trip_date: '2026-11-12', route: 'Weligama' });
   await expect(page.locator('#tk_send')).toHaveCount(0);
@@ -882,7 +884,7 @@ test('tuk-tuks · a full day by hand (Sri Lanka): plan tomorrow from the run she
   fsp.mkdirSync(PLAN_SHOTS, { recursive: true });
   const shot = async name => { for (const [w, hgt] of [[390, 844], [1280, 900]]) { await page.setViewportSize({ width: w, height: hgt }); await page.waitForTimeout(450); await page.screenshot({ path: path.join(PLAN_SHOTS, `${name}-${w}.png`) }); } await page.setViewportSize({ width: 390, height: 844 }); };
   const owed = () => owedSampath(page);
-  const tapK = async k => { await page.locator(`.tr-tap-main[data-key="${k}"]`).click(); await page.waitForTimeout(350); };
+  const tapK = async k => { if (/^(surf|van)\|/.test(k)) await page.evaluate(x => TransportUI.tap(x), k); else await page.locator(`.tr-tap-main[data-key="${k}"]`).click(); await page.waitForTimeout(350); };
   await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
   await shot('sl-1-day-header-not-planned');
   await page.click('#transportRoot [data-add-runs="tuktuk"]');
@@ -905,7 +907,7 @@ test('tuk-tuks · a full day by hand (Sri Lanka): plan tomorrow from the run she
   await shot('sl-3-run-sheet-sent');
   // change: one Weligama less in the morning (kept as cancelled), the afternoon untouched
   await page.click('#tk_ses .pill[data-ses="morning"]');
-  await page.locator('.tr-tap-main[data-key="surf|Weligama"] + .tr-tap-minus').click();
+  await page.evaluate(k => TransportUI.untap(k), 'surf|Weligama');
   await expect(page.locator('#tk_batches [data-batch="morning"]')).toContainText('Changed after sending — send again');
   await expect(page.locator('#tk_batches [data-batch="afternoon"]')).toContainText('Sent 10:00 ✓');
   await page.evaluate(() => { const b = document.getElementById('tk_batches'); if (b) b.scrollIntoView({ block: 'center' }); });
@@ -933,12 +935,12 @@ test('tuk-tuks · a full day by hand (Sri Lanka): plan tomorrow from the run she
   await page.click('#transportRoot [data-add="2026-11-14"]');
   await expect(page.locator('#tk_planlog')).toHaveAttribute('data-n', '3');
   await page.click('#tk_ses .pill[data-ses="morning"]');
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-plan')).toHaveText('+2 planned');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-planned', '2');
   await tapK('surf|Ahangama');                                                       // logs one of the planned ones: the same row
   expect(st.trips.filter(t => t.kind === 'tuktuk').length).toBe(n0);
   expect(st.calls.filter(c => c.t === 'trip_update').pop().body).toMatchObject({ status: 'done' });
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('1');
-  await expect(page.locator('.tr-tap-main[data-key="surf|Ahangama"] .tr-tap-plan')).toHaveText('+1 planned');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-logged', '1');
+  await expect(page.locator('#trOv .tr-sp[data-key=\"surf|Ahangama\"]')).toHaveAttribute('data-planned', '1');
   await page.click('#tk_ses .pill[data-ses="afternoon"]');
   await page.locator('.tr-tap-main[data-key="camp|Market / food"] + .tr-tap-minus').click();   // the market run did not happen
   await expect.poll(() => st.trips.filter(t => t.route === 'Market / food').length).toBe(0);
@@ -1016,7 +1018,7 @@ test('QA bug 1: a run marked late into a session already sent (morning sent 07:0
   await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
   await page.click('#transportRoot [data-add-runs="tuktuk"]');
   await expect(page.locator('#tk_ses .pill.active')).toHaveText('Morning');
-  await page.locator('.tr-tap-main[data-key="surf|Weligama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Weligama');
   await call(st, 'trip_insert');
   await expect.poll(() => batchKey(page, 'morning')).toBe('changed');
   await expect(page.locator('#tk_send')).toHaveText('Send the update to Sampath on WhatsApp');
@@ -1028,11 +1030,11 @@ test('QA bug 2: removed after sending and tapped again before the update → the
   await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
   await page.click('#transportRoot [data-add-runs="tuktuk"]');
   await page.click('#tk_ses .pill[data-ses="afternoon"]');
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"] + .tr-tap-minus').click();
+  await page.evaluate(k => TransportUI.untap(k), 'surf|Ahangama');
   expect((await call(st, 'trip_update')).body).toMatchObject({ status: 'cancelled', needs_resend: true });
   await expect.poll(() => batchKey(page, 'afternoon')).toBe('changed');
   await page.waitForTimeout(350);
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Ahangama');
   expect((await call(st, 'trip_update', 2)).body).toMatchObject({ status: 'done', needs_resend: false });
   expect(st.calls.filter(c => c.t === 'trip_insert').length).toBe(0);
   await expect.poll(() => batchKey(page, 'afternoon')).toBe('sent');
@@ -1100,7 +1102,7 @@ test('QA UX: «Not planned» only on today / tomorrow; the Sri Lanka run sheet s
   await expect(page.locator('#trDay-2026-11-16 .tr-dstate')).toHaveCount(0);                          // an empty later day: nothing
   await page.evaluate(() => TransportUI.shiftWeek(-7));
   await page.click('#transportRoot [data-add-runs="tuktuk"]');
-  await page.locator('.tr-tap-main[data-key="surf|Weligama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Weligama');
   await call(st, 'trip_insert');
   const top = await page.evaluate(() => { const b = document.getElementById('tk_batches'), d = document.getElementById('tk_dday'); return !!b && !!d && (b.compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING) > 0; });
   expect(top).toBe(true);
@@ -1256,13 +1258,13 @@ test('run times (Sri Lanka): the time picker before tapping — the run takes it
   await expect(page.locator('#tk_st')).toHaveValue('07:30');
   await page.selectOption('#tk_st', '07:45'); await page.locator('#tk_st').dispatchEvent('change');
   await expect(page.locator('#tk_st')).toHaveValue('07:45');
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Ahangama');
   expect((await call(st, 'trip_insert')).rows[0]).toMatchObject({ trip_time: '07:45', status: 'done' });
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(PLAN_SHOTS, 'sl-time-picker-390.png') });
   await page.selectOption('#tk_st', '15:15'); await page.locator('#tk_st').dispatchEvent('change');
   await expect(page.locator('#tk_ses .pill.active')).toHaveText('Afternoon');
-  await page.locator('.tr-tap-main[data-key="surf|Weligama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Weligama');
   expect((await call(st, 'trip_insert', 2)).rows[0]).toMatchObject({ trip_time: '15:15' });
   await page.click('#tk_send');
   expect(await sentText(page, 0)).toBe('*TUK TUKS - MORNING FRI 13 NOV · PICKUP 07:45*\n\n- Ahangama: 1 tuk-tuk\n\n*TUK TUKS - AFTERNOON FRI 13 NOV · PICKUP 15:15*\n\n- Weligama: 1 tuk-tuk');
@@ -1301,11 +1303,11 @@ test('QA re-check: a planned run and a removed (tombstone) one on the same route
   await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
   await page.click('#transportRoot [data-add-runs="tuktuk"]');
   await page.click('#tk_ses .pill[data-ses="afternoon"]');
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Ahangama');
   const u1 = await call(st, 'trip_update');
   expect(u1.id).toBe(R(31)); expect(u1.body).toMatchObject({ status: 'done' });
   await page.waitForTimeout(400);
-  await page.locator('.tr-tap-main[data-key="surf|Ahangama"]').click();
+  await page.evaluate(k => TransportUI.tap(k), 'surf|Ahangama');
   const u2 = await call(st, 'trip_update', 2);
   expect(u2.id).toBe(R(32)); expect(u2.body).toMatchObject({ status: 'done', needs_resend: false });
   expect(st.calls.filter(c => c.t === 'trip_insert').length).toBe(0);
