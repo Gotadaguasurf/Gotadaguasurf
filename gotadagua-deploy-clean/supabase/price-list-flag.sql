@@ -24,6 +24,17 @@ update public.pricing_catalog set in_price_list = false
 update public.pricing_catalog set in_price_list = false
  where active and coalesce(sell_price, 0) <= 0;
 
+-- Morocco yoga (Miguel 19 Nov 2026: «é 10 euros mas lá em cash cobramos 100»): the PDF shows the Bookinglayer price 10 €,
+-- the Camp Tab keeps charging 100 MAD cash. Two rows: the MAD one stays Camp-Tab-only, a new EUR one is PDF-only.
+update public.pricing_catalog c set in_price_list = false
+  from public.locations l where l.id = c.location_id and l.name = 'Morocco' and c.active and c.name = 'Yoga Lesson' and coalesce(c.sell_currency, c.currency) = 'MAD';
+insert into public.pricing_catalog(location_id, name, category, audience, sell_price, cost_per_guest, currency, sell_currency, notes,
+                                   active, sort_order, show_in_camp_tab, show_in_transport_picker, in_price_list)
+select l.id, 'Yoga Lesson', 'Other Service', 'general', 10, 0, 'EUR', 'EUR', '1 yoga class', true, 101, false, false, true
+  from public.locations l
+ where l.name = 'Morocco'
+   and not exists (select 1 from public.pricing_catalog c where c.location_id = l.id and c.name = 'Yoga Lesson' and c.active and coalesce(c.sell_currency, c.currency) = 'EUR');
+
 -- check: what each camp prints after this (rows on, active, priced)
 select l.name as camp, count(*) filter (where c.in_price_list and c.active and c.sell_price > 0) as printed,
        count(*) filter (where not c.in_price_list and c.active) as switched_off
