@@ -2051,7 +2051,7 @@ function renderRoomsInventory(){
   const allTags = new Set(); inv.forEach(r => (r.tags || []).forEach(t => allTags.add(t)));
   const everyRoom = t => inv.every(r => (r.tags || []).includes(t));
   const intro = [everyRoom('bath') && 'private ensuite bathroom', everyRoom('ac') && 'air conditioning'].filter(Boolean);
-  const TAG = { shared:['Shared dorm', 'badge-blue'], bath:['Private bathroom', 'badge-green'], ac:['AC', 'badge-blue'], ocean:['Ocean / jungle view', 'badge-amber'], rv:['Riad view', 'badge-amber'] };
+  const TAG = { shared:['Shared dorm', 'badge-blue'], bath:['Private bathroom', 'badge-green'], ac:['AC', 'badge-blue'], ocean:['Ocean view', 'badge-amber'], jungle:['Jungle view', 'badge-green'], rv:['Riad view', 'badge-amber'] };
   const floors = [...byFloor.entries()].map(([floor, rooms]) => `
     ${floor ? `<div class="floor-lbl">${escapeHtml(floorLabel(floor, rooms))}</div>` : ''}
     <div class="rooms-grid">${rooms.map(r => `<div class="room">
