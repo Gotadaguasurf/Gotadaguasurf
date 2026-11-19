@@ -274,12 +274,14 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
     } catch (_) { slugs = []; }
     if (!slugs.length) return fail('No access', 'You don\'t have access to these prices. Ask Miguel in Settings → Team access.');
   }
-  const CAT_COLS = 'id,name,category,sell_price,sell_currency,currency,notes,active,sort_order,capacity,covers_pax,audience';
+  // in_price_list = the «PDF» switch (supabase/price-list-flag.sql); read without it until that file has run
+  const CAT_COLS = 'id,name,category,sell_price,sell_currency,currency,notes,active,sort_order,capacity,covers_pax,audience,in_price_list';
   async function loadCamp(slug){
     const { data: L } = await sb.from('locations').select('id,slug,name').eq('slug', slug).maybeSingle();
     if (!L) return null;
     let cat = await sb.from('pricing_catalog').select(CAT_COLS).eq('location_id', L.id);
-    if (cat.error && /covers_pax/.test(cat.error.message || '')) cat = await sb.from('pricing_catalog').select(CAT_COLS.replace(',covers_pax', '')).eq('location_id', L.id);
+    if (cat.error && /in_price_list/.test(cat.error.message || '')) cat = await sb.from('pricing_catalog').select(CAT_COLS.replace(',in_price_list', '')).eq('location_id', L.id);
+    if (cat.error && /covers_pax/.test(cat.error.message || '')) cat = await sb.from('pricing_catalog').select(CAT_COLS.replace(',in_price_list', '').replace(',covers_pax', '')).eq('location_id', L.id);
     if (cat.error) throw cat.error;
     const [packs, seasons, rooms, prices] = await Promise.all([
       sb.from('accommodation_packs').select('id,label,description,price_basis,sort_order,active').eq('location_id', L.id),

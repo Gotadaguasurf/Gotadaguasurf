@@ -54,6 +54,26 @@
     const d = SECTION_DEFS.find(x => x.cats.includes(r.category));
     return d ? d.key : null;
   }
+  // /prices tab of a catalog row (19 Nov 2026, Miguel: «tudo ligado com o PDF»): the same rule as the PDF section, so the
+  // Edit tabs and the price list can never drift. The PDF's «bar» is two tabs on /prices (Merch, Drinks); the Camp shop
+  // tab keeps its old key «extras» (hidden-tab settings in pricing_areas use it). null = not a PDF section (Diploria,
+  // custom tabs, accommodation rows) → /prices falls back to the tab whose categories include the row's.
+  function tabOfRow(r) {
+    if (!r) return null;
+    const sec = sectionOfRow(r);
+    if (sec === 'bar') return r.category === 'Drinks' ? 'drinks' : 'merch';
+    if (sec === 'shop') return 'extras';
+    return sec;
+  }
+  // «PDF» switch per row (pricing_catalog.in_price_list, supabase/price-list-flag.sql). Until that column exists every row
+  // reads «on» and today's code exclusions still apply: Camp Tab price variants («Surf Lesson - 30») stay out.
+  const campTabVariant = (r) => /\s-\s\d+(?:[.,]\d+)?$/.test(String((r && r.name) || ''));
+  function inPriceList(r) {
+    if (!r || r.active === false || !(Number(r.sell_price) > 0)) return false;
+    if (r.in_price_list === false) return false;
+    if (r.in_price_list === true) return true;
+    return !campTabVariant(r);
+  }
   const SECTION_TITLE = { accommodation: 'Accommodation', surf: 'Surf packs & lessons', tours: 'Tours & activities', transfers: 'Transfers', addons: 'Add-ons', shop: 'Camp shop', bar: 'Bar & merch' };
 
   // ── Languages (19 Nov 2026) ── one dictionary; T(key, …args) reads the current language, else English
@@ -352,16 +372,15 @@
   }
   // Camp Tab price variants («Surf Lesson - 30», «Surf Lesson - 35») are how staff ring a lesson at a given price;
   // they are not products for agencies, so the price list leaves them out (Miguel 19 Nov 2026).
-  const campTabVariant = (r) => /\s-\s\d+(?:[.,]\d+)?$/.test(String(r.name || ''));
   function itemRows(catalog, key) {
-    return (catalog || []).filter(r => sectionOfRow(r) === key && r.active !== false && Number(r.sell_price) > 0 && !campTabVariant(r))
+    return (catalog || []).filter(r => sectionOfRow(r) === key && inPriceList(r))
       .slice().sort(bySort)
       .map(r => ({ name: r.name, note: catalogNote(r.notes), price: money(r.sell_price, r.sell_currency || r.currency || 'EUR'),
         group: r.audience === 'group' }));
   }
 
   function transferRows(catalog) {
-    const rows = (catalog || []).filter(r => ['Transport', 'Transfer'].includes(r.category) && r.active !== false && Number(r.sell_price) > 0);
+    const rows = (catalog || []).filter(r => ['Transport', 'Transfer'].includes(r.category) && inPriceList(r));
     const split = (name) => { const i = String(name || '').lastIndexOf(' — '); return i > 0 ? [name.slice(0, i).trim(), name.slice(i + 3).trim()] : [String(name || '').trim(), '']; };
     return rows.map(r => { const [route, vehicle] = split(r.name); return { r, route, vehicle }; })
       .sort((a, b) => ((/airport/i.test(a.route) ? 0 : 1) - (/airport/i.test(b.route) ? 0 : 1)) || a.route.localeCompare(b.route) ||
@@ -397,7 +416,7 @@
   }
   const factText = (f) => { const [k, ...a] = f.split('|'); return T('sn_' + k, ...a); };
   function schoolModel(catalog, withExtras) {
-    const rows = (catalog || []).filter(r => r.active !== false && Number(r.sell_price) > 0 && !campTabVariant(r));
+    const rows = (catalog || []).filter(r => inPriceList(r));
     const lessonRows = rows.filter(r => ['Lesson', 'Surf Pack'].includes(r.category));
     if (!lessonRows.length) return null;
     const blank = () => ({ rows: [], facts: new Set() });
@@ -765,7 +784,7 @@
     return { years, preset: years.filter(y => y === y0 || y === y0 + 1) };
   }
   function schoolSheet(catalog, o) { return withLang(o && o.lang, () => { const school = schoolModel(catalog, !(o && o.extras === false)); return school ? schoolHtml({ slug: 'surf-school', school }, { logo: (o && o.logo) || '' }) : ''; }); }
-  const api = { buildModel, render, schoolSheet, availableSections, seasonYears, SCHOOL_CSS, SCHOOL_CONTACT, I18N, LANGS, sectionOfRow, CATALOG_NOTES, accomMatrix, seasonWhen, moneyFixed, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
+  const api = { buildModel, render, schoolSheet, availableSections, seasonYears, SCHOOL_CSS, SCHOOL_CONTACT, I18N, LANGS, sectionOfRow, tabOfRow, inPriceList, CATALOG_NOTES, accomMatrix, seasonWhen, moneyFixed, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PriceList = api;
 })(typeof window !== 'undefined' ? window : this);

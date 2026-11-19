@@ -252,6 +252,79 @@ test('price list (19 Nov 2026): Camp Tab price variants («Surf Lesson - 30») n
 });
 
 // ── Surf School sheet + PDF dialog (19 Nov 2026, Miguel's one-page flyer; «escolher as seasons que queremos») ──────────
+// 19 Nov 2026 (Miguel: «yoga… in all locations… all connected with the PDF, and what is not there inactive for the PDF»)
+test('tabs = PDF sections: every row sits in the tab of the section it prints in; yoga under Tours & activities in every camp', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const slug of ['portugal', 'morocco', 'sri-lanka', 'junior-camp']) {
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    await openPrices(page, slug);
+    // the page's own row → tab rule is PriceList.tabOfRow for every row the PDF has a section for
+    const pairs = await page.evaluate(() => catalog.map(r => ({ id: r.id, name: r.name, category: r.category, tab: areaKeyOfRow(r), pdf: PriceList.tabOfRow(r) })));
+    for (const p of pairs) {
+      if (!p.pdf) continue;
+      if (p.pdf === 'transfers' && p.category !== 'Transport') { expect(p.tab, `${slug} ${p.name}`).toBe('other'); continue; }   // Junior Camp «Transfer» rows: automatic tab
+      expect(p.tab, `${slug} ${p.name}`).toBe(p.pdf);
+    }
+    // the same, as rendered: yoga only in Tours & activities
+    const yoga = pairs.filter(p => /yoga/i.test(p.name));
+    if (slug !== 'junior-camp') expect(yoga.length, slug).toBeGreaterThan(0);
+    for (const tab of ['surf', 'addons', 'extras']) {
+      const pill = page.locator(`#areaTabs [data-area="${tab}"]`);
+      if (!(await pill.count())) continue;
+      await pill.click();
+      const names = await page.locator('#tableWrap tr[data-row-id] .item-name').allTextContents();
+      expect(names.filter(n => /yoga/i.test(n)), `${slug} ${tab}`).toEqual([]);
+    }
+    if (yoga.length) {
+      await page.locator('#areaTabs [data-area="tours"]').click();
+      for (const y of yoga) await expect(page.locator(`#tableWrap tr[data-row-id="${y.id}"]`)).toBeVisible();
+    }
+    // tab names and order follow the PDF
+    const labels = await page.locator('#areaTabs [data-area]').evaluateAll(els => els.map(e => e.dataset.area));
+    const order = ['accommodation', 'surf', 'tours', 'transfers', 'addons', 'extras', 'merch', 'drinks'];
+    const seen = labels.filter(k => order.includes(k));
+    expect(seen, slug).toEqual(order.filter(k => seen.includes(k)));
+    if (labels.includes('extras')) await expect(page.locator('#areaTabs [data-area="extras"]')).toContainText('Camp shop');
+  }
+});
+
+test('PDF switch: off → the row leaves the PDF; before the column exists every row reads as today (variants off) and the switch is locked', async ({ page }) => {
+  // model: missing column = today's output; explicit flags win
+  const camps = ['portugal', 'morocco', 'sri-lanka', 'junior-camp', 'surf-school'];
+  const all = ['accommodation', 'surf', 'tours', 'transfers', 'addons', 'shop', 'bar'];
+  const today = PriceList.buildModel({ camps: camps.map(campFromData), period: 'all', today: '2026-11-17', sections: all });
+  const flagged = camps.map(campFromData).map(c => ({ ...c, catalog: c.catalog.map(r => ({ ...r, in_price_list: !/\s-\s\d+(?:[.,]\d+)?$/.test(r.name || '') })) }));
+  expect(JSON.stringify(PriceList.buildModel({ camps: flagged, period: 'all', today: '2026-11-17', sections: all }))).toBe(JSON.stringify(today));
+  const pt = campFromData('portugal');
+  const tour = pt.catalog.find(r => r.category === 'Tour' && Number(r.sell_price) > 0 && r.active !== false);
+  const off = { ...pt, catalog: pt.catalog.map(r => r.id === tour.id ? { ...r, in_price_list: false } : r) };
+  const names = (c) => PriceList.buildModel({ camps: [c], period: 'all', today: '2026-11-17', sections: ['tours'] }).camps[0].parts.find(p => p.key === 'tours').rows.map(r => r.name);
+  expect(names(pt)).toContain(tour.name);
+  expect(names(off)).not.toContain(tour.name);
+  expect(PriceList.inPriceList({ name: 'Surf Lesson - 30', sell_price: 30 })).toBe(false);
+  expect(PriceList.inPriceList({ name: 'Surf Lesson - 30', sell_price: 30, in_price_list: true })).toBe(true);
+  expect(PriceList.inPriceList({ name: 'Sunglasses', sell_price: 0, in_price_list: true })).toBe(false);
+
+  // page, column not there yet: the switch shows, locked, and never writes
+  await page.setViewportSize({ width: 1280, height: 900 });
+  let ctl = await openPrices(page, 'portugal');
+  await page.locator('#areaTabs [data-area="tours"]').click();
+  const cell = page.locator(`tr[data-row-id="${tour.id}"] td[data-label="In the PDF"] .toggle`);
+  await expect(cell).toHaveText('On');
+  await expect(cell).toHaveAttribute('aria-disabled', 'true');
+  await cell.click({ force: true });
+  expect(ctl.writes).toHaveLength(0);
+
+  // page, column there: the switch saves the flag
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  ctl = await openPrices(page, 'portugal', { mutate: (db) => db.pricing_catalog.forEach(r => { r.in_price_list = true; }) });
+  await page.locator('#areaTabs [data-area="tours"]').click();
+  await page.locator(`tr[data-row-id="${tour.id}"] td[data-label="In the PDF"] .toggle`).click();
+  await expect(page.locator(`tr[data-row-id="${tour.id}"] td[data-label="In the PDF"] .toggle`)).toHaveText('Off');
+  expect(ctl.writes).toHaveLength(1);
+  expect(ctl.writes[0]).toMatchObject({ table: 'pricing_catalog', method: 'PATCH', body: { in_price_list: false } });
+});
+
 test('school sheet: group / private / rentals / students from the catalog names, «–» for a missing cell, nothing invented, other camps unchanged', () => {
   const ss = campFromData('surf-school');
   const all = ['accommodation', 'surf', 'tours', 'transfers', 'addons'];
@@ -557,13 +630,14 @@ test('drag to reorder: the moved row goes first and every changed sort_order is 
   await page.setViewportSize({ width: 1280, height: 900 });
   const ctl = await openPrices(page, 'portugal');
   await page.locator('#areaTabs [data-area="tours"]').click();
-  await expect(page.locator('#tableWrap .item-name')).toHaveText(['Yoga Class', 'Beach Party', 'Ice Bath', 'Surf Skate Lesson', 'Paradise Beach']);
+  // «5x Yoga Pack» (a Lesson row) sits in Tours since 19 Nov 2026: the tab follows the PDF section
+  await expect(page.locator('#tableWrap .item-name')).toHaveText(['Yoga Class', '5x Yoga Pack', 'Beach Party', 'Ice Bath', 'Surf Skate Lesson', 'Paradise Beach']);
   const target = page.locator('tr[data-row-id="pc-313"]');
   const box = await target.boundingBox();
   await page.locator('tr[data-row-id="pc-328"] .drag-handle').dragTo(target, { targetPosition: { x: 40, y: 4 } });
-  await expect(page.locator('#tableWrap .item-name')).toHaveText(['Paradise Beach', 'Yoga Class', 'Beach Party', 'Ice Bath', 'Surf Skate Lesson']);
+  await expect(page.locator('#tableWrap .item-name')).toHaveText(['Paradise Beach', 'Yoga Class', '5x Yoga Pack', 'Beach Party', 'Ice Bath', 'Surf Skate Lesson']);
   const orders = Object.fromEntries(ctl.writes.map(w => [w.filters.find(f => f[0] === 'id')[2], w.body.sort_order]));
-  expect(orders).toEqual({ 'pc-328': 100, 'pc-313': 200, 'pc-333': 300, 'pc-312': 400, 'pc-314': 500 });
+  expect(orders).toEqual({ 'pc-328': 100, 'pc-313': 200, 'pc-323': 300, 'pc-333': 400, 'pc-312': 500, 'pc-314': 600 });
   expect(box).toBeTruthy();
 });
 
