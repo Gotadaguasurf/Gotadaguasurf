@@ -299,6 +299,7 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
   window.__priceListModel = model;
   document.title = model.fileTitle;   // the PDF's file name
   document.getElementById('plTitle').textContent = `Price list · ${model.title} · ${model.period}`;
+  if (PriceList.SCHOOL_CSS && !document.getElementById('plSchoolCss')) document.head.insertAdjacentHTML('beforeend', `<style id="plSchoolCss">${PriceList.SCHOOL_CSS}</style>`);
   doc.innerHTML = PriceList.render(model, { logo: AppShell.LOGO });
   document.getElementById('plPrint').disabled = false;
   try { await document.fonts.ready; } catch (_) {}

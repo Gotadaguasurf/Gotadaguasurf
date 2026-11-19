@@ -179,7 +179,10 @@ test('«Price list PDF» → «Create PDF» opens the print page for this camp w
   const [popup] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
   const u = new URL(popup.url());
   expect(u.pathname).toBe('/prices/pricelist.html');
-  expect(Object.fromEntries(u.searchParams)).toEqual({ location: 'sri-lanka', period: 'upcoming', sections: 'accommodation,surf,tours,transfers,addons', lang: 'en', print: '1' });
+  // 19 Nov 2026: only sections with something to print for the camp (the stub's Sri Lanka has no add-ons), and the season
+  // years this year + next that still have dates
+  const preset = PriceList.seasonYears(campFromData('sri-lanka').accom.seasons, new Date().toISOString().slice(0, 10)).preset;
+  expect(Object.fromEntries(u.searchParams)).toEqual({ location: 'sri-lanka', period: 'years:' + preset.join(','), sections: 'accommodation,surf,tours,transfers', lang: 'en', print: '1' });
   await popup.close();
   // «Flexible pack (per night)» can be ticked, but always opens unticked — even after it was used last time
   await page.locator('#pdfBtn').click();
@@ -187,7 +190,7 @@ test('«Price list PDF» → «Create PDF» opens the print page for this camp w
   await expect(flex).not.toBeChecked();
   await flex.check();
   const [p2] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
-  expect(new URL(p2.url()).searchParams.get('sections')).toBe('accommodation,flexible,surf,tours,transfers,addons');
+  expect(new URL(p2.url()).searchParams.get('sections')).toBe('accommodation,flexible,surf,tours,transfers');
   await p2.close();
   await page.locator('#pdfBtn').click();
   await expect(flex).not.toBeChecked();
@@ -246,6 +249,127 @@ test('price list (19 Nov 2026): Camp Tab price variants («Surf Lesson - 30») n
   const names = surf.rows.map(r => r.name);
   expect(names.filter(n => /\s-\s\d/.test(n))).toEqual([]);
   expect(names).toContain('Private Surf Lesson');
+});
+
+// ── Surf School sheet + PDF dialog (19 Nov 2026, Miguel's one-page flyer; «escolher as seasons que queremos») ──────────
+test('school sheet: group / private / rentals / students from the catalog names, «–» for a missing cell, nothing invented, other camps unchanged', () => {
+  const ss = campFromData('surf-school');
+  const all = ['accommodation', 'surf', 'tours', 'transfers', 'addons'];
+  const m = (camp, lang) => PriceList.buildModel({ camps: [camp], period: 'all', today: '2026-11-17', sections: all, lang }).camps[0];
+  const S = m(ss).school;
+  expect(S.group.rows.map(r => r.label)).toEqual(['1 lesson', '3 lessons', '5 lessons', '10 lessons']);
+  expect(S.priv.rows.map(r => r.price)).toEqual(['€75', '€210', '€325', '€550']);
+  expect(S.group.notes).toEqual(['Max 5 people per instructor', '1h30 per lesson']);
+  expect(S.priv.notes).toContain('Extra person €30 per lesson (max 5 people)');
+  expect(S.rentals.cols.map(c => c.label)).toEqual(['1 hour', '2 hours', 'All day', '3 days', '1 week']);
+  expect(S.rentals.rows.map(r => r.label)).toEqual(['Board & wetsuit', 'Board', 'Wetsuit']);
+  expect(S.rentals.notes).toEqual(['€250 deposit to take the gear away']);
+  expect(S.students.lessons.notes).toContain('ESN / Erasmus document required');
+  expect(S.students.rentals.rows.map(r => r.label)).toEqual(['2 hours', 'All day']);
+  expect(S.residents.lessons.rows).toEqual([]);   // no resident rows in the catalog → no section
+  // every printed price is a price of the table
+  const tablePrices = new Set(ss.catalog.filter(r => r.active !== false && Number(r.sell_price) > 0).map(r => PriceList.money(r.sell_price, 'EUR')));
+  const printed = [S.group, S.priv, S.students.lessons, S.students.rentals].flatMap(b => b.rows.map(r => r.price)).concat(S.rentals.rows.flatMap(r => r.cells.filter(Boolean)));
+  expect(printed.filter(p => !tablePrices.has(p))).toEqual([]);
+  // a missing cell prints «–»; a row the names don't explain is kept under «More»
+  const cut = { ...ss, catalog: ss.catalog.filter(r => r.name !== 'Wetsuit — 1 week (Standard)').concat([{ id: 'x1', name: 'Surf photo session', category: 'Lesson', sell_price: 45, active: true }]) };
+  const S2 = m(cut).school;
+  expect(S2.rentals.rows.find(r => r.label === 'Wetsuit').cells[4]).toBe(null);
+  expect(S2.other).toEqual([{ label: 'Surf photo session', price: '€45' }]);
+  const html = PriceList.render(PriceList.buildModel({ camps: [cut], period: 'all', today: '2026-11-17', sections: all }), { logo: '' });
+  expect(html).toContain('<td class="r sch-price na">–</td>');
+  expect(html).not.toContain('pl-cover');   // the school alone is its one page: no cover, no back page
+  expect(html).toContain('surfschool@gotadaguasurf.com');
+  // Portuguese
+  const P = m(ss, 'pt').school;
+  expect(P.group.rows[1].label).toBe('3 aulas');
+  expect(P.group.notes).toEqual(['Máx. 5 pessoas por instrutor', '1h30 por aula']);
+  expect(P.rentals.rows[0].cells[0]).toBe('20 €');
+  // the camps keep their lists (no school model, surf list as before)
+  for (const slug of ['portugal', 'morocco', 'sri-lanka']) { const c = m(campFromData(slug)); expect(c.school).toBe(null); expect(c.parts.map(p => p.key)).toContain('surf'); }
+});
+
+test('PDF years: «years:2027» keeps only dates touching 2027 and titles the PDF 2027; the dialog helpers list years and sections', () => {
+  const pt = campFromData('portugal');
+  const m27 = PriceList.buildModel({ camps: [pt], period: 'years:2027', today: '2026-11-19', sections: ['accommodation'] });
+  expect(m27.period).toBe('2027');
+  expect(m27.camps[0].accommodation[0].seasons.flatMap(s => s.ranges).every(r => r.start <= '2027-12-31' && r.end >= '2027-01-01')).toBe(true);
+  expect(PriceList.buildModel({ camps: [pt], period: 'years:2026,2027', today: '2026-11-19', sections: ['accommodation'] }).period).toBe('2026 – 2027');
+  // inside the current year only dates not yet ended
+  expect(PriceList.inPeriod({ start: '2026-02-28', end: '2026-03-27' }, 'years:2026', '2026-11-19')).toBe(false);
+  expect(PriceList.inPeriod({ start: '2026-11-07', end: '2026-12-18' }, 'years:2026', '2026-11-19')).toBe(true);
+  // old links still work
+  expect(PriceList.inPeriod({ start: '2027-02-13', end: '2027-03-26' }, '2027', '2026-11-19')).toBe(true);
+  const seasons = [{ date_ranges: [{ start: '2026-02-28', end: '2026-03-27' }, { start: '2026-11-07', end: '2026-12-18' }, { start: '2027-12-18', end: '2028-01-07' }] }];
+  expect(PriceList.seasonYears(seasons, '2026-11-19')).toEqual({ years: [2026, 2027, 2028], preset: [2026, 2027] });
+  expect(PriceList.seasonYears(seasons, '2026-12-20')).toEqual({ years: [2027, 2028], preset: [2027] });   // 2026 all past
+  expect([...PriceList.availableSections(campFromData('surf-school'))]).toEqual(['school']);
+  expect([...PriceList.availableSections(campFromData('sri-lanka'))]).not.toContain('addons');
+});
+
+test('PDF dialog: the school hides years and sections; a camp shows only what it can print; years are a free choice', async ({ page, context }) => {
+  await openPrices(page, 'portugal');
+  await page.locator('#pdfBtn').click();
+  await expect(page.locator('#pdfCreate')).toBeEnabled();
+  const years = page.locator('#pdf_years input');
+  expect(await years.count()).toBeGreaterThan(0);
+  await expect(page.locator('#pdf_sections input[value="flexible"]')).not.toBeChecked();
+  // no year ticked → asked, nothing opens
+  for (const y of await years.all()) await y.uncheck();
+  await page.locator('#pdfCreate').click();
+  await expect(page.locator('#pdfOv')).toHaveClass(/open/);
+  // one year only
+  const lastYear = await years.last().getAttribute('value');
+  await years.last().check();
+  const [p1] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
+  expect(new URL(p1.url()).searchParams.get('period')).toBe('years:' + lastYear);
+  await p1.close();
+  // the school: one sheet, no years, no section list
+  await page.locator('#pdfBtn').click();
+  await page.locator('#pdf_camp').selectOption('surf-school');
+  await expect(page.locator('#pdfCreate')).toBeEnabled();
+  await expect(page.locator('#pdf_years_field')).toBeHidden();
+  await expect(page.locator('#pdf_sections')).toBeHidden();
+  await expect(page.locator('#pdf_school_note')).toBeVisible();
+  const [p2] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
+  expect(Object.fromEntries(new URL(p2.url()).searchParams)).toMatchObject({ location: 'surf-school', period: 'upcoming', sections: 'surf,addons' });
+  await p2.close();
+  // a camp shows only sections with prices (the stub's Sri Lanka has no add-ons)
+  await page.locator('#pdfBtn').click();
+  await page.locator('#pdf_camp').selectOption('sri-lanka');
+  await expect(page.locator('#pdfCreate')).toBeEnabled();
+  await expect(page.locator('#pdf_sections input[value="addons"]')).toBeHidden();
+  await expect(page.locator('#pdf_sections input[value="tours"]')).toBeVisible();
+});
+
+test('school sheet page: one A4 page with no overflow, 390 px stacks with no side scroll; /prices «Price list» shows the same sheet', async ({ page }) => {
+  await stubPrices(page);
+  await page.addInitScript(() => { window.print = () => {}; });
+  const errors = collectFatalErrors(page);
+  for (const lang of ['en', 'pt']) {
+    await page.goto(`/prices/pricelist.html?location=surf-school&period=upcoming&sections=surf,addons&lang=${lang}&print=1`);
+    await page.waitForFunction(() => window.__priceListReady === true, null, { timeout: 15000 });
+    await expect(page.locator('.pl-cover')).toHaveCount(0);
+    await expect(page.locator('.pl-school .sch-bar').first()).toHaveText(lang === 'pt' ? 'Aulas de grupo' : 'Group lessons');
+    await page.emulateMedia({ media: 'print' });
+    await page.setViewportSize({ width: 794, height: 1123 });
+    const r = await page.evaluate(() => {
+      const bad = [];
+      document.querySelectorAll('.pl-school .pl-table').forEach((t, i) => { if (t.scrollWidth > t.clientWidth + 1) bad.push('table ' + i); });
+      document.querySelectorAll('.pl-school td, .pl-school th').forEach(td => { if (td.scrollWidth > td.clientWidth + 1) bad.push('cell ' + td.textContent.slice(0, 20)); });
+      return { bad, h: document.querySelector('.pl-school').getBoundingClientRect().height };
+    });
+    expect(r.bad).toEqual([]);
+    expect(r.h).toBeLessThanOrEqual(1123 * 1.02);   // fits one A4 sheet
+    await page.emulateMedia({ media: 'screen' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await noSideScroll(page)).toBe(true);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/prices/?location=surf-school', { waitUntil: 'domcontentloaded' });
+  await page.locator('[data-tab-id="list"], #shellTabs [data-tab="list"], button:has-text("Price list")').first().click();
+  await expect(page.locator('#tableWrap .pl-school .sch-bar').first()).toHaveText('Group lessons');
+  expect(errors).toEqual([]);
 });
 
 test('price list in Portuguese: every fixed text from the dictionary, pt-PT money and dates; product names as in the tables; English unchanged', () => {
@@ -366,6 +490,7 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   await expect.poll(() => page.evaluate(() => window.__printed === true)).toBe(true);
   await expect(page).toHaveTitle('Gota Dagua price list - All camps 2026–2027');
   await expect(page.locator('.pl-camp')).toHaveCount(5);
+  await expect(page.locator('.pl-camp.pl-school[data-camp="surf-school"]')).toHaveCount(1);   // the school prints as its one-page sheet
   await expect(page.locator('.pl-camp[data-camp="portugal"] .pl-matrix thead th').first()).toBeVisible();
   await expect(page.locator('.pl-cover')).toContainText('+351 924 689 580');
   // the website's look: brand fonts loaded, photo cover and camp cards, «Book now» to the booking site, one money format
@@ -374,7 +499,7 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   expect(await page.evaluate(() => [document.fonts.check('16px Londrina'), getComputedStyle(document.querySelector('.pl-sec-head h2')).fontFamily])).toEqual([true, 'Gaya, Frastha, Georgia, serif']);
   if (hasGaya) expect(await page.evaluate(() => document.fonts.check('16px Gaya'))).toBe(true);
   await expect(page.locator('.pl-cover .pl-cover-photo')).toHaveCount(3);
-  await expect(page.locator('.pl-camp-card')).toHaveCount(5);
+  await expect(page.locator('.pl-camp-card')).toHaveCount(4);
   // no Seasons section in the PDF (17 Nov 2026): accommodation comes first and every date sits under its season
   const sl = page.locator('.pl-camp[data-camp="sri-lanka"]');
   await expect(page.locator('.pl-seasons')).toHaveCount(0);
@@ -386,7 +511,8 @@ test('price list page: A4 print with no overflow (long names, 5 sharing columns)
   await expect(page.locator('.pl-cover .pl-reserv')).toHaveText('Reservations & partnerships: info@gotadaguasurf.com · +351 924 689 580');
   await expect(page.locator('.pl-end')).not.toContainText('Questions or group requests?');   // removed 17 Nov 2026
   await expect(page.locator('.pl-end .pl-reserv')).toBeVisible();
-  expect(await page.content()).not.toContain('bookings.gotadaguasurf.com');
+  // no booking link for agencies — only the Surf School sheet keeps its «Book online» line (Miguel's flyer, 19 Nov 2026)
+  expect(await page.evaluate(() => { const d = document.querySelector('#doc').cloneNode(true); d.querySelectorAll('.pl-school').forEach(x => x.remove()); return d.innerHTML.includes('bookings.gotadaguasurf.com'); })).toBe(false);
   await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').nth(1).locator('.pl-amt').first()).toHaveText(/^€\d+\.\d{2}$/);
   await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').first().locator('.pl-amt').first()).toHaveText(/^€\d+$/);
   const imgs = await page.evaluate(async () => { const u = [...new Set([...document.querySelectorAll('[style*="background-image"]')].map(e => /url\(['"]?([^'")]+)/.exec(e.getAttribute('style'))[1]))];

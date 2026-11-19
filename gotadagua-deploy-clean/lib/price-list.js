@@ -81,6 +81,15 @@
       as_of: (d) => `Prices as of ${d}`, end_line: (d) => `Prices as of ${d}. Gota Dagua surf camps in Portugal, Morocco and Sri Lanka.`,
       empty: 'Nothing to print: no published prices in the chosen camp, dates and sections.',
       kicker_camp: 'Surf camp', kicker_school: 'Surf school', kicker_junior: 'Junior surf camp', file: 'Gota Dagua price list',
+      school_title: 'Surf school price list', sch_group: 'Group lessons', sch_private: 'Private lessons', sch_rentals: 'Rentals',
+      sch_students: 'Erasmus / students', sch_residents: 'Residents', sch_lessons: 'Surf lessons', sch_extras: 'Extras', sch_other: 'More',
+      sch_contacts: 'Contacts', sch_book: 'Book online', sch_n: (n) => n === 1 ? '1 lesson' : `${n} lessons`,
+      sch_n_summer: (n) => `${n === 1 ? '1 lesson' : n + ' lessons'} · 1 Jul – 31 Aug`, sch_friend: (n) => `Friend of a student · ${n === 1 ? '1 lesson' : n + ' lessons'}`,
+      gear_bw: 'Board & wetsuit', gear_b: 'Board', gear_w: 'Wetsuit', gear_any: 'Board & wetsuit',
+      dur_1h: '1 hour', dur_2h: '2 hours', dur_3h: '3 hours', dur_all: 'All day', dur_2d: '2 days', dur_3d: '3 days', dur_1w: '1 week',
+      sn_max: (n) => `Max ${n} people per instructor`, sn_dur: (d) => `${d} per lesson`, sn_extra: (p, n) => n ? `Extra person ${p} per lesson (max ${n} people)` : `Extra person ${p} per lesson`,
+      sn_deposit: (p) => `${p} deposit to take the gear away`, sn_esn: 'ESN / Erasmus document required', sn_proof: 'Student or Erasmus proof required',
+      sn_summer: (p) => `+${p} from 1 Jul to 31 Aug`, sn_resident: 'Portuguese residency document required',
     },
     pt: {
       lead_seasons: 'Quando se aplica cada preço.', lead_accommodation: 'Preços por pessoa. O preço depende do quarto e da época.',
@@ -108,6 +117,15 @@
       empty: 'Nada para imprimir: não há preços publicados no camp, datas e secções escolhidos.',
       kicker_camp: 'Surf camp', kicker_school: 'Escola de surf', kicker_junior: 'Surf camp júnior', file: 'Gota Dagua tabela de preços',
       camp_morocco: 'Marrocos',
+      school_title: 'Tabela de preços – Escola de surf', sch_group: 'Aulas de grupo', sch_private: 'Aulas privadas', sch_rentals: 'Aluguer de material',
+      sch_students: 'Erasmus / estudantes', sch_residents: 'Residentes', sch_lessons: 'Aulas de surf', sch_extras: 'Extras', sch_other: 'Outros',
+      sch_contacts: 'Contactos', sch_book: 'Reservar online', sch_n: (n) => n === 1 ? '1 aula' : `${n} aulas`,
+      sch_n_summer: (n) => `${n === 1 ? '1 aula' : n + ' aulas'} · 1 jul – 31 ago`, sch_friend: (n) => `Amigo de um estudante · ${n === 1 ? '1 aula' : n + ' aulas'}`,
+      gear_bw: 'Prancha e fato', gear_b: 'Prancha', gear_w: 'Fato', gear_any: 'Prancha e fato',
+      dur_1h: '1 hora', dur_2h: '2 horas', dur_3h: '3 horas', dur_all: 'Dia inteiro', dur_2d: '2 dias', dur_3d: '3 dias', dur_1w: '1 semana',
+      sn_max: (n) => `Máx. ${n} pessoas por instrutor`, sn_dur: (d) => `${d} por aula`, sn_extra: (p, n) => n ? `Pessoa extra ${p} por aula (máx. ${n} pessoas)` : `Pessoa extra ${p} por aula`,
+      sn_deposit: (p) => `Caução de ${p} para levar o material`, sn_esn: 'Documento ESN / Erasmus obrigatório', sn_proof: 'Comprovativo de estudante ou Erasmus obrigatório',
+      sn_summer: (p) => `+${p} de 1 jul a 31 ago`, sn_resident: 'Documento de residência em Portugal obrigatório',
     },
   };
   // Catalog notes written in Portuguese (the Portugal rows): the English PDF prints the English line; any other note that is
@@ -174,9 +192,14 @@
     const MONTHS = monthsNow();
     return ys === ye ? `${ds} ${MONTHS[ms - 1]} – ${de} ${MONTHS[me - 1]} ${ye}` : `${ds} ${MONTHS[ms - 1]} ${ys} – ${de} ${MONTHS[me - 1]} ${ye}`;
   }
+  // period: 'upcoming' | 'all' | 'YYYY' | 'years:2027,2028' (19 Nov 2026, Miguel: «escolher as seasons que queremos: 2026 e 2027,
+  // ou só 2027 e 2028») — a range is kept when it touches a chosen year and has not ended yet (inside the current year = upcoming)
+  const yearsOf = (period) => { const m = /^years:([\d,\s]+)$/.exec(String(period || '')); return m ? [...new Set(m[1].split(',').map(x => Number(x.trim())).filter(Boolean))].sort((a, b) => a - b) : null; };
   function inPeriod(r, period, today) {
     if (!r || !r.start || !r.end) return false;
     if (period === 'all') return true;
+    const ys = yearsOf(period);
+    if (ys) return r.end >= today && ys.some(y => r.start <= `${y}-12-31` && r.end >= `${y}-01-01`);
     if (/^\d{4}$/.test(String(period))) return r.start <= `${period}-12-31` && r.end >= `${period}-01-01`;
     return r.end >= today;   // 'upcoming'
   }
@@ -351,13 +374,95 @@
       });
   }
 
+  // ── Surf School (19 Nov 2026, Miguel: «para o pdf … uma coisa deste género era mais fácil» — his one-page flyer) ──
+  // Compact tables built from the catalog row names «<Kind> — <detail> (<Standard | Erasmus/Student | Resident>)»; every
+  // price is a row of the table, a cell with no row prints «–», a row the names don't explain goes to «More» (never dropped).
+  // The notes under each table are the facts written in the rows' notes («Max 5 per instructor · 1h30», «€250 deposit…»), in
+  // the chosen language.
+  const SCHOOL_CONTACT = { phone: '+351 939 591 707', email: 'surfschool@gotadaguasurf.com',
+    book: 'https://bookings.gotadaguasurf.com/en/category/surf-school-in-costa-da-caparica-lisbon-portugal' };
+  const SCH_DUR = [['1h', /^1\s*h(ours?)?$/i], ['2h', /^2\s*h(ours?)?$/i], ['3h', /^3\s*h(ours?)?$/i], ['all', /^(all|full)\s*day$/i],
+    ['2d', /^2\s*days?$/i], ['3d', /^3\s*days?$/i], ['1w', /^1\s*week$/i]];
+  const SCH_GEAR = [['bw', /^board\s*&\s*wetsuit$/i], ['b', /^board$/i], ['w', /^wetsuit$/i]];
+  const durKey = (t) => (SCH_DUR.find(([, re]) => re.test(String(t).trim())) || [null])[0];
+  function schoolFacts(note, cur, into) {
+    const t = String(note || '');
+    let m;
+    if ((m = /max\.?\s*(\d+)\s*(?:people\s*)?per instructor/i.exec(t))) into.add('max|' + m[1]);
+    if ((m = /\b(\d+h\d{2})\b/i.exec(t))) into.add('dur|' + m[1]);
+    if (/deposit/i.test(t) && (m = /€\s?(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s?€/.exec(t))) into.add('deposit|' + money(Number((m[1] || m[2]).replace(',', '.')), cur));
+    if (/\bESN\b|erasmus document/i.test(t)) into.add('esn');
+    else if (/proof required/i.test(t)) into.add('proof');
+    if ((m = /\+\s?(\d+(?:[.,]\d+)?)\s?€\s*1 Jul/i.exec(t))) into.add('summer|' + money(Number(m[1].replace(',', '.')), cur));
+  }
+  const factText = (f) => { const [k, ...a] = f.split('|'); return T('sn_' + k, ...a); };
+  function schoolModel(catalog, withExtras) {
+    const rows = (catalog || []).filter(r => r.active !== false && Number(r.sell_price) > 0 && !campTabVariant(r));
+    const lessonRows = rows.filter(r => ['Lesson', 'Surf Pack'].includes(r.category));
+    if (!lessonRows.length) return null;
+    const blank = () => ({ rows: [], facts: new Set() });
+    const S = { group: blank(), priv: blank(), stuLessons: blank(), stuRentals: blank(), resLessons: blank(), resRentals: blank(),
+      rent: { cells: {}, cols: [], gears: [], facts: new Set() }, other: [], extras: [] };
+    let extra = null;
+    for (const r of lessonRows) {
+      const cur = r.sell_currency || r.currency || 'EUR', price = money(r.sell_price, cur), num = Number(r.sell_price);
+      const m = /^(.+?)\s+—\s+(.+?)\s*(?:\(([^)]*)\))?\s*$/.exec(String(r.name || ''));
+      if (!m) { S.other.push({ label: r.name, price, num }); continue; }
+      const kind = m[1].trim(), detail = m[2].trim(), tag = String(m[3] || '');
+      const who = /erasmus|student/i.test(tag) ? 'stu' : /resident/i.test(tag) ? 'res' : 'std';
+      const summer = /jul/i.test(tag);
+      const nM = /(\d+)\s+lessons?/i.exec(detail), n = nM ? Number(nM[1]) : null;
+      if (/^private lesson$/i.test(kind) && /extra person/i.test(detail)) { extra = { price, max: (/max\.?\s*(\d+)/i.exec(r.notes || '') || [])[1] || null }; continue; }
+      if (/lesson$/i.test(kind) && n) {
+        const box = who === 'stu' ? S.stuLessons : who === 'res' ? S.resLessons : /^private/i.test(kind) ? S.priv : S.group;
+        const label = /friend/i.test(detail) ? T('sch_friend', n) : summer ? T('sch_n_summer', n) : T('sch_n', n);
+        box.rows.push({ label, price, num, n, order: (/friend/i.test(detail) ? 2000 : summer ? 1000 : 0) + n });
+        schoolFacts(r.notes, cur, box.facts);
+        continue;
+      }
+      const gear = (SCH_GEAR.find(([, re]) => re.test(kind)) || [null])[0];
+      const dk = durKey(detail);
+      if ((gear || /^rental$/i.test(kind)) && dk) {
+        if (who !== 'std' || !gear) {
+          const box = who === 'res' ? S.resRentals : S.stuRentals;
+          box.rows.push({ label: (gear && gear !== 'bw' ? T('gear_' + gear) + ' · ' : '') + T('dur_' + dk), price, num, order: SCH_DUR.findIndex(d => d[0] === dk) });
+          schoolFacts(r.notes, cur, box.facts);
+        } else {
+          (S.rent.cells[gear] = S.rent.cells[gear] || {})[dk] = price;
+          schoolFacts(r.notes, cur, S.rent.facts);
+        }
+        continue;
+      }
+      S.other.push({ label: r.name, price, num });
+    }
+    S.rent.cols = SCH_DUR.map(d => d[0]).filter(k => Object.values(S.rent.cells).some(c => c[k]));
+    S.rent.gears = SCH_GEAR.map(g => g[0]).filter(g => S.rent.cells[g]);
+    [S.group, S.priv, S.stuLessons, S.resLessons, S.stuRentals, S.resRentals].forEach(b => b.rows.sort((a, c) => a.order - c.order || a.num - c.num));
+    if (extra) S.priv.facts.add('extra|' + extra.price + '|' + (extra.max || ''));
+    if (S.resLessons.rows.length || S.resRentals.rows.length) S.resLessons.facts.add('resident');
+    const notes = (b) => [...b.facts].sort((a, c) => FACT_ORDER.indexOf(a.split('|')[0]) - FACT_ORDER.indexOf(c.split('|')[0])).map(factText);
+    const out = (b) => ({ rows: b.rows.map(({ label, price }) => ({ label, price })), notes: notes(b) });
+    if (withExtras) S.extras = itemRows(catalog, 'addons').map(r => ({ label: r.name, price: r.price, note: r.note }));
+    return {
+      group: out(S.group), priv: out(S.priv),
+      rentals: { cols: S.rent.cols.map(k => ({ key: k, label: T('dur_' + k) })),
+        rows: S.rent.gears.map(g => ({ label: T('gear_' + g), cells: S.rent.cols.map(k => S.rent.cells[g][k] || null) })), notes: notes(S.rent) },
+      students: { lessons: out(S.stuLessons), rentals: out(S.stuRentals) },
+      residents: { lessons: out(S.resLessons), rentals: out(S.resRentals) },
+      other: S.other.map(({ label, price }) => ({ label, price })), extras: S.extras, contact: SCHOOL_CONTACT,
+    };
+  }
+  const FACT_ORDER = ['max', 'dur', 'extra', 'deposit', 'esn', 'proof', 'summer', 'resident'];
+
   function campModel(camp, period, sections, today) {
     const parts = [];
     let accommodation = [];
     let seasons = null, calendar = [];
     if (sections.includes('accommodation') || sections.includes('flexible')) { accommodation = accommodationModel(camp.accom, period, today, { weekly: sections.includes('accommodation'), flex: sections.includes('flexible') }); if (accommodation.length) { seasons = seasonsModel(camp.accom, period, today); calendar = seasonCalendar(camp.accom, period, today); } }
+    const school = camp.slug === 'surf-school' && sections.includes('surf') ? schoolModel(camp.catalog, sections.includes('addons')) : null;
     for (const def of SECTION_DEFS) {
       if (!sections.includes(def.key)) continue;
+      if (school && (def.key === 'surf' || def.key === 'addons')) continue;   // in the school flyer
       if (def.key === 'transfers') { const rows = transferRows(camp.catalog); if (rows.length) parts.push({ key: def.key, title: T('sec_' + def.key), kind: 'transfers', rows }); continue; }
       const rows = itemRows(camp.catalog, def.key);
       if (rows.length) parts.push({ key: def.key, title: T('sec_' + def.key), kind: 'items', rows });
@@ -382,10 +487,12 @@
     const fromVals = weekly.map(pr => Number(pr.sell_price)).filter(v => printed.has(moneyFixed(v, 'EUR', 0)) || printed.has(moneyFixed(v, 'EUR', 2)));
     const from = fromVals.length ? moneyFixed(Math.min(...fromVals), 'EUR', Number.isInteger(Math.min(...fromVals)) ? 0 : 2) : '';
     return { slug: camp.slug, label: T('camp_' + camp.slug) || camp.label || CAMP_LABEL[camp.slug] || camp.slug, place: CAMP_PLACE[camp.slug] || '', from, seasons, calendar, accommodation, parts, ranges, notes,
-      empty: !accommodation.length && !parts.length };
+      school, empty: !accommodation.length && !parts.length && !school };
   }
 
   function periodLabel(ranges, period, today) {
+    const ys = yearsOf(period);
+    if (ys && ys.length) return ys.length === 1 ? String(ys[0]) : `${ys[0]} – ${ys[ys.length - 1]}`;   // the years chosen, as chosen
     if (ranges.length) {
       const y0 = Math.min(...ranges.map(r => +r.start.slice(0, 4))), y1 = Math.max(...ranges.map(r => +r.end.slice(0, 4)));
       return y0 === y1 ? String(y0) : `${y0} – ${y1}`;
@@ -407,7 +514,7 @@
     const [y, m, d] = today.split('-').map(Number);
     return { lang: LANG, camps, title, period: pl, generated: `${d} ${monthsNow()[m - 1]} ${y}`, contact: CONTACT,
       fileTitle: `${T('file')} - ${title} ${pl.replace(/\s+/g, '')}`,
-      sections: sections.filter(k => camps.some(c => (k === 'accommodation' ? c.accommodation.length : c.parts.some(p => p.key === k)))).map(k => T('sec_' + k)) };
+      sections: sections.filter(k => camps.some(c => (k === 'accommodation' ? c.accommodation.length : c.parts.some(p => p.key === k) || (c.school && (k === 'surf' || (k === 'addons' && c.school.extras.length)))))).map(k => T('sec_' + k)) };
   }
 
   // ── HTML ──────────────────────────────────────────────────────────────────
@@ -482,6 +589,99 @@
     return `<header class="pl-sec-head"><h2>${esc(title)}</h2>${T('lead_' + key) ? `<p class="pl-lead">${esc(T('lead_' + key))}</p>` : ''}</header>`;
   }
 
+  // ── the Surf School sheet (the flyer) ──
+  function schTable(title, block, cls) {
+    if (!block || !block.rows.length) return '';
+    return `<div class="sch-box${cls ? ' ' + cls : ''}"><div class="sch-bar">${esc(title)}</div>
+      <table class="pl-table sch-tbl"><colgroup><col><col class="sch-col-num"></colgroup><tbody>${block.rows.map(r => `<tr><td>${esc(r.label)}${r.note ? `<span class="pl-sub">${esc(r.note)}</span>` : ''}</td><td class="r sch-price">${esc(r.price)}</td></tr>`).join('')}</tbody></table>
+      ${block.notes && block.notes.length ? `<p class="sch-note">${block.notes.map(esc).join(' · ')}</p>` : ''}</div>`;
+  }
+  // a short list in two columns (the extras): half the height on the page, one column on a phone
+  function schTable2(title, rows) {
+    const half = Math.ceil(rows.length / 2), L = rows.slice(0, half), Rr = rows.slice(half);
+    const cell = (r) => r ? `<td>${esc(r.label)}</td><td class="r sch-price">${esc(r.price)}</td>` : '<td></td><td></td>';
+    return `<div class="sch-box sch-wide"><div class="sch-bar">${esc(title)}</div>
+      <table class="pl-table sch-tbl sch-tbl2"><colgroup><col><col class="sch-col-num"><col class="sch-col-gap"><col><col class="sch-col-num"></colgroup><tbody>${L.map((r, i) => `<tr>${cell(r)}<td class="sch-gap"></td>${cell(Rr[i])}</tr>`).join('')}</tbody></table></div>`;
+  }
+  function schPair(a, b) { const x = [a, b].filter(Boolean); return x.length ? `<div class="sch-grid${x.length === 1 ? ' one' : ''}">${x.join('')}</div>` : ''; }
+  function schBand(title) { return `<div class="sch-band"><span>${esc(title)}</span></div>`; }
+  function schoolHtml(camp, opts) {
+    const S = camp.school, logo = (opts && opts.logo) || '';
+    const R = S.rentals;
+    const rentals = R.rows.length ? `<div class="sch-box sch-wide"><div class="sch-bar">${esc(T('sch_rentals'))}</div>
+      <table class="pl-table sch-tbl sch-matrix sch-cols-${R.cols.length}"><colgroup><col class="sch-col-gear">${R.cols.map(() => '<col>').join('')}</colgroup>
+        <thead><tr><th></th>${R.cols.map(c => `<th class="r">${esc(c.label)}</th>`).join('')}</tr></thead>
+        <tbody>${R.rows.map(r => `<tr><td>${esc(r.label)}</td>${r.cells.map(v => `<td class="r sch-price${v ? '' : ' na'}">${v ? esc(v) : '–'}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      ${R.notes.length ? `<p class="sch-note">${R.notes.map(esc).join(' · ')}</p>` : ''}</div>` : '';
+    const stu = S.students, res = S.residents;
+    const more = S.other.length ? schPair(schTable(T('sch_extras'), { rows: S.extras, notes: [] }), schTable(T('sch_other'), { rows: S.other, notes: [] }))
+      : S.extras.length ? schTable2(T('sch_extras'), S.extras) : '';
+    const c = S.contact;
+    const bookShort = c.book.replace(/^https?:\/\//, '').replace(/\/en\/category\/.*/, '');
+    return `<section class="pl-camp pl-school" data-camp="${esc(camp.slug)}">
+      <header class="sch-head">${logo ? `<div class="sch-logo">${logo}</div>` : ''}
+        <div class="sch-rule"><span>${esc(T('school_title'))}</span></div>
+        <div class="sch-place">Costa da Caparica</div></header>
+      ${schPair(schTable(T('sch_group'), S.group), schTable(T('sch_private'), S.priv))}
+      ${rentals}
+      ${stu.lessons.rows.length || stu.rentals.rows.length ? schBand(T('sch_students')) + schPair(schTable(T('sch_lessons'), stu.lessons), schTable(T('sch_rentals'), stu.rentals)) : ''}
+      ${res.lessons.rows.length || res.rentals.rows.length ? schBand(T('sch_residents')) + schPair(schTable(T('sch_lessons'), res.lessons), schTable(T('sch_rentals'), res.rentals)) : ''}
+      ${more}
+      <footer class="sch-contact"><div class="sch-bar">${esc(T('sch_contacts'))}</div>
+        <div class="sch-contact-in"><span>${esc(c.phone)}</span><a href="mailto:${esc(c.email)}">${esc(c.email)}</a><a href="${esc(c.book)}">${esc(T('sch_book'))}: ${esc(bookShort)}</a></div></footer>
+    </section>`;
+  }
+  // the sheet's look — shared by /prices/pricelist.html and the «Price list» view of /prices (variables set on the sheet itself)
+  const SCHOOL_CSS = `
+.pl-school{--gd-navy:#27384a;--gd-navy-soft:#46596b;--gd-card:#fffdf7;--gd-line:#e8dcb4;--gd-line-2:#ddd2ad;--gd-bone:#f6f0d8;--gd-moss:#60633c;
+  --gd-serif:"Gaya","Frastha",Georgia,serif;--gd-display:"Londrina","Arial Narrow",sans-serif;color:var(--gd-navy)}
+.pl-school .sch-head{text-align:center;margin-bottom:4mm}
+.pl-school .sch-logo svg{width:28mm;height:auto;display:block;margin:0 auto 2mm}
+.pl-school .sch-rule{display:flex;align-items:center;gap:5mm}
+.pl-school .sch-rule::before,.pl-school .sch-rule::after{content:'';flex:1;height:1.5px;background:var(--gd-navy)}
+.pl-school .sch-rule span{font-family:var(--gd-display);font-size:24px;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+.pl-school .sch-place{font-family:var(--gd-serif);font-size:14px;color:var(--gd-moss);margin-top:1mm}
+.pl-school .sch-grid{display:grid;grid-template-columns:1fr 1fr;gap:4mm;margin-bottom:4mm}
+.pl-school .sch-grid.one{grid-template-columns:1fr}
+.pl-school .sch-box{background:var(--gd-card);border:1px solid var(--gd-line);border-radius:12px;overflow:hidden;break-inside:avoid}
+.pl-school .sch-wide{margin-bottom:4mm}
+.pl-school .sch-bar{background:var(--gd-navy);color:#fffdf7;text-align:center;font-family:var(--gd-display);font-size:14px;letter-spacing:.08em;text-transform:uppercase;line-height:1;padding:6px 10px 5px}
+.pl-school .sch-tbl{font-size:12px}
+.pl-school .sch-tbl col.sch-col-num{width:24mm}
+.pl-school .sch-tbl col.sch-col-gear{width:38mm}
+.pl-school .sch-tbl td,.pl-school .sch-tbl th{padding:4px 4mm;border-bottom:1px dashed var(--gd-line-2);vertical-align:top}
+.pl-school .sch-tbl th{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--gd-navy-soft);border-bottom:1.5px solid var(--gd-navy)}
+.pl-school .sch-tbl tbody tr:nth-child(even) td{background:var(--gd-bone)}
+.pl-school .sch-tbl tbody tr:last-child td{border-bottom:0}
+.pl-school .sch-tbl td.r,.pl-school .sch-tbl th.r{text-align:right}
+.pl-school .sch-price{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pl-school .sch-price.na{color:#b8ad8a;font-weight:400}
+.pl-school .sch-matrix td,.pl-school .sch-matrix th{padding-left:2mm;padding-right:3mm}
+.pl-school .sch-note{font-size:9.5px;color:var(--gd-navy-soft);padding:4px 4mm 5px;margin:0;line-height:1.4}
+.pl-school .sch-band{display:flex;align-items:center;gap:4mm;margin:1mm 0 3mm}
+.pl-school .sch-band::before,.pl-school .sch-band::after{content:'';flex:1;height:1px;background:var(--gd-line-2)}
+.pl-school .sch-band span{font-family:var(--gd-display);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
+.pl-school .sch-contact{border:1px solid var(--gd-line);border-radius:12px;overflow:hidden;break-inside:avoid}
+.pl-school .sch-contact-in{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 14px;padding:8px 4mm;font-size:12px;font-weight:600;background:var(--gd-card)}
+.pl-school .sch-contact-in a{color:inherit;text-decoration:none;overflow-wrap:anywhere}
+@media screen and (max-width:820px){
+  .pl-school .sch-grid{grid-template-columns:1fr}
+  .pl-school .sch-wide{overflow-x:auto}
+  .pl-school .sch-matrix{table-layout:auto}
+  .pl-school .sch-tbl col.sch-col-gear{width:auto}
+  .pl-school .sch-matrix td,.pl-school .sch-matrix th{padding-left:6px;padding-right:6px;font-size:11px}
+  .pl-school .sch-rule span{font-size:19px}
+  .pl-school .sch-tbl2,.pl-school .sch-tbl2 tbody,.pl-school .sch-tbl2 tr{display:block}
+  .pl-school .sch-tbl2 tr{display:grid;grid-template-columns:1fr auto}
+  .pl-school .sch-tbl2 td.sch-gap{display:none}
+  .pl-school .sch-tbl2 td:empty{display:none}
+}
+@media print{ .pl-running + .pl-school{break-before:auto} .pl-running + .pl-school{padding-top:10mm;padding-bottom:16mm} }
+.pl-school .sch-tbl2 col.sch-col-num{width:18mm}
+.pl-school .sch-tbl2 col.sch-col-gap{width:6mm}
+.pl-school .sch-tbl2 td.sch-gap{padding:0;border-bottom:0;background:transparent}
+`;
+
   function render(model, opts) { return withLang(model && model.lang, () => renderIn(model, opts)); }
   function renderIn(model, opts) {
     const logo = (opts && opts.logo) || '';
@@ -506,7 +706,12 @@
       <div class="pl-cover-foot"><div class="pl-reserv">${partnerLine}</div><div class="pl-generated">${esc(T('as_of', model.generated))}</div></div>
     </section>`;
     if (!model.camps.length) return cover + `<section class="pl-camp"><p class="pl-empty">${esc(T('empty'))}</p></section>`;
+    const running = `<div class="pl-running">${logoNavy}<span>gotadaguasurf.com · ${esc(c.email)} · ${esc(c.phone)}</span></div>`;
+    // the Surf School alone = its one-page sheet (no cover, no back page)
+    if (model.camps.length === 1 && model.camps[0].school && !model.camps[0].accommodation.length && !model.camps[0].parts.length)
+      return running + schoolHtml(model.camps[0], { logo: logoNavy });
     const camps = model.camps.map(camp => {
+      if (camp.school) return schoolHtml(camp, { logo: logoNavy });
       const ph = CAMP_PHOTO[camp.slug] || CAMP_PHOTO.portugal;
       camp.parts.forEach(pt => { if (pt.key === 'tours' && ph[2] && pt.rows.length >= 3) pt.photo = ph[2]; });
       return `<section class="pl-camp" data-camp="${esc(camp.slug)}">
@@ -530,10 +735,37 @@
       <div class="pl-contact"><span>${esc(c.web)}</span></div>
       <div class="pl-generated">${esc(T('end_line', model.generated))}</div>
     </section>`;
-    return `<div class="pl-running">${logoNavy}<span>gotadaguasurf.com · ${esc(c.email)} · ${esc(c.phone)}</span></div>` + cover + camps + end;
+    return running + cover + camps + end;
   }
 
-  const api = { buildModel, render, I18N, LANGS, sectionOfRow, CATALOG_NOTES, accomMatrix, seasonWhen, moneyFixed, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
+  // The PDF dialog (19 Nov 2026, Miguel: «quando está a escola fica aquilo tudo selecionado é estranho»): only the sections
+  // that print something for the chosen camp(s), and one choice per year that still has season dates.
+  // camp = { slug, catalog, accom:{ packs, seasons, prices } } (rows as the page reads them)
+  function availableSections(camp, today) {
+    const out = new Set();
+    if (!camp) return out;
+    if (camp.slug === 'surf-school') { if (schoolModel(camp.catalog, false)) out.add('school'); return out; }
+    const a = camp.accom || {};
+    const priced = (a.prices || []).filter(p => Number(p.sell_price) > 0);
+    (a.packs || []).filter(pk => pk.active !== false).forEach(pk => {
+      if (!priced.some(p => p.pack_id === pk.id)) return;
+      out.add(pk.price_basis === 'per_person_per_night' ? 'flexible' : 'accommodation');
+    });
+    SECTION_DEFS.forEach(d => { if (d.key === 'transfers' ? transferRows(camp.catalog).length : itemRows(camp.catalog, d.key).length) out.add(d.key); });
+    return out;
+  }
+  function seasonYears(seasons, today) {
+    const t = today || new Date().toISOString().slice(0, 10), y0 = Number(t.slice(0, 4));
+    const ys = new Set();
+    (seasons || []).filter(s => s.active !== false).forEach(s => (Array.isArray(s.date_ranges) ? s.date_ranges : []).forEach(r => {
+      if (!r || !r.start || !r.end || r.end < t) return;                  // only dates not yet ended
+      for (let y = Math.max(y0, Number(r.start.slice(0, 4))); y <= Number(r.end.slice(0, 4)); y++) ys.add(y);
+    }));
+    const years = [...ys].sort((a, b) => a - b);
+    return { years, preset: years.filter(y => y === y0 || y === y0 + 1) };
+  }
+  function schoolSheet(catalog, o) { return withLang(o && o.lang, () => { const school = schoolModel(catalog, !(o && o.extras === false)); return school ? schoolHtml({ slug: 'surf-school', school }, { logo: (o && o.logo) || '' }) : ''; }); }
+  const api = { buildModel, render, schoolSheet, availableSections, seasonYears, SCHOOL_CSS, SCHOOL_CONTACT, I18N, LANGS, sectionOfRow, CATALOG_NOTES, accomMatrix, seasonWhen, moneyFixed, money, inPeriod, fmtRange, CONTACT, CAMP_ORDER, CAMP_LABEL, isInternalNote, guestText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PriceList = api;
 })(typeof window !== 'undefined' ? window : this);

@@ -360,6 +360,9 @@ details.rooms-card[open] .rooms-caret{transform:rotate(180deg)}
 
 /* PDF dialog */
 .pdf-sections{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+.pdf-years{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+.pdf-years .mtoggle{margin-top:0;align-items:center;padding:8px 12px}
+.pdf-years .mtoggle input{margin-top:0}
 .pdf-sections .mtoggle{margin-top:0;align-items:center}
 .pdf-sections .mtoggle input{margin-top:0}
 @media (max-width:700px){ .pdf-sections{grid-template-columns:1fr} }
@@ -581,7 +584,7 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
       <div class="mgrid">
         <div class="mfield">
           <label for="pdf_camp">Camp</label>
-          <select id="pdf_camp">
+          <select id="pdf_camp" onchange="refreshPdfChoices()">
             <option value="portugal">Portugal</option>
             <option value="morocco">Morocco</option>
             <option value="sri-lanka">Sri Lanka</option>
@@ -590,9 +593,9 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
             <option value="all">All camps</option>
           </select>
         </div>
-        <div class="mfield">
-          <label for="pdf_period">Season dates</label>
-          <select id="pdf_period"></select>
+        <div class="mfield" id="pdf_years_field">
+          <label>Seasons</label>
+          <div class="pdf-years" id="pdf_years" role="group" aria-label="Season years"></div>
         </div>
         <div class="mfield">
           <label for="pdf_lang">Language</label>
@@ -602,7 +605,8 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
           </select>
         </div>
       </div>
-      <div class="micro" style="margin-bottom:8px">Include</div>
+      <div class="micro" style="margin-bottom:8px" id="pdf_include_h">Include</div>
+      <div class="hint" id="pdf_school_note" style="display:none">The Surf School prints as one page: group and private lessons, rentals, Erasmus / students and extras.</div>
       <div>
         <div class="pdf-sections" id="pdf_sections">
           <label class="mtoggle"><input type="checkbox" value="accommodation" checked><span class="label">Accommodation (weekly)</span></label>
@@ -2305,6 +2309,12 @@ function renderTransfersPriceList(){
 function renderPriceListView(){
   const wrap = $('tableWrap');
   if (!wrap) return;
+  // the Surf School reads as its one-page sheet (19 Nov 2026, Miguel's flyer): group / private / rentals / students tables
+  if (LOCATION_SLUG === 'surf-school' && window.PriceList && PriceList.schoolSheet) {
+    if (PriceList.SCHOOL_CSS && !document.getElementById('plSchoolCss')) document.head.insertAdjacentHTML('beforeend', `<style id="plSchoolCss">${PriceList.SCHOOL_CSS}</style>`);
+    const sheet = PriceList.schoolSheet(catalog, {});
+    if (sheet) { wrap.innerHTML = `<div class="card pv-school"><div class="card-body">${sheet}</div></div>`; return; }
+  }
   if (filterArea === 'accommodation') { renderAccommodation(); return; }
   if (filterArea === 'transfers') { renderTransfersPriceList(); return; }
   const area = AREA_BY_KEY[filterArea];
@@ -2903,35 +2913,84 @@ window.addEventListener('beforeunload', e=>{
 //  same template is what the tests print. The page reads guest prices only — never costs.
 // ════════════════════════════════════════════════════════════════════════════
 const PDF_PREF_KEY = 'prices.pdf.sections';
+// 19 Nov 2026 (Miguel: «quando está a escola fica aquilo tudo selecionado é estranho… escolher as seasons que queremos»):
+// the Include list shows only what prints something for the chosen camp(s) — read from the tables, per camp — and the
+// season dates are a choice of years (default: this year and next, leaving out a year whose dates are all past).
+const PDF_DEFAULT = new Set(['accommodation', 'surf', 'tours', 'transfers', 'addons']);
+const pdfCampCache = new Map();
+let pdfToken = 0;
+async function loadPdfCamp(slug){
+  if (pdfCampCache.has(slug)) return pdfCampCache.get(slug);
+  const p = (async () => {
+    const { data: L, error: le } = await sbClient.from('locations').select('id,slug').eq('slug', slug).maybeSingle();
+    if (le) throw le;
+    if (!L) return { slug, catalog: [], accom: {} };
+    const [cat, packs, seasons, prices] = await Promise.all([
+      sbClient.from('pricing_catalog').select('id,name,category,sell_price,sell_currency,currency,notes,active,sort_order,capacity,covers_pax,audience').eq('location_id', L.id),
+      sbClient.from('accommodation_packs').select('id,price_basis,active').eq('location_id', L.id),
+      sbClient.from('accommodation_seasons').select('id,date_ranges,active').eq('location_id', L.id),
+      sbClient.from('accommodation_prices').select('pack_id,sell_price').eq('location_id', L.id),
+    ]);
+    const err = [cat, packs, seasons, prices].map(r => r.error).find(e => e && !/does not exist/i.test(e.message || ''));
+    if (err) throw err;
+    return { slug, catalog: cat.data || [], accom: { packs: packs.data || [], seasons: seasons.data || [], prices: prices.data || [] } };
+  })();
+  pdfCampCache.set(slug, p);
+  p.catch(() => pdfCampCache.delete(slug));
+  return p;
+}
+window.refreshPdfChoices = async ()=>{
+  const token = ++pdfToken;
+  const sel = $('pdf_camp').value;
+  const create = $('pdfCreate'); if (create) create.disabled = true;   // until the choices match the camp
+  const slugs = sel === 'all' ? PriceList.CAMP_ORDER.slice() : [sel];
+  const today = new Date().toISOString().slice(0, 10);
+  let camps = null;
+  try { camps = await Promise.all(slugs.map(loadPdfCamp)); } catch (err) { console.warn('[Prices] PDF choices: could not read the camp', err); }
+  if (token !== pdfToken) return;   // the camp changed meanwhile
+  // availability (when the tables could not be read, every option stays — never a dialog with nothing to tick)
+  const avail = new Set();
+  let seasons = [];
+  if (camps) camps.forEach(c => { PriceList.availableSections(c, today).forEach(k => avail.add(k === 'school' ? 'surf' : k)); seasons = seasons.concat(c.accom.seasons || []); });
+  const schoolOnly = sel === 'surf-school';
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(PDF_PREF_KEY) || 'null'); } catch (_) {}
+  document.querySelectorAll('#pdf_sections input').forEach(i => {
+    const show = !camps || avail.has(i.value);
+    i.closest('label').style.display = show ? '' : 'none';
+    i.checked = show && i.value !== 'flexible' && (Array.isArray(saved) ? saved.includes(i.value) : PDF_DEFAULT.has(i.value));   // Flexible always starts off (17 Nov 2026)
+  });
+  $('pdf_sections').parentElement.style.display = schoolOnly ? 'none' : '';
+  $('pdf_include_h').style.display = schoolOnly ? 'none' : '';
+  $('pdf_school_note').style.display = schoolOnly ? '' : 'none';
+  const { years, preset } = PriceList.seasonYears(seasons, today);
+  $('pdf_years').innerHTML = years.map(y => `<label class="mtoggle"><input type="checkbox" value="${y}"${preset.includes(y) ? ' checked' : ''}><span class="label">${y}</span></label>`).join('');
+  $('pdf_years_field').style.display = years.length ? '' : 'none';
+  if (create) create.disabled = false;
+};
 window.openPdfDialog = ()=>{
   const camp = $('pdf_camp');
   if (camp) camp.value = [...camp.options].some(o => o.value === LOCATION_SLUG) ? LOCATION_SLUG : 'all';
-  const y = new Date().getFullYear();
-  const years = new Set([y, y + 1]);
-  (accomData?.seasons || []).forEach(s => (s.date_ranges || []).forEach(r => { if (r?.start) years.add(+r.start.slice(0, 4)); if (r?.end) years.add(+r.end.slice(0, 4)); }));
-  const per = $('pdf_period');
-  per.innerHTML = `<option value="upcoming">Current and upcoming</option>` +
-    [...years].filter(v => v >= y - 1).sort().map(v => `<option value="${v}">${v} only</option>`).join('') +
-    `<option value="all">All dates</option>`;
-  try {
-    const saved = JSON.parse(localStorage.getItem(PDF_PREF_KEY) || 'null');
-    if (Array.isArray(saved)) document.querySelectorAll('#pdf_sections input').forEach(i => { i.checked = saved.includes(i.value); });
-    const flex = document.querySelector('#pdf_sections input[value="flexible"]'); if (flex) flex.checked = false;   // always starts off (Miguel 17 Nov 2026)
-  } catch (_) {}
   const lang = $('pdf_lang'); if (lang) lang.value = 'en';   // English unless picked for this PDF (19 Nov 2026)
+  refreshPdfChoices();
   $('pdfOv').classList.add('open');
   setTimeout(() => $('pdfCreate')?.focus(), 30);
 };
 window.downloadPriceListPDF = window.openPdfDialog;   // older name
 
 function priceListUrl(){
-  const sections = [...document.querySelectorAll('#pdf_sections input:checked')].map(i => i.value);
-  const q = new URLSearchParams({ location: $('pdf_camp').value, period: $('pdf_period').value, sections: sections.join(','), lang: ($('pdf_lang') && $('pdf_lang').value) || 'en', print: '1' });
-  return { url: `/prices/pricelist.html?${q.toString()}`, sections };
+  const school = $('pdf_camp').value === 'surf-school';
+  const sections = school ? ['surf', 'addons'] : [...document.querySelectorAll('#pdf_sections input:checked')].filter(i => i.closest('label').style.display !== 'none').map(i => i.value);
+  const yearsShown = $('pdf_years_field').style.display !== 'none' && $('pdf_years').children.length;
+  const years = [...document.querySelectorAll('#pdf_years input:checked')].map(i => i.value);
+  const period = yearsShown ? 'years:' + years.join(',') : 'upcoming';
+  const q = new URLSearchParams({ location: $('pdf_camp').value, period, sections: sections.join(','), lang: ($('pdf_lang') && $('pdf_lang').value) || 'en', print: '1' });
+  return { url: `/prices/pricelist.html?${q.toString()}`, sections, school, noYear: yearsShown && !years.length };
 }
 window.createPriceListPdf = ()=>{
-  const { url, sections } = priceListUrl();
+  const { url, sections, school, noYear } = priceListUrl();
   if (!sections.length) { AppShell.toast('Pick at least one section.', 'err'); return; }
+  if (noYear) { AppShell.toast('Pick at least one year.', 'err'); return; }
+  if (school) { $('pdfOv').classList.remove('open'); const w0 = window.open(url, '_blank'); if (!w0) location.href = url; return; }   // the school's choice is not the camps' memory
   try { localStorage.setItem(PDF_PREF_KEY, JSON.stringify(sections)); } catch (_) {}
   $('pdfOv').classList.remove('open');
   const w = window.open(url, '_blank');   // synchronous in the click → not blocked
