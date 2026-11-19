@@ -658,6 +658,7 @@ body{min-height:100dvh}
         <div class="section-sub" id="expPageSub">Log what the camp spends and earns. Pick a category and it lands in the right report.</div>
       </div>
       <div class="exp-top-actions">
+        <button class="btn btn-s" id="payDriverBtn" data-pay-driver-ledger onclick="TransportUI.payFromLedger()" style="display:none" title="Pay a driver for the trips they did — the same window as Transport → Owed to drivers"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><rect x="2.5" y="5" width="15" height="10" rx="2"/><circle cx="10" cy="10" r="2"/><path d="M5 8v4M15 8v4"/></svg></span><span>Pay driver</span></span></button>
         <button class="btn btn-s" id="quickTransportBtn" onclick="openTransportQuickAdd()" style="display:none"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M3 13h14"/><path d="M5 13v-3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><circle cx="7" cy="15" r="1.5"/><circle cx="13" cy="15" r="1.5"/></svg></span><span>Transport</span></span></button>
         <button class="btn btn-s" onclick="exportBackup()" title="Download a backup file of this camp's data"><span class="btn-icon-label"><span class="ui-ic"><svg viewBox="0 0 20 20"><path d="M10 4v10"/><path d="m6.5 10.5 3.5 3.5 3.5-3.5"/><path d="M4 16h12"/></svg></span><span>Download backup file</span></span></button>
       </div>

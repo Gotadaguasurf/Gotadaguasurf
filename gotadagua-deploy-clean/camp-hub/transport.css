@@ -519,3 +519,43 @@
   #trOv select.tr-time { min-width: 96px; font-size: 16px; }   /* 16 px: iOS does not zoom into the field */
   #trOv input, #trOv select { font-size: 16px; }
 }
+
+/* Owners' month card (19 Nov 2026): this camp's month on top of Transport — trips by kind, cost, still to pay,
+   per guest, paid / to pay per driver, unpaid for more than 7 days. Owners only (transport.js isOwnerUser). */
+.tr-oc { margin-bottom: var(--sp-4); }
+.tr-oc > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.tr-oc > summary::-webkit-details-marker { display: none; }
+.tr-oc .period-picker { display: inline-flex; gap: 4px; }
+.tr-oc-kinds { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; margin-bottom: var(--sp-3); }
+.tr-oc-kind { display: inline-flex; align-items: center; gap: 6px; }
+.tr-oc-table { margin-top: var(--sp-3); border-top: 1px solid var(--border); }
+.tr-oc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--sp-3); align-items: start; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.tr-oc-row > .r { text-align: right; display: flex; flex-direction: column; align-items: flex-end; min-width: 92px; }
+.tr-oc-head { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding-top: 10px; }
+.tr-oc-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.tr-oc-owed .num { color: var(--amber, #b45309); font-weight: 700; }
+.tr-oc-late { margin-top: var(--sp-3); }
+.tr-oc-lrow { display: flex; justify-content: space-between; gap: var(--sp-3); font-size: 13px; padding: 4px 0; }
+.tr-oc-lrow > span { min-width: 0; overflow-wrap: anywhere; }
+.tr-oc [data-oc-overview] { margin-top: var(--sp-3); }
+@media (max-width: 640px) {
+  .tr-oc-row > .r { min-width: 84px; }
+  .tr-oc .summary-grid { grid-template-columns: 1fr 1fr; }
+}
+/* Folded: one slim line (month · cost · to pay); the month arrows show only when open. */
+.tr-oc:not([open]) { margin-bottom: var(--sp-2); }
+.tr-oc:not([open]) > summary { padding: 6px 12px; min-height: 0; }
+.tr-oc:not([open]) > summary > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.tr-oc:not([open]) .card-title { font-size: 13.5px; }
+.tr-oc:not([open]) .card-hint { font-size: 12px; margin: 0; }
+.tr-oc:not([open]) .period-picker { display: none; }
+.tr-oc-line { display: none; }
+@media (max-width: 640px) {
+  /* Phone, folded: one short line so the day list stays on the first screen. */
+  .tr-oc:not([open]) { margin-bottom: 0; }
+  .tr-oc:not([open]) > summary { padding: 3px 10px; }
+  .tr-oc:not([open]) :is(.card-title, .card-hint) { display: none; }
+  .tr-oc:not([open]) .tr-oc-line { display: block; font-size: 12.5px; font-weight: 600; line-height: 18px; color: var(--muted); }
+}
+.tr-oc:not([open]) > summary { border-bottom: 0; }
+@media (max-width: 640px) { .tr-oc:not([open]) > summary { padding: 2px 10px; } }

@@ -487,8 +487,82 @@
     // One view (16 Nov 2026): Reconcile is gone — «Owed to drivers» opens Pay, two chips cover the rest.
     // Order on screen: what it is (the pills) → what needs doing (To do) → what is owed → the week, day by day.
     const ov = TR.view === 'overview' && !LOCAL;
-    root.innerHTML = head + tabsHtml() + (ov ? '' : attentionStrip() + owedLine()) + `<div class="tr-tripview">${ov ? renderOverview() : renderTrips()}</div>` + footLinks();
+    root.innerHTML = head + (ov ? '' : ownerCard()) + tabsHtml() + (ov ? '' : attentionStrip() + owedLine()) + `<div class="tr-tripview">${ov ? renderOverview() : renderTrips()}</div>` + footLinks();
     if (TR.scrollDay) { const el = $('trDay-' + TR.scrollDay); TR.scrollDay = ''; if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' }); }
+  }
+
+  // ── Owners' month card (19 Nov 2026, Miguel: «aqui tinha só o overview para nós e para o Francisco… um sítio onde vejo
+  // sempre o overview dos transportes»). Owners only (/owner-config.js); never for the local manager nor the camp team.
+  // One month, this camp: trips by kind, cost (local + €), cost per guest, what each driver got and is still owed, and the
+  // unpaid trips older than 7 days. The numbers are the Overview's (lib/transport-overview.js) — nothing counted twice.
+  const OWNERS = () => new Set((window.__PLATFORM_OWNER_EMAILS || ['miguel@gotadaguasurf.com']).map(e => String(e).toLowerCase()));
+  const isOwnerUser = () => !LOCAL && !!TR.me && OWNERS().has(TR.me);
+  // Folded by default (one line: the month, its cost and what is still to pay) so the day list stays on the first screen.
+  TR.oc = TR.oc || { month: '', open: false };
+  const ocMonth = () => TR.oc.month || cToday().slice(0, 7);
+  // Guests of the month: camp_week_guests (the Bookinglayer Guests/App report that Week imports), one per guest_key
+  // (else booking + name), staying at least one night in the month; cancelled / expired / not here left out.
+  async function loadOcGuests(ym) {
+    if (TR.ocGuests && TR.ocGuests.ym === ym) return;
+    const mine = TR.ocGuests = { ym, n: null };   // a reply for an older request never overwrites a newer one
+    const P = TO().period('month', ym);
+    try {
+      const c = client(); const loc = await ensureHubLocationId();
+      const { data, error } = await c.from('camp_week_guests').select('booking_ref,guest_key,guest_name,check_in,check_out,booking_status')
+        .eq('location_id', loc).lte('check_in', P.to).gt('check_out', P.from);
+      if (error) throw error;
+      const keys = new Set((data || []).filter(g => !GONE.has(String(g.booking_status || '').toLowerCase()))
+        .map(g => g.guest_key || `${g.booking_ref || ''}|${String(g.guest_name || '').trim().toLowerCase()}`));
+      mine.n = keys.size;
+    } catch (_) { mine.n = 0; }
+    if (TR.ocGuests === mine && (typeof activePage === 'undefined' || activePage === 'transport')) render();
+  }
+  // The card's numbers, also for the tests: { ym, V (the month's view), fx, drivers[], late[], guests, perGuest }.
+  function ownerCardData(ym) {
+    ym = ym || ocMonth();
+    const P = TO().period('month', ym);
+    const linked = new Set(TR.trips.map(t => t.payment_entry_id).filter(Boolean));
+    const C = TO().collect({ trips: TR.trips, ledger: ovLedger(), drivers: TR.drivers, cfg: CC, goLive: goLive(), now: colomboNow(), linked, isOwed: t => reconcileStatus(t) === 'owed' });
+    const V = TO().view(C, P, CC);
+    const fx = TO().eurRate({ ledger: ovLedger(), cur: CUR, from: P.from, to: P.to, fallback: (typeof LOCAL_PER_EUR !== 'undefined' ? LOCAL_PER_EUR : 0),
+      defaultRate: (typeof FX_FALLBACK_THIS_LOC !== 'undefined' ? FX_FALLBACK_THIS_LOC : 0) });
+    // Per driver: what this month's trips cost, what of it is paid, what is still owed (done, unpaid). A payment in this month
+    // for earlier trips («earlier») is not this month's cost, so it is left out of «paid» here too.
+    const drivers = V.suppliers.filter(s => s.cost || s.owed).map(s => ({ label: s.label, driverId: s.driverId || '', cost: s.cost, paid: Math.max(0, s.paid - (s.earlier || 0)), owed: s.owed, toCome: s.toCome }));
+    const cutoff = GT.addDaysIso(cToday(), -7);
+    const late = TR.trips.filter(t => reconcileStatus(t) === 'owed' && t.trip_date <= cutoff).sort((a, b) => a.trip_date.localeCompare(b.trip_date) || String(a.trip_time || '').localeCompare(String(b.trip_time || '')));
+    const guests = TR.ocGuests && TR.ocGuests.ym === ym ? TR.ocGuests.n : null;
+    return { ym, P, V, fx, drivers, late, guests, perGuest: guests ? Math.round(V.total.cost / guests) : null };
+  }
+  function ownerCard() {
+    if (!isOwnerUser() || !TO()) return '';
+    const ym = ocMonth(); loadOcGuests(ym);
+    const D = ownerCardData(ym); const { V, fx } = D; const T = V.total;
+    const label = `${MONTH_LONG[+ym.slice(5, 7) - 1]} ${ym.slice(0, 4)}`;
+    const trips = V.kinds.filter(k => k.trips).map(k => `<span class="tr-oc-kind"><i class="tr-sw ${kindCls(k.kind)}"></i>${h(k.label)} <b class="num">${k.trips}</b></span>`).join('') || '<span class="hint">No trips this month</span>';
+    const tile = (k, l, v, sub) => `<div class="kpi" data-oc-kpi="${k}"><div class="kpi-label">${l}</div><div class="kpi-value">${v}</div><div class="kpi-sub">${sub}</div></div>`;
+    const tiles = tile('cost', 'Transport cost', money(T.cost), `<span class="tr-eur">${eurOf(T.cost, fx)}</span>`)
+      + tile('owed', 'Still to pay', money(T.owed), T.owed ? `<span class="tr-eur">${eurOf(T.owed, fx)}</span>` : 'nothing owed')
+      + tile('guest', 'Per guest', D.perGuest == null ? '–' : money(D.perGuest), D.guests == null ? 'counting guests…' : D.guests ? `<span class="tr-eur">${eurOf(D.perGuest, fx)}</span> · ${plural(D.guests, 'guest')}` : 'no guests imported for this month');
+    const rows = D.drivers.map(r => `<div class="tr-oc-row" data-oc-driver="${h(r.driverId || r.label)}"><span class="tr-oc-name">${h(r.label)}</span>
+        <span class="r">${twoCur(r.paid, fx)}</span><span class="r${r.owed ? ' tr-oc-owed' : ''}">${r.owed ? twoCur(r.owed, fx) : '<span class="hint">–</span>'}</span></div>`).join('');
+    const table = rows ? `<div class="tr-oc-table"><div class="tr-oc-row tr-oc-head"><span>Driver</span><span class="r">Paid</span><span class="r">To pay</span></div>${rows}</div>` : '';
+    const late = D.late.length ? `<div class="tr-oc-late" data-oc-late><div class="section-lbl">Unpaid for more than 7 days</div>${D.late.slice(0, 5).map(t => `<div class="tr-oc-lrow"><span>${fmtShort(t.trip_date)} · ${h(isAirport(t) ? `${t.kind === 'airport_departure' ? 'Departure' : 'Arrival'} · ${t.guest_names || 'Guest'}` : (t.route || t.tour_name || runNoun(t)))}${t.driver_id ? ` · ${h(driverById(t.driver_id)?.name || '')}` : ' · no driver'}</span><b class="num">${money(t.expected_price || 0)}</b></div>`).join('')}${D.late.length > 5 ? `<div class="hint">+${D.late.length - 5} more — see «Owed to drivers»</div>` : ''}</div>` : '';
+    return `<details class="card tr-oc" data-owner-card${TR.oc.open ? ' open' : ''} ontoggle="TransportUI.ocToggle(this.open)"><summary class="card-hdr"><div><div class="card-title">Transport · ${h(label)}</div><div class="card-hint" data-oc-hint>${h(money(T.cost))} · ${T.owed ? `${h(money(T.owed))} to pay` : 'nothing to pay'} · owners only</div>
+        <span class="tr-oc-line" aria-hidden="true">Transport ${h(MONTH_LONG[+ym.slice(5, 7) - 1].slice(0, 3))} · ${h(money(T.cost))}${T.owed ? ` · ${h(money(T.owed))} to pay` : ''}</span></div>
+        <span class="period-picker" onclick="event.preventDefault()"><button class="btn btn-s btn-sm btn-icon" title="Previous month" onclick="TransportUI.ocShift(-1)">${ic('chevron-left')}</button><button class="btn btn-s btn-sm btn-icon" title="Next month" onclick="TransportUI.ocShift(1)">${ic('chevron-right')}</button></span></summary>
+      <div class="card-body"><div class="tr-oc-kinds">${trips}</div><div class="summary-grid tr-ov-kpis">${tiles}</div>${table}${late}
+      <button class="btn-link" data-oc-overview onclick="TransportUI.ovMonth('${ym}')">Open the full overview</button></div></details>`;
+  }
+  function ocShift(n) { TR.oc.month = TO().shift('month', ocMonth(), n); render(); }
+  function ocToggle(open) { TR.oc.open = !!open; }
+  // The Operations Ledger's «Pay driver» (19 Nov 2026, Miguel: the local manager pays from the ledger too): the SAME
+  // window as Transport → «Owed to drivers» — one way to pay, two doors. Loads the trips first when this phone has not.
+  async function payFromLedger() {
+    if (!enabled()) return;
+    if (!TR.loaded) { say('Loading the trips…'); await load(); }
+    if (!TR.loaded) { say("Couldn't load the trips — " + (TR.error || 'try again'), 'err'); return; }
+    openPay();
   }
 
   // What is owed to each driver right now (every done, unpaid trip since go-live), in one card: the one way to pay.
@@ -3183,6 +3257,7 @@
       // ?view=local: the same page is Nadith's «Drivers» tab (16 Nov 2026).
       if (LOCAL) { const lbl = b.querySelector('.nav-btn-label > span:last-child'); if (lbl) lbl.textContent = 'Drivers'; else if (b.classList.contains('ntab-m')) b.textContent = 'Drivers'; }
     });
+    const pb = document.getElementById('payDriverBtn'); if (pb) pb.style.display = '';
     if (LOCAL) return;   // Nadith's phone loads the trips only when he opens «Drivers» (renderTransportPage)
     let tries = 0;
     const wait = setInterval(() => {
@@ -3204,6 +3279,7 @@
     openRuns, saveRuns, deleteRuns, toggleRuns, addOn, catOf, payState, weekTotals, keepTrip, inWeek, presetPrice, pickAir, airVehicles, pricesReady, bankCandidates, camp: CC, RUN,
     confirmGuest, guestConfirmed, confirmText, guestState, guestHtml, openGuestDay, pickFile, setExportDate, saveImport,
     openChecks, openLink, linkDriver, linkPick, linkAll, linkMonth, namedMonth, saveLink, unlinkPayment, openExplain, saveExplain, unlinkTrip,
+    payFromLedger, payEnabled: () => enabled(), ownerCardData, ocShift, ocToggle, isOwnerUser,
     openPay, payPick, payTick, payTickGroup, payMinus, payAddToggle, payAddRun, payBank, payAmount, payDate, payReason, payNote, savePay, payGroups, localDrivers: LOCAL,
     openDrivers, addDriver, saveDrivers,
     together, paidTwiceOk, moneyOk, moneyCharge, useBl, toggleOff,
