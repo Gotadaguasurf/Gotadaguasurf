@@ -327,8 +327,11 @@
     });
     return out;
   }
+  // Camp Tab price variants («Surf Lesson - 30», «Surf Lesson - 35») are how staff ring a lesson at a given price;
+  // they are not products for agencies, so the price list leaves them out (Miguel 19 Nov 2026).
+  const campTabVariant = (r) => /\s-\s\d+(?:[.,]\d+)?$/.test(String(r.name || ''));
   function itemRows(catalog, key) {
-    return (catalog || []).filter(r => sectionOfRow(r) === key && r.active !== false && Number(r.sell_price) > 0)
+    return (catalog || []).filter(r => sectionOfRow(r) === key && r.active !== false && Number(r.sell_price) > 0 && !campTabVariant(r))
       .slice().sort(bySort)
       .map(r => ({ name: r.name, note: catalogNote(r.notes), price: money(r.sell_price, r.sell_currency || r.currency || 'EUR'),
         group: r.audience === 'group' }));

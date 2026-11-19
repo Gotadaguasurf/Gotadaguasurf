@@ -234,6 +234,20 @@ test('price list sections (19 Nov 2026): yoga is an activity, «Add-ons» = boug
   expect(html).toContain('Weekly Pack only.');
 });
 
+test('price list (19 Nov 2026): Camp Tab price variants («Surf Lesson - 30») never reach the PDF', () => {
+  const camp = campFromData('portugal');
+  const extra = [
+    { id: 'v30', category: 'Lesson', name: 'Surf Lesson - 30', sell_price: 30, active: true },
+    { id: 'v3367', category: 'Lesson', name: 'Surf Lesson - 33.67', sell_price: 33.67, active: true },
+    { id: 'p75', category: 'Lesson', name: 'Private Surf Lesson', sell_price: 75, active: true },
+  ];
+  const c2 = { ...camp, catalog: (camp.catalog || []).concat(extra) };
+  const surf = PriceList.buildModel({ camps: [c2], period: 'all', today: '2026-11-17', sections: ['surf'] }).camps[0].parts.find(p => p.key === 'surf');
+  const names = surf.rows.map(r => r.name);
+  expect(names.filter(n => /\s-\s\d/.test(n))).toEqual([]);
+  expect(names).toContain('Private Surf Lesson');
+});
+
 test('price list in Portuguese: every fixed text from the dictionary, pt-PT money and dates; product names as in the tables; English unchanged', () => {
   const sections = ['accommodation', 'flexible', 'surf', 'tours', 'transfers', 'addons', 'shop', 'bar'];
   const camps = ['portugal', 'morocco', 'sri-lanka', 'junior-camp', 'surf-school'].map(campFromData);
