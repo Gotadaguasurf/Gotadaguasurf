@@ -181,6 +181,60 @@
     const big = known[known.length - 1];
     return { label: big.label, capacity: big.capacity, over: true, by, flag: `${n} people over capacity — 2nd vehicle?` };
   }
+  // ── People per surf spot → vehicles (19 Nov 2026, Miguel: «meter o numero de pessoas que vao para cada local de surf e
+  // faz o calculo automatico de quantas carrinhas ou tuk tuks») ──────────────────────────────────────────────────────
+  // planVehicles(pax, vehicles) → { plan: [{ label, capacity, price, count }], count, seats, total, flag }
+  //   vehicles = the route's /prices rows [{ label, capacity, price }]. Only rows with seats (capacity > 0) and a price
+  //   (> 0) take part — a row at 0 would always look cheapest. The cheapest combination that seats everybody wins; same
+  //   price → fewer vehicles; then fewer empty seats; then the larger vehicles (with Morocco's Surf prices 16 people =
+  //   Big Van + Car = 2 × Minivan = MAD 1,000, two vehicles each, 18 vs 16 seats → 2 × Minivan).
+  //   Sri Lanka: one vehicle, the tuk-tuk (3 seats) → ceil(people / 3). Nobody → an empty plan. No row with seats and a
+  //   price → an empty plan with a flag (the sheet falls back to choosing the vehicle by hand).
+  const SEATS_UNKNOWN = 'seats unknown in /prices — choose the vehicle';
+  function planVehicles(pax, vehicles) {
+    const n = Math.max(0, Math.floor(Number(pax) || 0));
+    const vs = (Array.isArray(vehicles) ? vehicles : []).filter(v => v && v.label && Number(v.capacity) > 0 && Number(v.price) > 0)
+      .map(v => ({ label: v.label, capacity: Math.round(Number(v.capacity)), price: Number(v.price) }))
+      .sort((a, b) => b.capacity - a.capacity || a.price - b.price).slice(0, 8);
+    const empty = flag => ({ plan: [], count: 0, seats: 0, total: 0, flag });
+    if (!vs.length) return empty(n > 0 ? SEATS_UNKNOWN : '');
+    if (!n) return empty('');
+    let best = null;
+    // counts are in vs order (largest first): on a full tie the plan with more of the larger vehicles wins
+    const larger = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+    const better = (a, b) => !b || (a.total !== b.total ? a.total < b.total : a.count !== b.count ? a.count < b.count
+      : a.seats !== b.seats ? a.seats < b.seats : larger(a.counts, b.counts));
+    (function walk(i, counts, seats, total, count) {
+      if (best && total > best.total) return;
+      if (seats >= n) { const c = { counts: counts.concat(vs.slice(i).map(() => 0)), seats, total, count }; if (better(c, best)) best = c; return; }
+      if (i >= vs.length) return;
+      const v = vs[i]; const max = Math.ceil((n - seats) / v.capacity);
+      for (let k = max; k >= 0; k--) walk(i + 1, counts.concat(k), seats + k * v.capacity, total + k * v.price, count + k);
+    })(0, [], 0, 0, 0);
+    const plan = vs.map((v, i) => ({ ...v, count: best.counts[i] })).filter(x => x.count > 0);
+    return { plan, count: best.count, seats: best.seats, total: best.total, flag: '' };
+  }
+  // The people of a plan, vehicle by vehicle: as even as the seats allow, larger vehicles first, every vehicle ≥ 1
+  // (camp_trips.pax > 0). 7 people in 3 tuk-tuks → [3, 2, 2]; 20 in a Big Van (15) + a Minivan (8) → [14, 6].
+  // More vehicles than people → the extra vehicles get null (the caller does not save them); more people than seats →
+  // the largest vehicle takes the rest (the sheet warns before).
+  function splitPax(pax, capacities) {
+    const n = Math.max(0, Math.floor(Number(pax) || 0));
+    const caps = (capacities || []).map(c => Number(c) > 0 ? Math.round(Number(c)) : null);
+    const order = caps.map((c, i) => i).sort((a, b) => ((caps[b] || 0) - (caps[a] || 0)) || a - b);
+    const out = caps.map(() => null); let left = n; let capLeft = caps.reduce((s, c) => s + (c || 0), 0);
+    order.forEach((i, j) => {
+      if (left <= 0) return;
+      const rest = order.length - j; const c = caps[i];
+      let take = c && capLeft > 0 ? Math.ceil(left * c / capLeft) : Math.ceil(left / rest);
+      take = Math.min(take, left - Math.min(rest - 1, left - 1));   // one person left for each vehicle still to fill
+      if (c) take = Math.min(take, c);
+      take = Math.max(1, take);
+      out[i] = take; left -= take; capLeft -= (c || 0);
+    });
+    if (left > 0 && order.length) out[order[0]] += left;
+    return out;
+  }
   // The label only (vehicles: the route's /prices rows). Anything that is not a list → null («no vehicle»).
   function vehicleFor(pax, boards, vehicles) { return pickVehicle(pax, { boards, vehicles: Array.isArray(vehicles) ? vehicles : [] }).label; }
   // The route's /prices rows for a trip, when the caller gave them (TransportCatalog.withCatalog → cfg.transportVehicles).
@@ -665,7 +719,7 @@
   }
 
   return {
-    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, pickVehicle, OVER_RE, vehiclesOf, addDaysIso, weekday, weekStart, dMon,
+    parseCsv, isGuestsExportHeader, parse, guestRows, guestAudit, importWarnings, hhmm, ymd, cleanPhone, vehicleFor, pickVehicle, planVehicles, splitPax, SEATS_UNKNOWN, OVER_RE, vehiclesOf, addDaysIso, weekday, weekStart, dMon,
     classifyField, strfADB, pyTitle, isUpper, isLower, NO_ALLERGY, TEST_NAME,   // used by lib/bl-report.js (the camp report, 16 Nov 2026)
     whatsappText, whatsappDayText, whatsappUrl, transfersTrips, transfersText, transfersUpdateTrips, transfersUpdateText, tripChanges, tripMark, tripInWeek, tripDoneAt, dressTitles, OK_STATUS, DEAD_STATUS, PACKAGE_INCLUDES, packageIncludes,
   };

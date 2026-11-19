@@ -77,7 +77,7 @@ async function stub(page, opts = {}) {
       if (method === 'DELETE') { st.trips = st.trips.filter(x => x.id !== idEq); st.calls.push({ t: 'trip_delete', id: idEq }); return json([]); }
     }
     if (url.includes('/rest/v1/camp_transport_payments')) return json(st.links);
-    if (url.includes('/rest/v1/pricing_catalog')) return json(url.includes('category=eq.Transport') && !opts.noPrices ? CATALOG : []);
+    if (url.includes('/rest/v1/pricing_catalog')) return json(url.includes('category=eq.Transport') && !opts.noPrices ? (opts.catalog || CATALOG) : []);
     if (url.includes('/rest/v1/rpc/camp_transport_autolink')) return json({});
     if (url.includes('/rest/v1/rpc/camp_transport_link_set')) {
       st.calls.push({ t: 'link_set', body });

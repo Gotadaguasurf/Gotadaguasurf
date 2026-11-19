@@ -54,7 +54,7 @@
           sell: num(r.sell_price), sellCurrency: r.sell_currency || r.currency || null,
           coversPax: num(r.covers_pax), blProduct: String(r.bl_product || '').trim() || null,
           sortOrder: Number.isFinite(Number(r.sort_order)) ? Number(r.sort_order) : 100 });
-      } else p.unitPrice = Number(r.cost_per_guest || 0);
+      } else { p.unitPrice = Number(r.cost_per_guest || 0); p.capacity = capacityOf(r); }   // a single-price route (Sri Lanka tuk-tuk «Ahangama»): its seats, when /prices has them
     }
     const out = { airport: [], surf: [], tours: [], tuktuk: [] };
     [...byDest.values()].sort((a, b) => a.sortOrder - b.sortOrder).forEach(p => { p.vehicles = byCapacity(p.vehicles); out[p.tab].push(p); });

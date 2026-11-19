@@ -68,7 +68,10 @@
     ],
     privateRoomBeds: 2,
     // Transport
-    runs: { kind: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', vehicle: 'Tuk-tuk' },
+    // seats: people per tuk-tuk for «people per surf spot → tuk-tuks» (19 Nov 2026, Miguel: «tuk tuks leva 3 pessoas»).
+    // Used only while the /prices surf row has no capacity (the Sri Lanka tuk-tuk rows have none on 19 Nov 2026);
+    // a capacity typed in /prices wins.
+    runs: { kind: 'tuktuk', label: 'Tuk-tuk', plural: 'Tuk-tuk runs', vehicle: 'Tuk-tuk', seats: 3 },
     // «Plan the day» (17 Nov 2026, Miguel): the tuk-tuks are organised in the MORNING for the SAME day and the order goes
     // to the tuk-tuk contact at once, so they are at the house on time. «Tomorrow» stays one tap away.
     planDay: 'today', planTime: '07:30',

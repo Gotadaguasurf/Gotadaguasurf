@@ -76,7 +76,7 @@ test('Edit: every field a manager may fix is in the sheet behind the row\'s «Ed
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Edit departure · Sat 21 Nov');
   for (const id of ['tr_d', 'tr_t', 'tr_pu', 'tr_f', 'tr_p', 'tr_g', 'tr_ph', 'tr_v', 'tr_pr', 'tr_dr', 'tr_n']) await expect(page.locator(`#${id}`), id).toBeVisible();
   await expect(page.locator('#trOv')).toContainText('the next Guests import does not overwrite it');
-  await page.fill('#tr_pu', '00:30');
+  await page.selectOption('#tr_pu', '00:30');
   await page.fill('#tr_ph', '+33 600 000 099');
   await page.selectOption('#tr_v', 'Minivan');
   await page.fill('#tr_pr', '320');
