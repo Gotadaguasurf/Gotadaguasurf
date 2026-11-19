@@ -179,7 +179,7 @@ test('«Price list PDF» → «Create PDF» opens the print page for this camp w
   const [popup] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
   const u = new URL(popup.url());
   expect(u.pathname).toBe('/prices/pricelist.html');
-  expect(Object.fromEntries(u.searchParams)).toEqual({ location: 'sri-lanka', period: 'upcoming', sections: 'accommodation,surf,tours,transfers,addons', print: '1' });
+  expect(Object.fromEntries(u.searchParams)).toEqual({ location: 'sri-lanka', period: 'upcoming', sections: 'accommodation,surf,tours,transfers,addons', lang: 'en', print: '1' });
   await popup.close();
   // «Flexible pack (per night)» can be ticked, but always opens unticked — even after it was used last time
   await page.locator('#pdfBtn').click();
@@ -191,6 +191,114 @@ test('«Price list PDF» → «Create PDF» opens the print page for this camp w
   await p2.close();
   await page.locator('#pdfBtn').click();
   await expect(flex).not.toBeChecked();
+  // Language (19 Nov 2026): English by default, Português for this PDF only — the next open is English again
+  await expect(page.locator('#pdf_lang')).toHaveValue('en');
+  await page.locator('#pdf_lang').selectOption('pt');
+  const [p3] = await Promise.all([context.waitForEvent('page'), page.locator('#pdfCreate').click()]);
+  expect(new URL(p3.url()).searchParams.get('lang')).toBe('pt');
+  await p3.close();
+  await page.locator('#pdfBtn').click();
+  await expect(page.locator('#pdf_lang')).toHaveValue('en');
+  // «Camp shop» is its own choice and starts unticked (things sold at the camp are not part of what partners get)
+  await expect(page.locator('#pdf_sections input[value="shop"]')).not.toBeChecked();
+});
+
+test('price list sections (19 Nov 2026): yoga is an activity, «Add-ons» = bought with the booking, «Camp shop» only when chosen; EN prints no Portuguese notes', () => {
+  const all = ['accommodation', 'surf', 'tours', 'transfers', 'addons', 'shop', 'bar'];
+  const m = (slug, sections, lang) => PriceList.buildModel({ camps: [campFromData(slug)], period: 'all', today: '2026-11-17', sections, lang }).camps[0];
+  const names = (camp, key) => ((camp.parts.find(p => p.key === key) || { rows: [] }).rows).map(r => r.name);
+  const ma = m('morocco', all), sl = m('sri-lanka', all), pt = m('portugal', all);
+  for (const c of [ma, sl, pt]) {
+    expect(names(c, 'addons').filter(n => /yoga/i.test(n))).toEqual([]);
+    expect(names(c, 'surf').filter(n => /yoga/i.test(n))).toEqual([]);
+  }
+  expect(names(ma, 'tours')).toEqual(expect.arrayContaining(['Yoga Lesson']));
+  expect(names(ma, 'addons')).toContain('Free Surf');
+  expect(names(sl, 'tours')).toEqual(expect.arrayContaining(['5 Yoga Lessons']));
+  expect(names(sl, 'shop')).toEqual(['Extra Dinner']);
+  expect(names(pt, 'tours')).toEqual(expect.arrayContaining(['Yoga Class', '5x Yoga Pack']));
+  expect(names(pt, 'shop')).toEqual(expect.arrayContaining(['Lost Key/Lock', 'Sunglasses', 'Surf Stick']));
+  expect(names(pt, 'addons')).toContain('Equipment Insurance');
+  expect(names(pt, 'addons').concat(names(pt, 'shop'))).not.toEqual(expect.arrayContaining(['Yoga Class']));
+  // the shop is never printed unless ticked
+  const def = m('portugal', ['accommodation', 'surf', 'tours', 'transfers', 'addons']);
+  expect(def.parts.map(p => p.key)).not.toContain('shop');
+  expect(def.parts.find(p => p.key === 'addons').title).toBe('Add-ons');
+  expect(m('portugal', all, 'pt').parts.find(p => p.key === 'shop').title).toBe('Loja do camp');
+  // notes: «Por semana.» reads «Per week.» in English and stays Portuguese in the Portuguese PDF; no Portuguese note in English
+  const insEn = pt.parts.find(p => p.key === 'addons').rows.find(r => r.name === 'Equipment Insurance');
+  const insPt = m('portugal', all, 'pt').parts.find(p => p.key === 'addons').rows.find(r => r.name === 'Equipment Insurance');
+  expect([insEn.note, insPt.note]).toEqual(['Per week.', 'Por semana.']);
+  const html = PriceList.render(PriceList.buildModel({ camps: ['portugal', 'morocco', 'sri-lanka', 'surf-school'].map(campFromData), period: 'all', today: '2026-11-17', sections: all }), { logo: '' });
+  expect(html).not.toMatch(/Por semana|aulas?\b|Só com|prancha|véspera|Festa na praia|Banho de gelo/);
+  expect(html).toContain('Weekly Pack only.');
+});
+
+test('price list in Portuguese: every fixed text from the dictionary, pt-PT money and dates; product names as in the tables; English unchanged', () => {
+  const sections = ['accommodation', 'flexible', 'surf', 'tours', 'transfers', 'addons', 'shop', 'bar'];
+  const camps = ['portugal', 'morocco', 'sri-lanka', 'junior-camp', 'surf-school'].map(campFromData);
+  const pt = PriceList.buildModel({ camps, period: 'all', today: '2026-11-17', sections, lang: 'pt' });
+  const text = PriceList.render(pt, { logo: '' }).replace(/<[^>]+>/g, '|').replace(/&amp;/g, '&');
+  const { en, pt: dict } = PriceList.I18N;
+  const sample = (v) => (typeof v === 'function' ? v(3, 3) : v).replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
+  // no English fixed string is left where Portuguese has its own (names from the tables may contain «Room», «Shared»…: whole cells only)
+  const leftover = Object.keys(en).filter(k => dict[k] !== undefined && sample(en[k]) !== sample(dict[k]))
+    .filter(k => text.split('|').map(t => t.trim()).includes(sample(en[k])) || (sample(en[k]).length > 12 && text.includes(sample(en[k]))));
+  expect(leftover).toEqual([]);
+  expect(Object.keys(en).filter(k => dict[k] === undefined)).toEqual([]);   // every key translated (camp names are PT-only)
+  expect(pt.title).toBe('Todos os camps');
+  expect(pt.fileTitle).toMatch(/^Gota Dagua tabela de preços - Todos os camps /);
+  expect(pt.generated).toBe('17 nov 2026');
+  expect(pt.camps.map(c => c.label)).toEqual(['Portugal', 'Marrocos', 'Sri Lanka', 'Junior Camp', 'Surf School']);
+  const ptCamp = pt.camps[0];
+  expect(ptCamp.accommodation[0].basis).toBe('Por pessoa, 7 noites');
+  expect(ptCamp.accommodation[0].seasons.map(s => s.label)).toEqual(expect.arrayContaining(['Época baixa', 'Época alta']));
+  expect(ptCamp.from).toBe('429\u00a0€');
+  const flex = ptCamp.accommodation.find(p => p.flex);
+  expect(flex.rooms[0].cells.flat().find(x => x.price).price).toMatch(/^\d+,\d{2}\u00a0€$/);   // «61,28 €»
+  expect(ptCamp.accommodation[0].rooms.map(r => r.room)).toEqual(PriceList.buildModel({ camps: [campFromData('portugal')], period: 'all', today: '2026-11-17', sections }).camps[0].accommodation[0].rooms.map(r => r.room));
+  const sl = pt.camps.find(c => c.slug === 'sri-lanka');
+  expect(sl.parts.find(p => p.key === 'tours').rows.find(r => r.name === 'Cooking Class').price).toBe('LKR 6000');
+  expect(sl.notes).toContain('Os preços de transfer são por transfer; um transfer leva até 3 pessoas.');
+  expect(text).toContain('com pranchas');
+  expect(text).toContain('até 3 pessoas');
+  expect(text).toMatch(/\d+ (jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez) /);
+  expect(text).not.toMatch(/Book now|Gota d'Água|Gota d’Água/);
+  // English stays as it was (no lang, or an unknown one)
+  for (const lang of [undefined, 'xx']) {
+    const m = PriceList.buildModel({ camps: [campFromData('portugal')], period: 'all', today: '2026-11-17', sections, lang });
+    expect([m.title, m.camps[0].from, m.camps[0].accommodation[0].basis, m.lang]).toEqual(['Portugal', '€429', 'Per person, 7 nights', 'en']);
+  }
+  // the /prices page keeps calling the shared pieces in English after a Portuguese PDF was built
+  expect(PriceList.money(61.28, 'EUR')).toBe('€61.28');
+});
+
+test('price list page in Portuguese: lang=pt prints Portuguese, A4 and 390 px with no overflow', async ({ page }) => {
+  await stubPrices(page);
+  await page.addInitScript(() => { window.print = () => {}; });
+  const errors = collectFatalErrors(page);
+  await page.goto('/prices/pricelist.html?location=all&period=all&sections=accommodation,flexible,surf,tours,transfers,addons,shop,bar&lang=pt&print=1');
+  await page.waitForFunction(() => window.__priceListReady === true, null, { timeout: 15000 });
+  expect(await page.evaluate(() => document.documentElement.lang)).toBe('pt-PT');
+  await expect(page).toHaveTitle(/^Gota Dagua tabela de preços - Todos os camps /);
+  await expect(page.locator('.pl-cover .pl-reserv')).toHaveText('Reservas e parcerias: info@gotadaguasurf.com · +351 924 689 580');
+  await expect(page.locator('.pl-cover-for')).toHaveText('Para agências e parceiros');
+  await expect(page.locator('.pl-camp[data-camp="portugal"] .pl-room-h').first()).toHaveText('Quarto');
+  await expect(page.locator('.pl-camp[data-camp="morocco"] .pl-camp-name')).toHaveText('Marrocos');
+  await expect(page.locator('.pl-camp[data-camp="sri-lanka"] .pl-pack').first().locator('.pl-amt').first()).toHaveText(/^\d+\u00a0€$/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await noSideScroll(page)).toBe(true);
+  await page.emulateMedia({ media: 'print' });
+  await page.setViewportSize({ width: 794, height: 1123 });
+  const over = await page.evaluate(() => {
+    const bad = [];
+    if (document.documentElement.scrollWidth > window.innerWidth + 1) bad.push('page ' + document.documentElement.scrollWidth);
+    document.querySelectorAll('.pl-table').forEach((t, i) => { if (t.scrollWidth > t.clientWidth + 1) bad.push('table ' + i); });
+    document.querySelectorAll('.pl-table td, .pl-table th, .pl-pill, .pl-camp-from, .pl-cover-for, .pl-kicker').forEach(td => { if (td.scrollWidth > td.clientWidth + 1) bad.push('cell ' + td.textContent.slice(0, 30)); });
+    return bad;
+  });
+  expect(over).toEqual([]);
+  expect(errors).toEqual([]);
 });
 
 test('price list model: per-night (Flexible) packs only when «flexible» is chosen', () => {

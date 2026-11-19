@@ -594,6 +594,13 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
           <label for="pdf_period">Season dates</label>
           <select id="pdf_period"></select>
         </div>
+        <div class="mfield">
+          <label for="pdf_lang">Language</label>
+          <select id="pdf_lang">
+            <option value="en">English</option>
+            <option value="pt">Português</option>
+          </select>
+        </div>
       </div>
       <div class="micro" style="margin-bottom:8px">Include</div>
       <div>
@@ -603,7 +610,8 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
           <label class="mtoggle"><input type="checkbox" value="surf" checked><span class="label">Surf packs &amp; lessons</span></label>
           <label class="mtoggle"><input type="checkbox" value="tours" checked><span class="label">Tours &amp; activities</span></label>
           <label class="mtoggle"><input type="checkbox" value="transfers" checked><span class="label">Transfers</span></label>
-          <label class="mtoggle"><input type="checkbox" value="addons" checked><span class="label">Add-ons &amp; extras</span></label>
+          <label class="mtoggle"><input type="checkbox" value="addons" checked><span class="label">Add-ons (with the booking)</span></label>
+          <label class="mtoggle"><input type="checkbox" value="shop"><span class="label">Camp shop (sold at the camp)</span></label>
           <label class="mtoggle"><input type="checkbox" value="bar"><span class="label">Bar &amp; merch</span></label>
         </div>
       </div>
@@ -2879,7 +2887,7 @@ window.addEventListener('beforeunload', e=>{
 });
 
 // ════════════════════════════════════════════════════════════════════════════
-//  PRICE LIST PDF (17 Nov 2026) — «Price list PDF» → choose camp / season dates / sections → «Create PDF».
+//  PRICE LIST PDF (17 Nov 2026) — «Price list PDF» → choose camp / season dates / language / sections → «Create PDF».
 //  Opens /prices/pricelist.html in a new tab: an A4 print page built by /lib/price-list.js from the same tables
 //  (no typed prices), in Outfit with the brand colours, which opens the browser's print dialog → «Save as PDF».
 //  Chosen over the old pdfmake export: real CSS (fonts, logo, page breaks), no 1.4 MB library from a CDN, and the
@@ -2901,6 +2909,7 @@ window.openPdfDialog = ()=>{
     if (Array.isArray(saved)) document.querySelectorAll('#pdf_sections input').forEach(i => { i.checked = saved.includes(i.value); });
     const flex = document.querySelector('#pdf_sections input[value="flexible"]'); if (flex) flex.checked = false;   // always starts off (Miguel 17 Nov 2026)
   } catch (_) {}
+  const lang = $('pdf_lang'); if (lang) lang.value = 'en';   // English unless picked for this PDF (19 Nov 2026)
   $('pdfOv').classList.add('open');
   setTimeout(() => $('pdfCreate')?.focus(), 30);
 };
@@ -2908,7 +2917,7 @@ window.downloadPriceListPDF = window.openPdfDialog;   // older name
 
 function priceListUrl(){
   const sections = [...document.querySelectorAll('#pdf_sections input:checked')].map(i => i.value);
-  const q = new URLSearchParams({ location: $('pdf_camp').value, period: $('pdf_period').value, sections: sections.join(','), print: '1' });
+  const q = new URLSearchParams({ location: $('pdf_camp').value, period: $('pdf_period').value, sections: sections.join(','), lang: ($('pdf_lang') && $('pdf_lang').value) || 'en', print: '1' });
   return { url: `/prices/pricelist.html?${q.toString()}`, sections };
 }
 window.createPriceListPdf = ()=>{

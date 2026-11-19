@@ -253,6 +253,8 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
   const loc = (q.get('location') || 'portugal').toLowerCase();
   const period = q.get('period') || 'upcoming';
   const sections = (q.get('sections') || 'accommodation,surf,tours,transfers,addons').split(',').map(s => s.trim()).filter(Boolean);
+  const lang = (PriceList.LANGS || ['en']).includes(q.get('lang')) ? q.get('lang') : 'en';   // English / Português (19 Nov 2026)
+  document.documentElement.lang = lang === 'pt' ? 'pt-PT' : 'en';
   const doc = document.getElementById('doc');
   const back = document.getElementById('plBack');
   if (loc !== 'all') back.href = '/prices/?location=' + encodeURIComponent(loc);
@@ -293,7 +295,7 @@ body{background:#e9e3cf;font-family:var(--gd-body);color:var(--gd-navy)}
   let camps;
   try { camps = (await Promise.all(slugs.map(loadCamp))).filter(Boolean); }
   catch (err) { console.error('[Price list] load failed', err); return fail("Couldn't load the prices", 'Check the connection and try again. (' + (err && err.message || err) + ')'); }
-  const model = PriceList.buildModel({ camps, period, sections });
+  const model = PriceList.buildModel({ camps, period, sections, lang });
   window.__priceListModel = model;
   document.title = model.fileTitle;   // the PDF's file name
   document.getElementById('plTitle').textContent = `Price list · ${model.title} · ${model.period}`;
