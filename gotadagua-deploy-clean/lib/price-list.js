@@ -624,9 +624,9 @@
         <div class="sch-place">Costa da Caparica</div></header>
       ${schPair(schTable(T('sch_group'), S.group), schTable(T('sch_private'), S.priv))}
       ${rentals}
+      ${more}
       ${stu.lessons.rows.length || stu.rentals.rows.length ? schBand(T('sch_students')) + schPair(schTable(T('sch_lessons'), stu.lessons), schTable(T('sch_rentals'), stu.rentals)) : ''}
       ${res.lessons.rows.length || res.rentals.rows.length ? schBand(T('sch_residents')) + schPair(schTable(T('sch_lessons'), res.lessons), schTable(T('sch_rentals'), res.rentals)) : ''}
-      ${more}
       <footer class="sch-contact"><div class="sch-bar">${esc(T('sch_contacts'))}</div>
         <div class="sch-contact-in"><span>${esc(c.phone)}</span><a href="mailto:${esc(c.email)}">${esc(c.email)}</a><a href="${esc(c.book)}">${esc(T('sch_book'))}: ${esc(bookShort)}</a></div></footer>
     </section>`;
