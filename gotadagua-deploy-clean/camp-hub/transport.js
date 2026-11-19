@@ -458,10 +458,11 @@
   // native select (on a phone a wheel that opens on the time already there), 00:00 … 23:45. A saved time that is not on a
   // quarter — a flight landing at 10:55 from Bookinglayer — stays in the list as it is, shown and saved unchanged.
   const QUARTERS = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`);
-  function timeSelect(id, value, attrs) {
+  // clearable: a time that may be empty (a trip's flight / pick-up time, a run's time) keeps a «No time» choice.
+  function timeSelect(id, value, attrs, clearable) {
     const v = /^\d\d:\d\d$/.test(String(value || '')) ? String(value) : '';
     const list = v && !QUARTERS.includes(v) ? QUARTERS.concat(v).sort() : QUARTERS;
-    return `<select id="${id}" class="tr-time" ${attrs || ''}>${v ? '' : '<option value="" selected>Time</option>'}${list.map(q => `<option value="${q}"${q === v ? ' selected' : ''}>${q}</option>`).join('')}</select>`;
+    return `<select id="${id}" class="tr-time" ${attrs || ''}>${!v || clearable ? `<option value=""${v ? '' : ' selected'}>${clearable ? 'No time' : 'Time'}</option>` : ''}${list.map(q => `<option value="${q}"${q === v ? ' selected' : ''}>${q}</option>`).join('')}</select>`;
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1573,8 +1574,8 @@
     const flags = (t.import_flags || []).map(f => `<div class="status-msg status-warn tr-flag">${h(f)}</div>`).join('');
     const body = `${flags}
       <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="tr_d" value="${h(t.trip_date)}" ${paid ? 'disabled' : ''}></div>
-      <div class="mfield"><label>${t.kind === 'airport_departure' ? 'Flight time' : 'Lands at'}</label>${timeSelect('tr_t', t.trip_time)}</div></div>
-      ${t.kind === 'airport_departure' ? `<div class="mfield"><label>Pick up at camp</label>${timeSelect('tr_pu', t.pickup_time)}</div>` : ''}
+      <div class="mfield"><label>${t.kind === 'airport_departure' ? 'Flight time' : 'Lands at'}</label>${timeSelect('tr_t', t.trip_time, '', true)}</div></div>
+      ${t.kind === 'airport_departure' ? `<div class="mfield"><label>Pick up at camp</label>${timeSelect('tr_pu', t.pickup_time, '', true)}</div>` : ''}
       <div class="g2"><div class="mfield"><label>Flight</label><input id="tr_f" value="${h(t.flight || '')}"></div>
       <div class="mfield"><label>Persons</label><input type="number" min="1" id="tr_p" value="${t.pax}"></div></div>
       <div class="mfield"><label>Guest</label><input id="tr_g" value="${h(t.guest_names || '')}"></div>
@@ -1717,7 +1718,7 @@
     const body = `<div class="status-msg status-info tr-free-rule">Guests' airport transfers come from Bookinglayer (the camp report) — never add them here. Add only a transfer nobody pays us for.</div>
       <div class="mfield"><label>Why is it free?</label><div class="pills tr-seg" id="at_fr">${FREE_REASONS.map(([v, l]) => `<button type="button" class="pill" data-v="${v}">${l}</button>`).join('')}</div></div>
       <div class="pills tr-seg" id="at_kind"><button class="pill active" data-v="airport_arrival">Airport to Camp</button><button class="pill" data-v="airport_departure">Camp to Airport</button></div>
-      <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="at_d" value="${onDay}"></div><div class="mfield"><label>Time</label>${timeSelect('at_t', '')}</div></div>
+      <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="at_d" value="${onDay}"></div><div class="mfield"><label>Time</label>${timeSelect('at_t', '', '', true)}</div></div>
       <div class="g2"><div class="mfield"><label>Flight</label><input id="at_f" placeholder="QR658"></div><div class="mfield"><label>Persons</label><input type="number" min="1" id="at_p" value="1"></div></div>
       <div class="mfield"><label>Name</label><input id="at_g" placeholder="Who travels"></div>
       <div class="mfield"><label>Phone</label><input id="at_ph" placeholder="${h(IS_SL ? '+49…' : CC.phoneExample)}"></div>
@@ -1898,7 +1899,9 @@
     const footer = `<button class="btn ${sendP || live.length ? 'btn-s' : 'btn-p'}" id="tk_done" onclick="TransportUI.closeModal();TransportUI.render()">Done</button>`
       + (live.length ? `<button class="btn ${sendP ? 'btn-s' : 'btn-p'}" id="tk_allplan" onclick="TransportUI.allAsPlanned()">${ic('check')} All went as planned</button>` : '')
       + (sendP ? `<button class="btn btn-p" id="tk_send" onclick="TransportUI.sendOrder()">${ic('send')} ${pend.some(x => x.key === 'changed') ? `Send the update to ${h(who)} on WhatsApp` : `Send to ${h(who)} on WhatsApp`}</button>` : '');
-    const ov = modal(sheetTitle(), SESSIONS ? 'Type the people per surf spot or tap each run, then send them to the driver' : 'Type the people per surf spot, or tap a run (each tap is saved at once)', body, footer);
+    const ppl0 = spList().length;   // Nadith (surf read-only) keeps the old words
+    const ov = modal(sheetTitle(), SESSIONS ? (ppl0 ? 'Type the people per surf spot or tap each run, then send them to the driver' : 'Tap each run (saved at once), then send them to the driver')
+      : (ppl0 ? 'Type the people per surf spot, or tap a run (each tap is saved at once)' : 'Runs done: each tap is saved at once — no Save button'), body, footer);
     const mf = ov && ov.querySelector('.mfooter'); if (mf) mf.classList.add('tr-foot1');
     spPaint(-1);
   }
@@ -2107,7 +2110,7 @@
     const typed = !!$('tk_spsave');
     foot.querySelectorAll(':scope > .btn').forEach(b => {
       if (b.id === 'tk_done') { if (b.classList.contains('btn-p')) b.dataset.p = '1'; if (b.dataset.p) { b.classList.toggle('btn-p', !typed); b.classList.toggle('btn-s', typed); } }
-      else b.hidden = typed;
+      else b.style.display = typed ? 'none' : '';
     });
   }
   function spSet(i, v) {
@@ -2460,7 +2463,7 @@
     const cur = allRoutes().find(r => r.route === t.route && r.purpose === t.purpose);
     const body = `${notMine ? '<div class="status-msg status-info tr-paid-note" data-ro-run>Surf runs and tours are the camp manager\'s — read-only here.</div>' : paid ? paidNote(t) : ''}${n > 1 ? `<div class="hint tr-run-n">${n} runs on this line${paid ? '' : ` — what you change applies to all ${n}`}.</div>` : ''}
       <div class="g2"><div class="mfield"><label>Date</label><input type="date" id="rn_d" value="${h(t.trip_date)}" ${dis}></div>
-      <div class="mfield"><label>Time</label>${timeSelect('rn_t', t.trip_time, dis)}</div></div>
+      <div class="mfield"><label>Time</label>${timeSelect('rn_t', t.trip_time, dis, true)}</div></div>
       <div class="mfield"><label>Route / purpose</label><select id="rn_r" ${dis}>${cur ? '' : `<option value="" selected>${h(runLabel(t))}</option>`}${routeOptions(cur ? cur.key : '')}</select></div>
       ${!IS_SL ? `<div class="mfield"><label>Vehicle</label><select id="rn_v" ${dis}>${vanLabels(t.vehicle).map(v => `<option${v === (t.vehicle || vanDefaultVehicle(null)) ? ' selected' : ''}>${h(v)}</option>`).join('')}</select></div>` : ''}
       <div class="g2"><div class="mfield"><label>Driver</label><select id="rn_dr" ${dis}>${driverOptions(t.driver_id)}</select></div>

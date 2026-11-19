@@ -44,8 +44,9 @@ async function openSl(page, opts = {}) {
   await fakeOwnerSession(page);
   await page.goto(`/camp-hub/?location=sri-lanka${opts.query || ''}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return HUB_LEDGER_HYDRATED === true; } catch (_) { return false; } }, null, { timeout: 15000 });
-  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await page.evaluate(() => TransportUI.render());
   return st;
 }
 module.exports = { SL_LOC, SAMPATH, SL_DRIVERS, SL_CAT, openSl, uid };

@@ -93,6 +93,7 @@ test('mobile (Sri Lanka): every Transport screen fits a 390 × 844 phone — tri
   await expect(page.locator('#tr_t')).toHaveValue('10:55');
   await expect(page.locator('#tr_t option[value="10:45"]')).toHaveCount(1);
   await expect(page.locator('#tr_t option[value="10:50"]')).toHaveCount(0);           // only quarters are offered
+  await expect(page.locator('#tr_t option[value=""]')).toHaveText('No time');         // a trip time can still be cleared
   await page.click('#trOv .btn-p');                                                    // saving without touching it keeps 10:55
   await expect.poll(() => page.evaluate(i => TransportUI._state.trips.find(t => t.id === i).trip_time, air)).toBe('10:55');
   await close(page);
@@ -123,7 +124,11 @@ test('mobile (Morocco): surf vans day list, tours, the vans sheet, plan the day,
   const report = {};
   const planned = { id: 'aaaaaaaa-0000-4000-8000-0000000000m1', location_id: H.LOC, kind: 'other', trip_date: '2026-11-15', trip_time: '08:00', route: 'Surf', purpose: 'surf', tour_name: null, vehicle: 'Big Van',
     expected_price: 700, currency: 'MAD', driver_id: H.D.fat, status: 'planned', source: 'manual', pax: 12, payment_entry_id: null, needs_resend: false, import_flags: [], edited_fields: [], created_at: '2026-11-14T08:00:00Z' };
-  await H.open(page, { trips: H.tripsFromFile().concat(planned) });
+  // a Transport · Bank Transfer from the SG statement not linked to trips yet → «payments to check»
+  const bank = { id: 'eeeeeeee-0000-4000-8000-0000000000b1', location_id: H.LOC, week_id: null, type: 'expense', category: 'Transport', linked_item: null, description: 'VIR Fathoune vans semaine', payment_method: 'Bank Transfer',
+    qty: 1, amount_local: 1400, currency: 'MAD', entry_date: '2026-11-14', business_area: 'Transport', fx_rate: 10.8, amount_eur: 129.63, recurring_source_id: null, recurring_month: null, source_kind: 'manual', is_comp: false,
+    zone_id: null, paid_from: 'morocco', attributed_location: 'morocco', created_at: '2026-11-14T09:00:00Z' };
+  await H.open(page, { trips: H.tripsFromFile().concat(planned), ledger: [bank], goLive: '2026-11-01' });
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   await page.evaluate(() => showPage('transport'));
   await check(page, 'ma-trips-all', report);
@@ -137,7 +142,22 @@ test('mobile (Morocco): surf vans day list, tours, the vans sheet, plan the day,
   await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
   await check(page, 'ma-tours', report);
   await page.evaluate(() => TransportUI.openChecks());
+  await expect(page.locator('#trOv.open')).toHaveCount(1);
   await check(page, 'ma-payments-to-check', report);
   fs.writeFileSync(path.join(SHOTS, `mobile-report-ma-${TAG}.json`), JSON.stringify(report, null, 1));
+  expect(errors).toEqual([]);
+});
+
+test('mobile (Sri Lanka ?view=local, Nadith): «Drivers» page and his run sheet fit 390 × 844; surf spots stay read-only there (no people stepper)', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const report = {};
+  await openSl(page, { trips: SL_TRIPS(), query: '&view=local' });
+  await check(page, 'sl-local-drivers', report);
+  await page.evaluate(() => TransportUI.openTuktuk());
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk runs');
+  await expect(page.locator('#trOv .tr-sp')).toHaveCount(0);
+  await expect(page.locator('#trOv .tr-tap-ro[data-ro="surf"]').first()).toBeVisible();
+  await check(page, 'sl-local-run-sheet', report);
+  fs.writeFileSync(path.join(SHOTS, `mobile-report-local-${TAG}.json`), JSON.stringify(report, null, 1));
   expect(errors).toEqual([]);
 });

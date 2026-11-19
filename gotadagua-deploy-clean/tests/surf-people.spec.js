@@ -224,6 +224,8 @@ test('Morocco: Log runs — the people stepper sits under each surf tap line; sa
   await tag.locator('input').fill('12');
   await expect(tag.locator('[data-sp-ans]')).toContainText('12 people → 1 Big Van');
   await expect(page.locator('#tk_spsave')).toHaveText('Save 1 van');
+  await expect(page.locator('#tk_allplan')).toBeHidden();                            // one decision at a time: the save first
+  await expect(page.locator('#trOv .btn-p:visible')).toHaveCount(1);
   expect(await noHScroll(page)).toBe(true);
   await shot(page, 'ma-log-typed');
   await page.click('#tk_spsave');
@@ -232,6 +234,7 @@ test('Morocco: Log runs — the people stepper sits under each surf tap line; sa
   expect(up.body).toMatchObject({ status: 'done', needs_resend: false, pax: 12, vehicle: 'Big Van', expected_price: 700 });
   expect(st.calls.filter(c => c.t === 'trip_insert')).toHaveLength(0);
   await expect(page.locator('.tr-tap-main[data-key="van|surf"] .tr-tap-n')).toHaveText('1');
+  await expect(page.locator('#tk_spsave')).toHaveCount(0);
   await expect(tag.locator('.tr-sp-had')).toContainText('12 in saved runs');
   // a second save on the same spot (no planned run left) inserts new runs
   await tag.locator('input').fill('5');
