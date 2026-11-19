@@ -98,7 +98,8 @@
 .tr-sp-name { font-size: 15px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .tr-sp-price, .tr-sp-had { font-size: 12px; line-height: 1.3; }
 .tr-sp-had { color: var(--ocean); font-weight: 600; }
-.tr-sp-step { flex: none; gap: 6px; }
+.tr-sp-step { flex: none; gap: 6px; align-items: center; }
+.tr-sp-unit { font-size: 13px; color: var(--muted); margin-left: 2px; }
 .tr-sp-n { width: 52px; height: 40px; padding: 0 4px; text-align: center; font: inherit; font-size: 17px; font-weight: 700; color: var(--ocean); border: 1px solid var(--border-2); border-radius: var(--r-xs); background: var(--surface); -moz-appearance: textfield; }
 .tr-sp-n::-webkit-outer-spin-button, .tr-sp-n::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .tr-sp-ans { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); width: 100%; min-height: 40px; margin: 4px 0 0; padding: 4px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); text-align: left; cursor: pointer; }

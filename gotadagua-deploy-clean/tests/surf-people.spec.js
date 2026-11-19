@@ -97,7 +97,7 @@ test('Sri Lanka: people per surf spot — 7 → 3 tuk-tuks (3 + 2 + 2) saved as 
   // 7 people to Ahangama: + seven times
   for (let i = 0; i < 7; i++) await ah.locator('button[title="One person more"]').click();
   await expect(ah.locator('input')).toHaveValue('7');
-  await expect(ah.locator('[data-sp-ans]')).toContainText('→ 3 tuk-tuks · LKR 1,500');
+  await expect(ah.locator('[data-sp-ans]')).toContainText('7 people → 3 tuk-tuks · LKR 1,500');
   await expect(ah.locator('[data-sp-ans] .tr-sp-amt')).toHaveText(/1,500/);
   await expect(page.locator('#tk_spsave')).toHaveText('Save 3 tuk-tuks');
   await expect(page.locator('#trOv .btn-p')).toHaveCount(1);                         // the save is now the one blue button
