@@ -160,24 +160,41 @@ body{overflow-x:hidden}
   @page{margin:1.2cm}
 }
 .hidden{display:none}
-/* WHO OWES US — one card above the month pills: issued invoices not paid, closed months not
-   invoiced, money received with no invoice. Rows are a table on desktop and stack on phones. */
-.owes-card{margin-bottom:var(--sp-5)}
-.owes-card .card-title{font-size:var(--fs-section);letter-spacing:-.01em}
-.owes-card .card-title b{font-variant-numeric:tabular-nums}
+/* PAYMENTS TAB — who owes us (18 Nov 2026), moved off the overview into its own tab (19 Nov 2026,
+   Miguel: «estar noutra tab… o overview onde trato de tudo, e os outros e reminders»). By month,
+   newest first; one row per partner and month, tap it for the invoices. Rows are a table on
+   desktop and stack on phones. The overview keeps one chip that opens this tab. */
+.owes-strip{padding:0 0 var(--sp-4)}
+.owes-kpis{max-width:760px}
+.owes-block{margin-bottom:var(--sp-5)}
 .owes-lbl{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.owes-block .tbl-wrap + .owes-lbl{border-top:1px solid var(--border)}
 .owes-sum{text-transform:none;letter-spacing:0;font-size:var(--fs-sec);font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
 .owes-tbl{table-layout:fixed}
 .owes-tbl tbody tr{cursor:default}
+.owes-tbl tbody tr.ow-grp{cursor:pointer}
 .owes-tbl td{padding-left:var(--card-pad);padding-right:10px}
 .owes-tbl td:last-child{padding-right:var(--card-pad);white-space:nowrap}
 .owes-tbl .ow-who{width:27%}
+.owes-tbl .ow-who .pname{display:flex;align-items:center;gap:8px;min-width:0}
+.owes-tbl .ow-who .pname .chevron{width:8px;height:8px;border-width:0 2px 2px 0}
 .owes-tbl .ow-who a{color:inherit;text-decoration:underline;text-underline-offset:2px}
-.owes-tbl .ow-note{color:var(--muted);font-size:12px;line-height:1.4}
-.owes-tbl .ow-note span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.owes-tbl .ow-note{color:var(--muted);font-size:12px;line-height:1.4;min-width:0}
+.owes-tbl .ow-note span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .owes-tbl .ow-amt{font-weight:700;color:var(--navy);width:150px}
 .owes-tbl .ow-state{width:112px;white-space:nowrap;text-align:right}
 .owes-tbl .ow-act{width:140px;text-align:right}
+.owes-tbl tr.ow-detail{cursor:default;background:var(--foam)}
+.owes-tbl tr.ow-detail > td{padding-top:0;padding-bottom:12px;white-space:normal}
+.ow-invs{display:flex;flex-direction:column;border-top:1px solid var(--border)}
+.ow-inv{display:grid;grid-template-columns:minmax(0,1fr) 150px 112px;align-items:center;padding:8px calc(140px - var(--card-pad)) 8px 0;border-bottom:1px solid var(--border);font-size:13px}   /* columns line up with the row above (amount · days · button) */
+.ow-inv-no{min-width:0;overflow-wrap:anywhere}
+.ow-inv-no a{color:var(--ocean);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.ow-inv-no .cell-sub,.ow-inv-amt .cell-sub{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.ow-inv-amt{text-align:right;padding-right:10px;font-weight:600;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ow-inv > :last-child{text-align:right;padding-right:10px}
+.ow-fullnote{margin-top:8px;font-size:12px;line-height:1.5;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.ow-fullnote b{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
 .owes-more{padding:6px calc(var(--card-pad) - 6px) 10px}
 @media (max-width: 640px){
   .owes-tbl,.owes-tbl tbody{display:block;table-layout:auto}
@@ -191,6 +208,10 @@ body{overflow-x:hidden}
   .owes-tbl .ow-note{grid-area:note}
   .owes-tbl .ow-note:empty,.owes-tbl .ow-state:empty,.owes-tbl .ow-act:empty{display:none}
   .owes-tbl .ow-act .btn{height:36px}
+  .owes-tbl tr.ow-detail{display:block;padding:0 16px 12px}
+  .owes-tbl tr.ow-detail > td{padding:0}
+  .ow-inv{grid-template-columns:minmax(0,1fr) auto auto;gap:10px;padding-right:0}
+  .ow-inv-amt,.ow-inv > :last-child{padding-right:0}
 }
 /* CONNECTION NOTICE — only shown when cloud sync is down (22 Oct 2026 audit: the permanent «Cloud sync is enabled» banner was noise) */
 .storage-notice{display:none;align-items:center;gap:8px;margin-bottom:20px}
@@ -212,6 +233,10 @@ body{overflow-x:hidden}
       <nav class="app-switch-menu" data-app-menu="partners"></nav>
     </details>
   </div>
+  <div class="nav-tabs" id="navTabs">
+    <button class="ntab active" type="button" data-page="overview" onclick="showTab('overview')">Overview</button>
+    <button class="ntab" type="button" data-page="payments" onclick="showTab('payments')">Payments</button>
+  </div>
   <div class="nav-actions" id="navActions">
     <span class="user-chip" id="dataBadge">—</span>
     <button class="nav-action-btn" onclick="openSettings()">Partners &amp; Rates</button>
@@ -222,22 +247,25 @@ body{overflow-x:hidden}
 <div class="nav-mob-backdrop" id="mobNavBackdrop" onclick="AppShell.toggleMobile()"></div>
 <aside class="nav-mob-drawer" id="mobNavDrawer" aria-hidden="true">
   <button class="nav-mob-close" onclick="AppShell.toggleMobile()" aria-label="Close menu">×</button>
+  <div class="nav-mob-lbl">Sections</div>
+  <button class="ntab-m active" type="button" data-page="overview" onclick="AppShell.toggleMobile();showTab('overview')">Overview</button>
+  <button class="ntab-m" type="button" data-page="payments" onclick="AppShell.toggleMobile();showTab('payments')">Payments</button>
   <div class="nav-mob-lbl">Actions</div>
   <button class="ntab-m" onclick="AppShell.toggleMobile();openSettings()">Partners &amp; Rates</button>
   <button class="ntab-m" onclick="AppShell.toggleMobile();openGlobalImportFromPartners()">Manage / Import bookings</button>
 </aside>
 
 <main>
-  <!-- PARTNERS PAGE -->
+  <div id="storageNotice" class="storage-notice status-msg status-err">
+    <span class="dot"></span>
+    <span>Cloud sync is unavailable right now, so this Partners area cannot save changes until the connection is back.</span>
+  </div>
+  <!-- PARTNERS PAGE (tab «Overview») -->
   <div id="page-partners" class="">
     <div class="section-head page-head">
       <div><div class="section-title">Partners</div><div class="section-sub">Tap a partner to see bookings and set the month's status.</div></div>
     </div>
-    <div id="storageNotice" class="storage-notice status-msg status-err">
-      <span class="dot"></span>
-      <span>Cloud sync is unavailable right now, so this Partners area cannot save changes until the connection is back.</span>
-    </div>
-    <div id="owesCard"></div>
+    <div id="owesLink"></div>
     <div class="month-tabs pills" id="monthTabs"></div>
     <div class="kpi-strip" id="kpiStrip"></div>
     <div class="section-head" style="margin-top:10px"><div class="section-title">Surf Camp Partners</div><div class="section-sub" id="surfCampCountHint"></div></div>
@@ -273,6 +301,14 @@ body{overflow-x:hidden}
         <tbody id="partnerTableBodyKids"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- PAYMENTS (tab «Payments», ?tab=payments): who owes us, by month -->
+  <div id="page-payments" class="hidden">
+    <div class="section-head page-head">
+      <div><div class="section-title">Payments</div><div class="section-sub">Who owes us: invoices waiting for payment, closed months to invoice, money received with no invoice.</div></div>
+    </div>
+    <div id="owesTab"><div class="card"><div class="empty-state"><div class="empty-sub">Loading partner invoices…</div></div></div></div>
   </div>
 
 </main>
@@ -1017,7 +1053,7 @@ function renderKPIs(id) {
 }
 
 // ── WHO OWES US ───────────────────────────────────────────────────────────────
-// One card above the month pills (18 Nov 2026 audit): what partners owe us by
+// The «Payments» tab (18 Nov 2026 audit; its own tab since 19 Nov 2026): what partners owe us by
 // issued invoice, the closed months still to invoice, and money that arrived
 // with no invoice. Everything is derived from what the page already has
 // (monthSplit, month statuses, partner_invoices, partner_ledger) — nothing is
@@ -1109,7 +1145,7 @@ function partnerOwes(today){
     const date = i.invoice_date || String(i.created_at||'').slice(0,10);
     const note = statusNotes[statusKey(name, m)] || '';
     waiting.push({ partner: shown(name), name, month: m, invoice: i.invoice_number, date, amount, open, days: daysSince(date, today),
-      note: lastLine(note), hold: OWES_HOLD.test(note + ' ' + (i.notes||'')), link: i.drive_link || '' });
+      note: lastLine(note), fullNote: String(note).trim(), hold: OWES_HOLD.test(note + ' ' + (i.notes||'')), link: i.drive_link || '' });
   });
   waiting.sort((a,b) => b.days - a.days || b.open - a.open);
 
@@ -1133,21 +1169,59 @@ function partnerOwes(today){
     toInvoiceTotal: sum(toInvoice, 'amount'), receivedTotal: sum(received, 'amount') };
 }
 
-const OWES_ROWS = { waiting: 5, toInvoice: 3, received: 3 };   // rows shown per list until «Show all»
+// ── PAYMENTS TAB ─────────────────────────────────────────────────────────────
+// Miguel, 19 Nov 2026: «tem de ser mostrada de outra maneira… ver por mês… noutra tab».
+// Same rows as partnerOwes(), shown by month (newest first) with ONE row per partner and
+// month; tapping the row lists its invoices. Nothing here changes a status.
+const OWES_MONTHS = { toInvoice: 4, received: 4 };   // months shown per list until «Show all»
 const owesAll = {};
+const owesOpen = new Set();                         // expanded partner-month rows (by key, survives re-renders)
 let owesNow = null;
+const owesMonthOf = m => String(m || '');
+const owesMonthLabel = m => !m ? 'No month' : isMonthKey(m) ? shortMonth(m) : String(m);
+// newest month first; a whole-year key ('2025') sits under its months, rows with no month last
+const owesByMonth = (rows, monthOf) => {
+  const b = {};
+  rows.forEach(r => { const m = monthOf(r); (b[m] || (b[m] = [])).push(r); });
+  return Object.keys(b).sort((x, y) => (!x) - (!y) || y.localeCompare(x)).map(m => ({ month: m, rows: b[m] }));
+};
+// one group per company (aliases together) and month
+function owesGroups(waiting){
+  const A = window.PartnerAlias, g = {};
+  waiting.forEach(r => {
+    const k = A.key(r.name) + '||' + r.month;
+    (g[k] || (g[k] = { key: k, partner: r.partner, month: r.month, items: [] })).items.push(r);
+  });
+  const uniq = a => [...new Set(a.filter(Boolean))];
+  return Object.values(g).map(x => {
+    x.items.sort((a, b) => b.days - a.days || String(a.invoice).localeCompare(String(b.invoice), 'en', { numeric: true }));
+    const live = x.items.filter(r => !r.hold);                                 // same order as the expansion
+    x.open = +x.items.reduce((s, r) => s + r.open, 0).toFixed(2);
+    x.amount = +x.items.reduce((s, r) => s + r.amount, 0).toFixed(2);
+    x.live = live;
+    x.hold = !live.length;                                                     // every invoice on hold: no Reminder
+    x.days = (live.length ? live : x.items).reduce((d, r) => Math.max(d, r.days), 0);   // the oldest invoice of the group
+    x.note = uniq(x.items.map(r => r.note)).join(' · ');
+    x.fullNotes = uniq(x.items.map(r => r.fullNote));
+    return x;
+  });
+}
 window.owesShowAll = list => { owesAll[list] = true; renderOwes(); };
+window.owesToggle = k => { owesOpen.has(k) ? owesOpen.delete(k) : owesOpen.add(k); renderOwes(); };
 function owesEmail(name){
   return getEmail(name) || (Object.entries(partnerEmails).find(([n, em]) => em && window.PartnerAlias.same(n, name)) || [])[1] || '';
 }
-// «Reminder»: Gmail draft about one unpaid invoice. Never touches the month status.
-window.owesReminder = i => {
-  const r = owesNow && owesNow.waiting[i]; if(!r) return;
-  return sendStatementEmail({ partner: r.name, month: isMonthKey(r.month) ? r.month : null, email: owesEmail(r.name), reminder: r });
+// «Reminder»: ONE Gmail draft for a partner and month, listing its unpaid invoices (those on hold
+// left out). Never touches the month status.
+window.owesReminder = k => {
+  const g = owesNow && owesNow.groups.find(x => x.key === k); if(!g || !g.live.length) return;
+  const first = g.live[0];
+  return sendStatementEmail({ partner: first.name, month: isMonthKey(g.month) ? g.month : null, email: owesEmail(first.name),
+    reminder: g.live.length === 1 ? first : { month: g.month, invoices: g.live } });
 };
 // «Overview»: the same statement email the month card opens, for every spelling of the company.
-window.owesOverview = i => {
-  const r = owesNow && owesNow.toInvoice[i]; if(!r) return;
+window.owesOverview = k => {
+  const r = owesNow && owesNow.toInvoice.find(x => window.PartnerAlias.key(x.partner) + '||' + x.month === k); if(!r) return;
   return sendStatementEmail({ partner: r.main, names: r.names, month: r.month, email: owesEmail(r.main), periodLabel: monthLabel(r.month),
     bookings: r.bookings.slice().sort((a,b) => a.checkin.localeCompare(b.checkin)) });
 };
@@ -1155,53 +1229,109 @@ window.owesOpenMonth = i => {
   const r = owesNow && owesNow.received[i]; if(!r) return;
   openStatement(canonicalPartnerName(r.name), isMonthKey(r.month) ? r.month : null);
 };
-function renderOwes(){
-  const box = document.getElementById('owesCard'); if(!box) return;
-  if(!partnerBookings().length && !Object.keys(partnerInvoices).length){ box.innerHTML = ''; return; }   // nothing loaded yet
-  const o = owesNow = partnerOwes();
-  const esc = AppShell.esc;
-  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const hold = '<span class="badge badge-grey">On hold</span>';
-  const btn = (fn, i, label, title) => `<button class="btn btn-s btn-sm" type="button" title="${title}" onclick="${fn}(${i})">${label}</button>`;
-  const row = c => `<tr><td class="ow-who"><div class="pname">${c.who}</div><span class="cell-sub">${c.meta}</span></td><td class="ow-note">${c.note ? `<span title="${esc(c.note)}">${esc(c.note)}</span>` : ''}</td><td class="r ow-amt">${c.amt}${c.amtSub ? `<span class="cell-sub">${c.amtSub}</span>` : ''}</td><td class="ow-state">${c.state||''}</td><td class="ow-act">${c.act||''}</td></tr>`;
-  const block = (list, label, summary, rows) => {
-    if(!rows.length) return '';
-    const cut = owesAll[list] ? rows : rows.slice(0, OWES_ROWS[list]);
-    return `<div class="section-lbl owes-lbl"><span>${label}</span>${summary ? `<span class="owes-sum">${summary}</span>` : ''}</div>
-      <div class="tbl-wrap"><table class="owes-tbl" data-owes="${list}"><tbody>${cut.join('')}</tbody></table></div>
-      ${rows.length > cut.length ? `<div class="owes-more"><button class="btn btn-link btn-sm" type="button" onclick="owesShowAll('${list}')">Show all ${rows.length}</button></div>` : ''}`;
-  };
-  const waiting = o.waiting.map((r, i) => row({
-    who: esc(r.partner),
-    meta: `${r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.invoice)}</a>` : esc(r.invoice)}${r.month ? ' · ' + esc(shortMonth(r.month)) : ''}`,
-    note: r.note,
-    amt: eur(r.open), amtSub: r.amount - r.open > 0.01 ? `of ${eur(r.amount)}` : '',
-    state: r.hold ? hold : `<span class="badge ${r.days > 60 ? 'badge-red' : r.days > 30 ? 'badge-amber' : 'badge-grey'}">${plural(r.days, 'day')}</span>`,
-    act: r.hold ? '' : btn('owesReminder', i, 'Reminder', 'Open a reminder email draft — nothing is sent automatically')
-  }));
-  const toInvoice = o.toInvoice.map((r, i) => row({
-    who: esc(r.partner), meta: `${esc(shortMonth(r.month))} · ${plural(r.bookings.length, 'booking')}`,
-    note: r.invoiced > 0.004 ? `${eur(r.invoiced)} of ${eur(r.worth)} already invoiced` : '', amt: eur(r.amount),
-    state: r.hold ? hold : (r.status ? `<span class="badge badge-blue">${esc(r.status)}</span>` : ''),
-    act: r.hold ? '' : btn('owesOverview', i, 'Overview', 'Open the booking overview email draft for this month')
-  }));
-  const received = o.received.map((r, i) => row({
-    who: esc(r.partner), meta: `${esc(shortDate(r.date))}${r.month ? ' · for ' + esc(shortMonth(r.month)) : ''}`,
-    note: r.ref, amt: eur(r.amount),
-    act: btn('owesOpenMonth', i, 'Open month', 'Open the statement of that month')
-  }));
-  const none = !waiting.length && !toInvoice.length && !received.length;
-  const title = waiting.length ? `Partners owe <b>${eur(o.total)}</b>` : (none ? 'Nothing open' : 'No invoices waiting for payment');
-  const hint = waiting.length
-    ? `${plural(waiting.length, 'invoice')} waiting for payment · oldest ${plural(o.oldest, 'day')}${o.onHold > 0.004 ? ` · ${eur(o.onHold)} on hold` : ''}`
-    : (none ? 'Every issued invoice is paid and every closed month is invoiced. A month shows here when it closes.' : 'Every issued partner invoice is marked Paid.');
-  box.innerHTML = `<div class="card owes-card">
-    <div class="card-hdr"><div><div class="card-title">${title}</div><div class="card-hint">${hint}</div></div></div>
-    ${block('waiting', 'Waiting for payment', '', waiting)}
-    ${block('toInvoice', 'To invoice', toInvoice.length ? `${plural(toInvoice.length, 'month')} · ${eur(o.toInvoiceTotal)}` : '', toInvoice)}
-    ${block('received', 'Received, no invoice', received.length ? `${plural(received.length, 'receipt')} · ${eur(o.receivedTotal)}` : '', received)}
-  </div>`;
+const owesPlural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const owesDays = d => `<span class="badge ${d > 60 ? 'badge-red' : d > 30 ? 'badge-amber' : 'badge-grey'}">${owesPlural(d, 'day')}</span>`;
+const owesOver60 = o => o.waiting.filter(r => !r.hold && r.days > 60).length;   // same count as the HQ chip (hq_todo)
+
+// Overview: one chip that opens the tab, so the list is never lost (nothing else on the overview).
+function renderOwesLink(){
+  const box = document.getElementById('owesLink'); if(!box) return;
+  if(!partnerBookings().length && !Object.keys(partnerInvoices).length){ box.innerHTML = ''; return; }
+  const o = partnerOwes(), late = owesOver60(o);
+  const text = o.waiting.length
+    ? `Unpaid invoices ${eur(o.total)} · ${late ? `${late} over 60 days` : owesPlural(o.waiting.length, 'invoice')}`
+    : (o.toInvoice.length ? `${eur(o.toInvoiceTotal)} to invoice` : '');
+  box.innerHTML = text ? `<div class="health-strip owes-strip"><button class="health-chip" type="button" data-owes-link onclick="showTab('payments')">${AppShell.esc(text)} ${AppShell.icon('arrow-right')}</button></div>` : '';
 }
+
+function renderOwes(){
+  const box = document.getElementById('owesTab'); if(!box) return;
+  if(!partnerBookings().length && !Object.keys(partnerInvoices).length){
+    box.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-sub">Loading partner invoices…</div></div></div>`; return;
+  }
+  const o = owesNow = partnerOwes();
+  o.groups = owesGroups(o.waiting);
+  const e = AppShell.esc, plural = owesPlural;
+  const hold = '<span class="badge badge-grey">On hold</span>';
+  const btn = (call, label, title, k) => `<button class="btn btn-s btn-sm" type="button" title="${title}"${k ? ` data-k="${e(k)}"` : ''} onclick="event.stopPropagation();${call}">${label}</button>`;
+  const inv = r => r.link ? `<a href="${e(r.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${e(r.invoice)}</a>` : e(r.invoice);
+  const row = c => `<tr${c.attrs || ''}><td class="ow-who"><div class="pname">${c.chev || ''}<span>${c.who}</span></div><span class="cell-sub">${c.meta}</span></td><td class="ow-note">${c.note ? `<span title="${e(c.note)}">${e(c.note)}</span>` : ''}</td><td class="r ow-amt">${c.amt}${c.amtSub ? `<span class="cell-sub">${c.amtSub}</span>` : ''}</td><td class="ow-state">${c.state||''}</td><td class="ow-act">${c.act||''}</td></tr>`;
+  const monthHead = (m, sum) => `<div class="section-lbl owes-lbl"><span>${e(owesMonthLabel(m))}</span><span class="owes-sum">${sum}</span></div>`;
+  const tbl = (list, rows) => `<div class="tbl-wrap"><table class="owes-tbl" data-owes="${list}"><tbody>${rows.join('')}</tbody></table></div>`;
+  const card = (list, title, hint, body) => `<div class="card owes-block" data-owes-block="${list}"><div class="card-hdr"><div><div class="card-title">${title}</div>${hint ? `<div class="card-hint">${hint}</div>` : ''}</div></div>${body}</div>`;
+  const cutMonths = (list, months) => {
+    const cut = owesAll[list] ? months : months.slice(0, OWES_MONTHS[list]);
+    return { cut, more: months.length > cut.length ? `<div class="owes-more"><button class="btn btn-link btn-sm" type="button" onclick="owesShowAll('${list}')">Show all ${plural(months.length, 'month')}</button></div>` : '' };
+  };
+
+  // 1. waiting for payment: month → partner row → invoices
+  const waitMonths = owesByMonth(o.groups, g => owesMonthOf(g.month));
+  const waitingHtml = waitMonths.map(({ month, rows }) => {
+    rows.sort((a, b) => b.days - a.days || b.open - a.open);
+    const sum = rows.reduce((s, g) => s + g.open, 0);
+    return monthHead(month, `${eur(sum)}`) + tbl('waiting', rows.map(g => {
+      const open = owesOpen.has(g.key), n = g.items.length, held = n - g.live.length;
+      const main = row({
+        attrs: ` class="ow-grp${open ? ' expanded' : ''}" data-k="${e(g.key)}" tabindex="0" role="button" aria-expanded="${open}" onclick="owesToggle(this.dataset.k)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();owesToggle(this.dataset.k)}"`,
+        chev: '<span class="chevron"></span>',
+        who: e(g.partner),
+        meta: n === 1 ? inv(g.items[0]) : `${plural(n, 'invoice')}${held ? ` · ${held} on hold` : ''}`,
+        note: g.note,
+        amt: eur(g.open), amtSub: g.amount - g.open > 0.01 ? `of ${eur(g.amount)}` : '',
+        state: g.hold ? hold : owesDays(g.days),
+        act: g.hold ? '' : btn('owesReminder(this.dataset.k)', 'Reminder', g.live.length > 1 ? `Open one reminder email draft for these ${g.live.length} invoices — nothing is sent automatically` : 'Open a reminder email draft — nothing is sent automatically', g.key)
+      });
+      if(!open) return main;
+      const lines = g.items.map(r => `<div class="ow-inv"><span class="ow-inv-no">${inv(r)}${r.date ? `<span class="cell-sub">${e(shortDate(r.date))}</span>` : ''}</span><span class="ow-inv-amt">${eur(r.open)}${r.amount - r.open > 0.01 ? `<span class="cell-sub">of ${eur(r.amount)}</span>` : ''}</span><span>${r.hold ? hold : owesDays(r.days)}</span></div>`).join('');
+      const notes = g.fullNotes.map(t => `<div class="ow-fullnote"><b>Note</b>${e(t)}</div>`).join('');
+      return main + `<tr class="ow-detail" data-detail="${e(g.key)}"><td colspan="5"><div class="ow-invs">${lines}</div>${notes}</td></tr>`;
+    }));
+  }).join('');
+
+  // 2. to invoice: month → one row per partner
+  const tiMonths = cutMonths('toInvoice', owesByMonth(o.toInvoice, r => owesMonthOf(r.month)));
+  const toInvoiceHtml = tiMonths.cut.map(({ month, rows }) => monthHead(month, eur(rows.reduce((s, r) => s + r.amount, 0))) + tbl('toInvoice', rows.map(r => row({
+    who: e(r.partner), meta: plural(r.bookings.length, 'booking'),
+    note: r.invoiced > 0.004 ? `${eur(r.invoiced)} of ${eur(r.worth)} already invoiced` : '', amt: eur(r.amount),
+    state: r.hold ? hold : (r.status ? `<span class="badge badge-blue">${e(r.status)}</span>` : ''),
+    act: r.hold ? '' : btn('owesOverview(this.dataset.k)', 'Overview', 'Open the booking overview email draft for this month', window.PartnerAlias.key(r.partner) + '||' + r.month)
+  })))).join('') + tiMonths.more;
+
+  // 3. received, no invoice: month → one row per receipt
+  const recMonths = cutMonths('received', owesByMonth(o.received.map((r, i) => ({ ...r, i })), r => owesMonthOf(r.month || String(r.date).slice(0, 7))));
+  const receivedHtml = recMonths.cut.map(({ month, rows }) => monthHead(month, eur(rows.reduce((s, r) => s + r.amount, 0))) + tbl('received', rows.map(r => row({
+    who: e(r.partner), meta: e(shortDate(r.date)), note: r.ref, amt: eur(r.amount),
+    act: btn(`owesOpenMonth(${r.i})`, 'Open month', 'Open the statement of that month')
+  })))).join('') + recMonths.more;
+
+  const late = owesOver60(o);
+  const kpis = `<div class="kpi-strip owes-kpis">
+    <div class="kpi" data-owes-kpi="owe"><div class="kpi-label">Partners owe</div><div class="kpi-value kv-green">${eur(o.total)}</div><div class="kpi-sub">${o.waiting.length ? `${plural(o.waiting.length, 'invoice')} · oldest ${plural(o.oldest, 'day')}${late ? ` · ${late} over 60 days` : ''}${o.onHold > 0.004 ? ` · ${eur(o.onHold)} on hold` : ''}` : 'every issued invoice is marked Paid'}</div></div>
+    <div class="kpi" data-owes-kpi="invoice"><div class="kpi-label">To invoice</div><div class="kpi-value">${eur(o.toInvoiceTotal)}</div><div class="kpi-sub">${o.toInvoice.length ? `${plural(o.toInvoice.length, 'closed month')} with no invoice yet` : 'every closed month is invoiced'}</div></div>
+  </div>`;
+  const none = !o.waiting.length && !o.toInvoice.length && !o.received.length;
+  box.innerHTML = kpis + (none
+    ? `<div class="card"><div class="empty-state"><div class="empty-title">Nothing open</div><div class="empty-sub">Every issued invoice is paid and every closed month is invoiced. A month shows here when it closes.</div></div></div>`
+    : (o.waiting.length ? card('waiting', 'Waiting for payment', 'One row per partner and month · tap a row for its invoices · Reminder opens an email draft, nothing is sent', waitingHtml)
+        : card('waiting', 'Waiting for payment', 'Every issued partner invoice is marked Paid.', ''))
+      + (o.toInvoice.length ? card('toInvoice', 'To invoice', 'Closed months worth more than their invoices · Overview opens the statement email draft', toInvoiceHtml) : '')
+      + (o.received.length ? card('received', 'Received, no invoice', `${plural(o.received.length, 'receipt')} · ${eur(o.receivedTotal)}`, receivedHtml) : ''));
+}
+
+// ── TABS: «Overview» (the partner list, unchanged) · «Payments» (?tab=payments) ──
+let activeTab = new URLSearchParams(location.search).get('tab') === 'payments' ? 'payments' : 'overview';
+function applyTab(){
+  document.getElementById('page-partners').classList.toggle('hidden', activeTab !== 'overview');
+  document.getElementById('page-payments').classList.toggle('hidden', activeTab !== 'payments');
+  document.querySelectorAll('.ntab[data-page],.ntab-m[data-page]').forEach(b => b.classList.toggle('active', b.getAttribute('data-page') === activeTab));
+}
+window.showTab = t => {
+  activeTab = t === 'payments' ? 'payments' : 'overview';
+  try { const u = new URL(location.href); if(activeTab === 'payments') u.searchParams.set('tab', 'payments'); else u.searchParams.delete('tab'); history.replaceState(null, '', u.pathname + u.search + u.hash); } catch(_){}
+  renderPartnersPage();
+  window.scrollTo(0, 0);
+};
+applyTab();
 
 // ── MONTH TABS ─────────────────────────────────────────────────────────────────
 function renderMonthTabs() {
@@ -1911,9 +2041,9 @@ function downloadBlob(blob, filename){
 }
 
 // Opens a Gmail draft — nothing is sent by the app. Called by the statement's
-// «Send email» button (context = the open statement) and by the «Who owes us»
+// «Send email» button (context = the open statement) and by the «Payments» tab
 // rows, which pass their own context: { partner, month, bookings } for the
-// overview of a month still to invoice, or { reminder } for an unpaid invoice.
+// overview of a month still to invoice, or { reminder } for unpaid invoices.
 async function sendStatementEmail(ctxArg){
   const ctx = (ctxArg && ctxArg.partner) ? ctxArg : (window.currentStatementContext || {});
   const em = ctx.email || getEmail(ctx.partner);
@@ -1934,9 +2064,11 @@ async function sendStatementEmail(ctxArg){
   if(ctx.reminder) return;
   for(const name of (ctx.names && ctx.names.length ? ctx.names : [ctx.partner])) await markOverviewSent(name, ctx.month);
 }
-// Payment reminder for one issued invoice (same Gmail draft opener as the statement).
+// Payment reminder for one issued invoice, or for every unpaid invoice of one partner and month
+// ({ month, invoices }) — same Gmail draft opener as the statement.
 function buildReminderEmailPayload(ctx){
-  const r = ctx.reminder, contact = getContactName(ctx.partner);
+  if(ctx.reminder && Array.isArray(ctx.reminder.invoices) && ctx.reminder.invoices.length > 1) return buildGroupReminderPayload(ctx);
+  const r = (ctx.reminder && Array.isArray(ctx.reminder.invoices)) ? ctx.reminder.invoices[0] : ctx.reminder, contact = getContactName(ctx.partner);
   const d = r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB') : '';
   const period = isMonthKey(r.month) ? monthLabel(r.month) : String(r.month || '');
   const partial = r.amount - r.open > 0.01;
@@ -1956,6 +2088,35 @@ function buildReminderEmailPayload(ctx){
       contact ? `Hello ${contact},` : 'Hello,', '',
       `A friendly reminder that invoice ${r.invoice}${d ? ` of ${d}` : ''} (${eur(r.amount)})${period ? `, for the bookings of ${period},` : ''} is still open on our side.`,
       ...(partial ? [`We received ${eur(r.amount - r.open)} so far; ${eur(r.open)} is still open.`] : []), '',
+      'If the transfer has already been made, please send us the confirmation so we can match it.', '',
+      'Best regards,'
+    ].join('\n')
+  };
+}
+
+function buildGroupReminderPayload(ctx){
+  const list = ctx.reminder.invoices, contact = getContactName(ctx.partner);
+  const period = isMonthKey(ctx.reminder.month) ? monthLabel(ctx.reminder.month) : String(ctx.reminder.month || '');
+  const dt = r => r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-GB') : '';
+  const open = +list.reduce((t, r) => t + r.open, 0).toFixed(2);
+  if(isSurfSchoolPartner(ctx.partner)) return {
+    subject: `Lembrete de pagamento — ${list.length} faturas${period ? `, ${period}` : ''}`,
+    body: [
+      contact ? `Olá ${contact},` : 'Olá,', '',
+      `Um lembrete de que estas faturas${period ? ` referentes às reservas de ${period}` : ''} continuam em aberto:`,
+      ...list.map(r => `- ${r.invoice}${dt(r) ? ` de ${dt(r)}` : ''}: ${eur(r.open)}${r.amount - r.open > 0.01 ? ` em falta de ${eur(r.amount)}` : ''}`),
+      `Total em aberto: ${eur(open)}`, '',
+      'Se a transferência já foi feita, envia-nos por favor o comprovativo.', '',
+      'Cumprimentos,'
+    ].join('\n')
+  };
+  return {
+    subject: `Payment reminder — ${list.length} invoices${period ? `, ${period}` : ''}`,
+    body: [
+      contact ? `Hello ${contact},` : 'Hello,', '',
+      `A friendly reminder that these invoices${period ? ` for the bookings of ${period}` : ''} are still open on our side:`,
+      ...list.map(r => `- ${r.invoice}${dt(r) ? ` of ${dt(r)}` : ''}: ${eur(r.open)}${r.amount - r.open > 0.01 ? ` still open of ${eur(r.amount)}` : ''}`),
+      `Total open: ${eur(open)}`, '',
       'If the transfer has already been made, please send us the confirmation so we can match it.', '',
       'Best regards,'
     ].join('\n')
@@ -2392,8 +2553,13 @@ function updateBadge(){
 }
 
 function renderPartnersPage(){
-  // the «Who owes us» card must never take the rest of the page down
-  try { renderOwes(); } catch(e){ console.warn('[Partners] who owes us not shown', e); const box = document.getElementById('owesCard'); if(box) box.innerHTML = ''; }
+  applyTab();
+  if(activeTab === 'payments'){
+    try { renderOwes(); } catch(e){ console.warn('[Partners] payments not shown', e); const box = document.getElementById('owesTab'); if(box) box.innerHTML = `<div class="card"><div class="empty-state"><div class="empty-title">Could not show this list</div><div class="empty-sub">${AppShell.esc(e.message || String(e))}</div></div></div>`; }
+    return;
+  }
+  // the one-line link to «Payments» must never take the rest of the page down
+  try { renderOwesLink(); } catch(e){ console.warn('[Partners] payments link not shown', e); const box = document.getElementById('owesLink'); if(box) box.innerHTML = ''; }
   renderKPIs('kpiStrip');renderMonthTabs();renderTable();
 }
 
@@ -2878,7 +3044,7 @@ try { getAuthClient().auth.getSession().then(r => AppShell.setAccount({ name: r?
     try {
       // logged out (fresh browser): sign in at the hub and come back, like the HQ — not an empty €0.00 page
       const { data: { session } = {} } = await getAuthClient().auth.getSession();
-      if (!session) { location.href = '/?next=' + encodeURIComponent('/partners/'); return; }
+      if (!session) { location.href = '/?next=' + encodeURIComponent('/partners/' + location.search); return; }
       await verifySupabaseSetup();
       if (__cloudMode === 'cloud') {
         await loadFromSupabase();
