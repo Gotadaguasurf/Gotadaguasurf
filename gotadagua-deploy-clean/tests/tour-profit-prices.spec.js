@@ -52,6 +52,7 @@ for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { wid
     await expect(galle.locator('[data-pp-profit]')).toHaveText('LKR 2,000 / person');
     expect(await noSideScroll(page)).toBe(true);
     await galle.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(3500);                                                // the «Saved» toast clears off the row
     await page.screenshot({ path: path.join(SHOTS, `prices-tour-rows-${name}.png`), fullPage: true });
     expect(errors).toEqual([]);
   });

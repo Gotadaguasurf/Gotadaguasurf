@@ -1594,7 +1594,7 @@
   // per person»; the others are counted apart in one line. Shown like the airport card above: to everyone who has the
   // Overview (the local manager included — he types the driver prices too).
   function ovTourMoney(D) {
-    const T = TO().tourMoney(D.C, D.P); if (!T.rows.length) return '';
+    const T = TO().tourMoney(D.C, D.P, { isTour: isTourCar }); if (!T.rows.length) return '';   // tour transfers only (a tuk-tuk tour run has no charge)
     const cell = (v, cls) => `<div class="r num${cls ? ' ' + cls : ''}">${h(money(v))}</div>`;
     const row = (r, tot) => `<div class="tr-tm${tot ? ' tr-tm-total' : ''}" data-ov-tour="${h(tot ? 'Total' : r.label)}"><div class="tr-tm-name"><b>${h(r.label)}</b><span class="cell-sub">${plural(r.trips, 'trip')} · ${plural(r.people, 'person', 'people')}</span></div>
       ${cell(r.charged)}${cell(r.driver)}${cell(r.profit, r.profit < 0 ? 'tr-neg' : 'tr-pos')}</div>`;

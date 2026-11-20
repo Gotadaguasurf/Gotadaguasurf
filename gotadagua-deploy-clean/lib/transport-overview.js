@@ -383,12 +383,14 @@
   // the kind 'tours' (collect()): a trip with a guest price (camp_trips.guest_price, per person, the camp's money) is charged
   // pax × guest price; its profit = charged − its driver price. A trip with no guest price (older, or not charged) has no
   // profit — never «−driver»: its driver cost is told apart (uncharged). Display only, nothing here reaches the ledger.
+  // o.isTour(trip) narrows it to the trips that can carry a charge (Sri Lanka: the tour transfers — a tuk-tuk tour run has none).
   //   → { rows: [{ label, trips, people, charged, driver, profit, uncharged, unchargedTrips }], total: { …same } }
-  function tourMoney(C, P) {
+  function tourMoney(C, P, o) {
+    const isTour = o && typeof o.isTour === 'function' ? o.isTour : () => true;
     const blank = label => ({ label, trips: 0, people: 0, charged: 0, driver: 0, profit: 0, uncharged: 0, unchargedTrips: 0 });
     const by = new Map(); const total = blank('Total');
     (C.items || C).forEach(it => {
-      if (it.src !== 'trip' || it.kind !== 'tours' || !inPeriod(it, P)) return;
+      if (it.src !== 'trip' || it.kind !== 'tours' || !inPeriod(it, P) || !isTour(it.trip || {})) return;
       const t = it.trip || {}; const gp = Number(t.guest_price);
       const r = by.get(it.part) || blank(it.part); by.set(it.part, r);
       [r, total].forEach(x => {

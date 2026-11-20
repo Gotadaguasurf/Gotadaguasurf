@@ -2653,6 +2653,7 @@ test('20 Nov · tour profit: a paid tour transfer keeps its charge editable (not
     tourCar(54, { route: 'Safari Yala', tour_name: 'Safari Yala', trip_date: '2026-11-12', pax: 5, expected_price: 25000 }),                       // no charge typed
     tourCar(55, { route: 'Galle', tour_name: 'Galle', trip_date: '2026-11-09', pax: 3, expected_price: 6000, guest_price: 4000, status: 'cancelled' }),   // cancelled: out
     tourCar(56, { route: 'Tea Plantation Visit', tour_name: 'Tea Plantation Visit', trip_date: '2026-11-11', pax: 2, expected_price: 5000, payment_entry_id: 'eeeeeeee-0000-4000-8000-0000000000p1' }),
+    trip({ id: T20(57), kind: 'tuktuk', purpose: 'tour', route: 'River Safari', tour_name: 'River Safari', place: null, trip_date: '2026-11-11', trip_time: '09:00', guest_names: null, vehicle: 'Tuk-tuk', driver_id: D.sampath, expected_price: 1000, source: 'manual', charge: null, status: 'done' }),   // a tuk-tuk tour run: never in the tours money card
   ];
   const st = await openTab(page, { trips, tourCatalog: TOUR_CAT, ledger: [ledgerRow('eeeeeeee-0000-4000-8000-0000000000p1', 'Dilan · 1 tour transfer', 5000, '2026-11-12', { linked_item: 'Tea Plantation Visit' })] });
   await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
@@ -2678,10 +2679,11 @@ test('20 Nov · tour profit: a paid tour transfer keeps its charge editable (not
   expect((await cells('Tea Plantation Visit')).map(x => x.replace(/\s+/g, ' '))).toEqual(['LKR 6,000', 'LKR 5,000', 'LKR 1,000']);
   expect((await cells('Total')).map(x => x.replace(/\s+/g, ' '))).toEqual(['LKR 58,000', 'LKR 40,000', 'LKR 18,000']);
   await expect(card.locator('[data-ov-tour="Safari Yala"]')).toHaveCount(0);
+  await expect(card.locator('[data-ov-tour="River Safari"]')).toHaveCount(0);
   await expect(card.locator('[data-ov-tour-uncharged]')).toHaveText('Not in these totals: 1 tour trip with no charge typed (drivers LKR 25,000).');
   await expect(card.locator('[data-ov-tour="Galle"]')).toContainText('2 trips · 10 people');
   // The pure function (lib/transport-overview.js) agrees.
-  const T = await page.evaluate(() => { const P = TransportOverview.period('month', '2026-11'); return TransportOverview.tourMoney(TransportOverview.collect({ trips: TransportUI._state.trips, ledger: [], drivers: [], cfg: {}, goLive: '2026-11-01', now: '2026-11-13T10:00', linked: new Set() }), P).total; });
+  const T = await page.evaluate(() => { const P = TransportOverview.period('month', '2026-11'); return TransportOverview.tourMoney(TransportOverview.collect({ trips: TransportUI._state.trips, ledger: [], drivers: [], cfg: {}, goLive: '2026-11-01', now: '2026-11-13T10:00', linked: new Set() }), P, { isTour: t => t.kind === 'other' }).total; });
   expect(T).toMatchObject({ trips: 4, people: 14, charged: 58000, driver: 40000, profit: 18000, unchargedTrips: 1, uncharged: 25000 });
   expect(errors).toEqual([]);
 });
