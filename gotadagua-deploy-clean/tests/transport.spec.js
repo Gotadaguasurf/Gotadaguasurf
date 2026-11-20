@@ -1,8 +1,9 @@
 // Camp hub · Transport tab (Sri Lanka, 13 Nov 2026) — stubbed Supabase.
 //
-// Full view (Francisco / Miguel / HQ). Since 16 Nov 2026 Nadith's ?view=local has the
-// same page as «Drivers»: the owed line, the runs and «Pay a driver» (airport rows
-// read-only). Reconcile is gone; «Pay a driver» is the one door to pay a driver.
+// Full view (Francisco / Miguel / HQ). Since 20 Nov 2026 Nadith's ?view=local has the
+// same full Transport page, except that he never deletes or cancels an airport transfer
+// (16–19 Nov it was a reduced «Drivers» tab). Reconcile is gone; «Pay a driver» is the
+// one door to pay a driver.
 // «Now» is pinned to Fri 13 Nov 2026 10:00 Colombo (window.TRANSPORT_NOW).
 const { test, expect } = require('@playwright/test');
 // Cancelled / merged transfers of a day sit behind «Show N cancelled» (17 Nov 2026): open every day's.
@@ -155,7 +156,7 @@ async function openImport(page) {
 }
 
 // ── Access ─────────────────────────────────────────────────────────────────
-test('transport: full view has the tab; Sri Lanka ?view=local has it as «Drivers»; camp-tab-only never (Morocco: tests/morocco-transport.spec.js)', async ({ page, browser }) => {
+test('transport: full view has the tab; Sri Lanka ?view=local has it too (full page since 20 Nov 2026); camp-tab-only never (Morocco: tests/morocco-transport.spec.js)', async ({ page, browser }) => {
   const errors = collectFatalErrors(page);
   await open(page);
   await expect(page.locator('.ntab[data-page="transport"]')).toBeVisible({ visible: true }).catch(async () => {
@@ -972,6 +973,7 @@ test('local view (Nadith): changes a sent run and sends the update', async ({ pa
   ] });
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');                 // the run states live on the Tuk-tuks pill (as for Francisco)
   await expect(page.locator('#trDay-2026-11-13 [data-batch="afternoon"]')).toContainText('Afternoon · Sent 09:30 ✓ to Sampath');
   await page.locator('#trDay-2026-11-13 .tr-dstate-b').first().click();
   await page.click('#tk_ses .pill[data-ses="afternoon"]');
@@ -1175,16 +1177,18 @@ test('airport (Sri Lanka): the day header — Not sent / Sent ✓ to the contact
   expect(errors).toEqual([]);
 });
 
-test('local view (Nadith): the tuk-tuk day header, mark → send, no price edit; the airport state is shown without a button', async ({ page }) => {
+test('local view (Nadith, since 20 Nov 2026 the full page): the airport day has its send buttons; the tuk-tuk day header, mark → send; the price is editable', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await page.clock.setFixedTime(new Date('2026-11-13T04:30:00Z'));
-  const st = await open(page, { query: '&view=local', trips: [trip({ id: R(301), guest_names: 'Air Guest', trip_date: '2026-11-13', trip_time: '22:00', flight: 'QR1' })] });
+  const st = await open(page, { query: '&view=local', trips: [trip({ id: R(301), guest_names: 'Air Guest', guest_phone: '+491700000301', trip_date: '2026-11-13', trip_time: '22:00', flight: 'QR1' })] });
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   const day = page.locator('#trDay-2026-11-13');
-  await expect(day.locator('[data-plan-state]').first()).toHaveAttribute('data-plan-state', 'none');
   await expect(day.locator('[data-air-state]')).toHaveText('Not sent');
-  await expect(day.locator('[data-send-update], [data-tick-day]')).toHaveCount(0);
+  await expect(day.locator('button:has-text("Send the whole day")')).toHaveCount(1);
+  await expect(day.locator('[data-tick-day]')).toHaveCount(1);
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
+  await expect(day.locator('[data-plan-state]').first()).toHaveAttribute('data-plan-state', 'none');
   await expect(page.locator('#transportRoot [data-plan]')).toHaveText('Plan the day');
   await day.locator('.tr-dstate-b').first().click();                                  // the badge opens the run sheet
   await page.locator('.tr-tap-main[data-key="camp|Laundry"]').click();
@@ -1194,12 +1198,12 @@ test('local view (Nadith): the tuk-tuk day header, mark → send, no price edit;
   await expect(page.locator('#tk_batches [data-batch="morning"]')).toContainText('Sent 10:00 ✓');
   await page.click('#tk_done');
   await page.locator('#transportRoot .tr-tuk-line').first().click();
-  await expect(page.locator('#rn_pr')).toBeDisabled();
+  await expect(page.locator('#rn_pr')).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
 // ── Run areas and run times (Miguel, 17 Nov 2026) ─────────────────────────────────────────────────────────────
-test('run areas (Sri Lanka): Nadith (?view=local) taps / plans / sends only the camp runs — surf and tours are read-only there and left out of his Send; Francisco\'s Send has the surf runs', async ({ page, browser }) => {
+test('run areas (Sri Lanka, 20 Nov 2026): Nadith (?view=local) runs every area like Francisco — surf and tours are tappable, plannable, editable and go in his Send', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await page.clock.setFixedTime(new Date('2026-11-13T04:30:00Z'));
   const surf = run(21, { trip_date: '2026-11-13', trip_time: '07:30', status: 'done' });           // marked by Francisco, not sent yet
@@ -1208,46 +1212,30 @@ test('run areas (Sri Lanka): Nadith (?view=local) taps / plans / sends only the 
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   fsp.mkdirSync(PLAN_SHOTS, { recursive: true });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
   await page.locator('#trDay-2026-11-13 .tr-dstate-b').first().click();
-  await expect(page.locator('.tr-tap-ro[data-ro="surf"]')).toHaveCount(3);                     // Ahangama, Weligama, South Beach
-  await expect(page.locator('.tr-tap-ro[data-ro="tours"]')).toHaveCount(2);
-  await expect(page.locator('button.tr-tap-main[data-key="surf|Ahangama"]')).toHaveCount(0);
-  await expect(page.locator('.tr-tap-ro .tr-tap-main[data-key="surf|Ahangama"] .tr-tap-n')).toHaveText('1');   // visible, not his
+  await expect(page.locator('.tr-tap-ro')).toHaveCount(0);                                        // nothing read-only for him any more
+  await expect(page.locator('#tk_send')).toHaveText('Send to Sampath on WhatsApp');                // Francisco's surf + tour runs are in his Send
+  const msg = await page.evaluate(id => TransportUI.planMessage('2026-11-13', id), D.sampath);
+  expect(msg).toContain('Ahangama'); expect(msg).toContain('River Safari');
   await page.evaluate(() => TransportUI.tap('surf|Ahangama'));
-  await page.evaluate(() => TransportUI.untap('surf|Ahangama'));
-  await page.waitForTimeout(300);
-  expect(st.calls.filter(c => ['trip_insert', 'trip_update', 'trip_delete'].includes(c.t))).toEqual([]);
-  await expect(page.locator('#tk_send')).toHaveCount(0);                                          // nothing of his to send
-  await page.locator('button.tr-tap-main[data-key="camp|Market / food"]').click();
-  await call(st, 'trip_insert');
-  await expect(page.locator('#tk_send')).toHaveText('Send to Sampath on WhatsApp');
+  expect((await call(st, 'trip_insert')).rows[0]).toMatchObject({ kind: 'tuktuk', route: 'Ahangama', purpose: 'surf' });
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(PLAN_SHOTS, 'sl-nadith-run-sheet-390.png') });
-  await page.click('#tk_send');
-  expect(await sentText(page, 0)).toBe('*TUK TUKS - MORNING FRI 13 NOV · PICKUP 07:30*\n\n- Market / food: 1 tuk-tuk');   // only his camp run
-  await expect.poll(() => st.calls.filter(c => c.t === 'trip_update').length).toBe(1);
-  expect(st.calls.find(c => c.t === 'trip_update').id).not.toBe(R(21));
-  // «Plan the day»: only camp runs to add; a surf line is shown without + / −
+  // «Plan the day»: the surf routes are his to add too
   await page.click('#tk_mode .pill:has-text("Plan the day")');
   const opts = await page.locator('#tk_pr option').allInnerTexts();
-  expect(opts.length).toBe(4); expect(opts.every(o => /^(Market \/ food|Laundry|Staff|Errand)/.test(o))).toBe(true);
-  await expect(page.locator('#tk_plan .tr-step-ro[data-ro="surf"]')).toHaveCount(1);
+  expect(opts.some(o => /Ahangama/.test(o))).toBe(true);
+  expect(opts.some(o => /Market \/ food/.test(o))).toBe(true);
+  await expect(page.locator('#tk_plan .tr-step-ro')).toHaveCount(0);
   await page.waitForTimeout(450);
   await page.screenshot({ path: path.join(PLAN_SHOTS, 'sl-nadith-plan-sheet-390.png') });
   await page.evaluate(() => TransportUI.closeModal());
-  // a surf run from the Trips list: read-only for him
+  // a surf run from the Trips list: editable for him
   await page.evaluate(id => TransportUI.openRuns([id]), R(21));
-  await expect(page.locator('[data-ro-run]')).toBeVisible();
-  await expect(page.locator('#rn_save, #rn_del')).toHaveCount(0);
-  await expect(page.locator('#rn_t')).toBeDisabled();
-  // Francisco (full view) on the same rows: his Send has the surf run (the tour is his too; the camp run is already sent)
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  const p2 = await ctx.newPage();
-  await p2.clock.setFixedTime(new Date('2026-11-13T04:30:00Z'));
-  await openTab(p2, { trips: st.trips.map(t => ({ ...t })) });
-  expect(await p2.evaluate(id => TransportUI.planMessage('2026-11-13', id), D.sampath))
-    .toBe('*UPDATE: TUK TUKS - MORNING FRI 13 NOV · PICKUP 07:30*\n\n- 07:30 Ahangama: 1 tuk-tuk NEW\n- 07:30 Tour · River Safari: 1 tuk-tuk NEW');
-  await ctx.close();
+  await expect(page.locator('[data-ro-run]')).toHaveCount(0);
+  await expect(page.locator('#rn_save')).toHaveCount(1);
+  await expect(page.locator('#rn_t')).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
@@ -1313,7 +1301,7 @@ test('QA re-check: a planned run and a removed (tombstone) one on the same route
   expect(st.calls.filter(c => c.t === 'trip_insert').length).toBe(0);
 });
 
-test('final QA: Nadith\'s Send never carries Francisco\'s surf cancellation; Pay «−» on a run the driver has (still to come) keeps it as CANCELLED for the next Send; in the local view Pay adds / removes only his areas', async ({ page, browser }) => {
+test('final QA: since 20 Nov 2026 Nadith sees Francisco\'s surf cancellation in his Send (all areas are his); Pay «−» on a run the driver has (still to come) keeps it as CANCELLED for the next Send', async ({ page, browser }) => {
   await page.clock.setFixedTime(new Date('2026-11-13T04:30:00Z'));
   const snap = (label) => ({ trip_date: '2026-11-13', trip_time: '14:00', label, to: 'Sampath', batch: 'afternoon' });
   const trips = [
@@ -1325,17 +1313,15 @@ test('final QA: Nadith\'s Send never carries Francisco\'s surf cancellation; Pay
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   const key = (p) => p.evaluate(id => TransportUI.batchesOf('2026-11-13', id).find(x => x.batch === 'afternoon').key, D.sampath);
-  expect(await key(page)).toBe('sent');                                                       // he does not see Francisco's change
-  expect(await page.evaluate(id => TransportUI.planMessage('2026-11-13', id), D.sampath)).toBe('');
-  // Pay (local): the surf group has no «−»; «Run not in the list» offers only his camp runs
+  expect(await key(page)).toBe('changed');                                                    // the same as Francisco
+  expect(await page.evaluate(id => TransportUI.planMessage('2026-11-13', id), D.sampath)).toBe('*UPDATE: TUK TUKS - AFTERNOON FRI 13 NOV · PICKUP 14:00*\n\n- 14:00 Ahangama: 1 tuk-tuk CANCELLED');
+  // Pay (local): the surf group has its «−»; «Run not in the list» offers the surf routes too
   await page.evaluate(id => TransportUI.payPick(id), D.sampath);
-  await expect(page.locator('#trOv [data-pay-group*="Ahangama"] [data-pay-minus]')).toHaveCount(0);
-  await page.evaluate(() => TransportUI.payMinus(TransportUI.payGroups(TransportUI._state.payDraft).find(g => /Ahangama/.test(g.key)).key));
-  await page.waitForTimeout(300);
-  expect(st.calls.filter(c => ['trip_delete', 'trip_update'].includes(c.t))).toEqual([]);
+  await expect(page.locator('#trOv [data-pay-group*="Ahangama"] [data-pay-minus]')).toHaveCount(1);
   await page.click('#py_add');
   const opts = await page.locator('#py_ar option').allInnerTexts();
-  expect(opts.every(o => /^(Market \/ food|Laundry|Staff|Errand)/.test(o))).toBe(true);
+  expect(opts.some(o => /Ahangama/.test(o))).toBe(true);
+  expect(st.calls.filter(c => ['trip_delete', 'trip_update'].includes(c.t))).toEqual([]);
   // Francisco: Pay «−» on the market run he sent (still to come) → kept as cancelled, the next Send says so
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const p2 = await ctx.newPage();
@@ -1644,28 +1630,24 @@ test('trips: a Confirmed trip can go back a step (status select → Message Sent
 // ════════════════════════════════════════════════════════════════════════════
 const fsx = require('fs');
 const DRV_SHOTS = process.env.DRV_SHOTS || path.join(__dirname, '..', 'test-results', 'drv-shots');
-test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airport rows read-only; Pay with «Run not in the list» and «−», Cash rows split by item', async ({ page }) => {
+test('local view (20 Nov 2026): Nadith has the full «Transport» — Overview, airport rows editable, Drivers / Export at the foot, owed line; Pay with «Run not in the list» and «−», Cash rows split by item', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   const st = await open(page, { query: '&view=local', ...weekFixture() });
-  expect(await page.evaluate(() => [...document.querySelectorAll('[data-page="transport"]')].some(b => b.style.display !== 'none' && /Drivers/.test(b.textContent)))).toBe(true);
-  expect(await page.evaluate(() => TransportUI._state.loaded)).toBe(false);                  // nothing loads until he opens «Drivers»
+  expect(await page.evaluate(() => [...document.querySelectorAll('[data-page="transport"]')].some(b => b.style.display !== 'none' && /Transport/.test(b.textContent) && !/Drivers/.test(b.textContent)))).toBe(true);
+  expect(await page.evaluate(() => TransportUI._state.loaded)).toBe(false);                  // his phone loads nothing until he opens Transport
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
   expect(await page.evaluate(() => activePage)).toBe('transport');
-  await expect(page.locator('#transportRoot .section-title')).toHaveText('Drivers');
-  // One blue button: «Add tuk-tuk runs» (+ «Plan tomorrow»); paying lives in «Owed to drivers»; no Drivers / Export / Overview.
-  await expect(page.locator('#transportRoot .btn-p:visible')).toHaveCount(1);
-  await expect(page.locator('#transportRoot [data-add-runs="tuktuk"]')).toHaveText('Add tuk-tuk runs');
-  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks']);
-  await expect(page.locator('#transportRoot [data-foot-links], #transportRoot [data-view="overview"], #trPayBtn')).toHaveCount(0);
-  // Airport rows: read-only (Francisco sends and confirms them) — the same checkpoints, no buttons, no select, no link.
-  await expect(page.locator('#transportRoot .tr-row-ro').first()).toBeVisible();
-  await expect(page.locator('#transportRoot .tr-btns, #transportRoot [data-send-week], #transportRoot .tr-day-btns')).toHaveCount(0);
-  await expect(page.locator('#transportRoot .tr-row-ro [data-steps]').first()).toBeVisible();
-  await expect(page.locator('#transportRoot .tr-row-ro select, #transportRoot .tr-row-ro button, #transportRoot .tr-row-ro a')).toHaveCount(0);
-  await page.locator('#transportRoot .tr-row-ro').first().click();
-  await expect(page.locator('#trOv.open')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .section-title')).toHaveText('Transport');
+  // The same page as Francisco: pills + Overview, the week's send button, Drivers and Export month at the foot.
+  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Overview']);
+  await expect(page.locator('#transportRoot [data-foot-links] button')).toHaveText(['Drivers and contacts', 'Export month']);
+  // Airport rows: editable — the row opens the trip, Edit / WhatsApp buttons, no read-only rows.
+  await expect(page.locator('#transportRoot .tr-row-ro')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-row[data-cat="airport"] .tr-btns').first()).toBeVisible();
+  // The owners' month card stays owners only.
+  await expect(page.locator('#transportRoot [data-owner-card]')).toHaveCount(0);
   expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Sampath LKR 1,500 Pay Pay another driver');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   fsx.mkdirSync(DRV_SHOTS, { recursive: true });
@@ -1678,10 +1660,11 @@ test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airp
   await expect(ah).toContainText('LKR 1,500');
   await expect(page.locator('#py_amt')).toHaveValue('1500');
   await expect(page.locator('#trOv label:has-text("Cash you are giving Sampath")')).toHaveCount(1);
-  // A run nobody logged: added done, ticked — Nadith only adds camp runs (runAreas, 17 Nov 2026: surf and tours are Francisco's).
+  // A run nobody logged: added done, ticked — since 20 Nov 2026 every route is his (runAreas), surf and camp runs alike.
   await page.click('#py_add');
   await page.fill('#py_ad', '2026-11-11');
-  expect((await page.locator('#py_ar option').allInnerTexts()).every(o => /^(Market \/ food|Laundry|Staff|Errand)/.test(o))).toBe(true);
+  const addOpts = await page.locator('#py_ar option').allInnerTexts();
+  expect(addOpts.some(o => /^Laundry/.test(o)) && addOpts.some(o => /Ahangama/.test(o))).toBe(true);
   await page.selectOption('#py_ar', 'camp|Laundry');
   await page.fill('#py_an', '2');
   await page.click('#py_addok');
@@ -1689,8 +1672,8 @@ test('local view (16 Nov 2026): Nadith has «Drivers» — owed line, runs, airp
   expect(ins).toMatchObject({ kind: 'tuktuk', trip_date: '2026-11-11', route: 'Laundry', purpose: 'laundry', driver_id: D.sampath, status: 'done', source: 'manual' });
   const lau = page.locator('#trOv [data-pay-group]', { hasText: 'Laundry' });
   await expect(lau).toContainText('× 2');
-  // A run that did not happen: «−» removes one of his; the surf line has no «−» for him.
-  await expect(ah.locator('[data-pay-minus]')).toHaveCount(0);
+  // A run that did not happen: «−» removes one; the surf line has its «−» too now.
+  await expect(ah.locator('[data-pay-minus]')).toHaveCount(1);
   await lau.locator('[data-pay-minus]').click();
   await call(st, 'trip_delete');
   await expect(page.locator('#trOv [data-pay-group]', { hasText: 'Laundry' })).not.toContainText('× 2');
@@ -1818,25 +1801,83 @@ for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { wid
   });
 }
 
-test('sheet · Nadith (?view=local): the same sheet; airport rows read-only and no «+ Add» on Airport; «+ Add» on a day opens the tuk-tuk runs', async ({ page }) => {
+test('sheet · Nadith (?view=local, 20 Nov 2026): the same sheet as Francisco — «+ Free transfer» on Airport, airport rows with Edit; «+ Add» on a day asks which kind', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, { query: '&view=local', ...weekFixture() });
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
-  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks']);
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Overview']);
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await page.click('#transportRoot .tr-cats .pill[data-cat="airport"]');
-  await expect(page.locator('#transportRoot [data-add]')).toHaveCount(0);
-  await expect(page.locator('#transportRoot .tr-row-ro').first()).toBeVisible();
-  await expect(page.locator('#transportRoot .tr-row-ro .tr-btns')).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-add]')).toHaveCount(7);
+  await expect(page.locator('#transportRoot [data-add]').first()).toContainText('Free transfer');
+  await expect(page.locator('#transportRoot .tr-row-ro')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-row .tr-btns').first()).toBeVisible();
   await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   fsx.mkdirSync(SHEET_SHOTS, { recursive: true });
-  await page.screenshot({ path: path.join(SHEET_SHOTS, 'nadith-drivers-390.png'), fullPage: true });
+  await page.screenshot({ path: path.join(SHEET_SHOTS, 'nadith-transport-390.png'), fullPage: true });
   await page.click('#transportRoot [data-add="2026-11-12"]');
+  await expect(page.locator('#trOv [data-add-cat="airport"]')).toHaveCount(1);
+  await page.click('#trOv [data-add-cat="tuktuk"]');
   await expect(page.locator('#tk_mode .pill.active')).toHaveText('Log runs');
   await expect(page.locator('#tk_d')).toHaveValue('2026-11-12');
+  expect(errors).toEqual([]);
+});
+
+// Miguel, 20 Nov 2026: Nadith «precisa (de acesso ao Transport)… só não pode é apagar os transferes do aeroporto».
+test('local view (20 Nov 2026): Nadith edits an airport transfer and adds a free one, but has no delete / cancel on airport transfers (buttons gone, handlers refuse); a manual tuk-tuk run he still deletes', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const manualAir = trip({ id: R(701), guest_names: 'Staff Kasun', trip_date: '2026-11-13', trip_time: '21:00', flight: 'UL1', guest_phone: '+491700000701', source: 'manual', charge: 'free', free_reason: 'staff', purpose: 'staff' });
+  const blAir = trip({ id: R(702), guest_names: 'Booked Guest', guest_phone: '+491700000702', trip_date: '2026-11-13', trip_time: '20:00', flight: 'QR1', booking_ref: '2026-7702', import_key: 'bl:2026-7702:arr', bl_checked_at: null });
+  const flagged = trip({ id: R(703), guest_names: 'Past Flag', trip_date: '2026-11-11', trip_time: '10:00', flight: 'QR2', guest_phone: '+491700000703', booking_ref: '2026-7703', bl_checked_at: '2026-11-13T05:00:00Z',
+    import_flags: ['Not booked in Bookinglayer: did the driver go? If not, cancel this trip'] });
+  const tuk = run(704, { trip_date: '2026-11-12' });
+  const st = await open(page, { query: '&view=local', trips: [manualAir, blAir, flagged, tuk] });
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await expect(page.locator('#transportRoot .section-title')).toHaveText('Transport');
+  const writes = () => st.calls.filter(c => ['trip_update', 'trip_delete'].includes(c.t));
+  // Edit a Bookinglayer transfer: the sheet opens, Save writes, but no «Cancel trip».
+  await page.click(`#transportRoot .tr-row[data-trip="${R(702)}"] [data-edit]`);
+  await expect(page.locator('#trOv.open')).toHaveCount(1);
+  await expect(page.locator('#trOv button:has-text("Cancel trip")')).toHaveCount(0);
+  await expect(page.locator('#trOv button:has-text("No-show")')).toHaveCount(1);
+  await page.fill('#tr_f', 'QR9');
+  await page.click('#trOv .btn-p');
+  expect((await call(st, 'trip_update')).body).toMatchObject({ flight: 'QR9' });
+  // The transfer added by hand: no Delete either.
+  await page.click(`#transportRoot .tr-row[data-trip="${R(701)}"] [data-edit]`);
+  await expect(page.locator('#trOv.open')).toHaveCount(1);
+  await expect(page.locator('#trOv #tr_del, #trOv .btn-danger')).toHaveCount(0);
+  await page.evaluate(() => TransportUI.closeModal());
+  // «Did the driver go?»: «Driver went» only; «Not booked» is not offered on a transfer still to come.
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${R(703)}"] [data-went]`)).toBeVisible();
+  await expect(page.locator('#transportRoot [data-didnt]')).toHaveCount(0);
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${R(702)}"] [data-bl-booked]`)).toHaveCount(1);
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${R(702)}"] [data-bl-not]`)).toHaveCount(0);
+  // The handlers refuse too (they are global): nothing is written.
+  const before = writes().length;
+  await page.evaluate(([a, b, c]) => { TransportUI.setStatus(b, 'cancelled'); TransportUI.removeTrip(a); TransportUI.driverDidntGo(c); TransportUI.blNotBooked(b); }, [R(701), R(702), R(703)]);
+  await page.waitForTimeout(400);
+  expect(writes().length).toBe(before);
+  expect(await page.evaluate(id => TransportUI._state.trips.find(t => t.id === id).status, R(702))).toBe('planned');
+  // Add a free airport transfer from the Airport pill.
+  await page.click('#transportRoot .tr-cats .pill[data-cat="airport"]');
+  await page.click('#transportRoot [data-add="2026-11-13"]');
+  await page.click('#at_fr .pill:has-text("Staff")');
+  await page.fill('#at_g', 'Nimal');
+  await page.fill('#at_d', '2026-11-14');
+  await page.click('#at_save');
+  expect((await call(st, 'trip_insert')).rows[0]).toMatchObject({ kind: 'airport_arrival', guest_names: 'Nimal', charge: 'free', free_reason: 'staff', source: 'manual' });
+  // A manual tuk-tuk run: Delete still works for him.
+  await page.evaluate(id => TransportUI.openRuns([id]), R(704));
+  await page.click('#rn_del');
+  expect((await call(st, 'trip_delete')).id).toBe(R(704));
+  expect(st.calls.filter(c => c.t === 'trip_delete').map(c => c.id)).toEqual([R(704)]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);
 });
 
@@ -2005,15 +2046,21 @@ test('bl check: «Booked ✓» stamps the check (who and when); «Not booked» c
   await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveText('1 transfer to check in Bookinglayer');   // yesterday's
 });
 
-test('bl check: Nadith (?view=local) sees the amber state read-only — no link, no buttons, no chip', async ({ page }) => {
-  await open(page, { query: '&view=local', ...blFixture() });
+test('bl check: Nadith (?view=local, 20 Nov 2026) checks like Francisco — link, «Booked ✓», the chip — but «Not booked» (it cancels) only on a transfer that already happened', async ({ page }) => {
+  const st = await open(page, { query: '&view=local', ...blFixture() });
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveCount(1);
+  // yesterday's (done): «Not booked» only raises «did the driver go?», never cancels — offered
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${BLID(8)}"] [data-bl-not]`)).toHaveCount(1);
   await page.click('button[title="Next week"]');
-  const line = page.locator(`#transportRoot .tr-row-ro[data-trip="${BLID(1)}"] [data-blcheck]`);
+  const line = page.locator(`#transportRoot .tr-row[data-trip="${BLID(1)}"] [data-blcheck]`);
   await expect(line).toContainText('Check in Bookinglayer');
-  await expect(line.locator('a, button')).toHaveCount(0);
-  await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveCount(0);
+  await expect(line.locator('a.tr-bl-open')).toHaveCount(1);
+  await expect(line.locator('[data-bl-booked]')).toHaveCount(1);
+  await expect(line.locator('[data-bl-not]')).toHaveCount(0);
+  await line.locator('[data-bl-booked]').click();
+  expect((await call(st, 'trip_update')).id).toBe(BLID(1));
 });
 
 test('bl check: screenshots — a Transport day with checked and unchecked transfers (1280 and 390, no sideways scroll)', async ({ page }) => {

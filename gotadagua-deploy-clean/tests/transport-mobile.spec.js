@@ -148,15 +148,24 @@ test('mobile (Morocco): surf vans day list, tours, the vans sheet, plan the day,
   expect(errors).toEqual([]);
 });
 
-test('mobile (Sri Lanka ?view=local, Nadith): «Drivers» page and his run sheet fit 390 × 844; surf spots stay read-only there (no people stepper)', async ({ page }) => {
+test('mobile (Sri Lanka ?view=local, Nadith, 20 Nov 2026): the full «Transport» page (editable airport rows), an airport trip and his run sheet fit 390 × 844; surf spots are his too (people stepper)', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const report = {};
   await openSl(page, { trips: SL_TRIPS(), query: '&view=local' });
-  await check(page, 'sl-local-drivers', report);
+  await expect(page.locator('#transportRoot .section-title')).toHaveText('Transport');
+  await expect(page.locator('#transportRoot .tr-row-ro')).toHaveCount(0);
+  await check(page, 'sl-local-transport', report);
+  const air = page.locator('#transportRoot .tr-row[data-cat="airport"] [data-edit]');
+  if (await air.count()) {
+    await air.first().click();
+    await expect(page.locator('#trOv.open')).toHaveCount(1);
+    await expect(page.locator('#trOv button:has-text("Cancel trip"), #trOv #tr_del')).toHaveCount(0);
+    await check(page, 'sl-local-airport-trip', report);
+    await close(page);
+  }
   await page.evaluate(() => TransportUI.openTuktuk());
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk runs');
-  await expect(page.locator('#trOv .tr-sp')).toHaveCount(0);
-  await expect(page.locator('#trOv .tr-tap-ro[data-ro="surf"]').first()).toBeVisible();
+  await expect(page.locator('#trOv .tr-tap-ro')).toHaveCount(0);
   await check(page, 'sl-local-run-sheet', report);
   fs.writeFileSync(path.join(SHOTS, `mobile-report-local-${TAG}.json`), JSON.stringify(report, null, 1));
   expect(errors).toEqual([]);

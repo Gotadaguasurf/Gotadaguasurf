@@ -165,7 +165,7 @@ test('surf-school expected-return math', async ({ page }) => {
 // ── Tier 3: guards that have regressed before ──────────────────────────
 // 6 Nov 2026: a camp's local manager (Nadith, Sri Lanka) gets the Camp Tab and the Operations Ledger only;
 // the HQ-paid lines are removed by the database (supabase/local-manager.sql).
-test('camp-hub local manager view: Camp Tab + Operations Ledger + Drivers (16 Nov 2026)', async ({ page }) => {
+test('camp-hub local manager view: Camp Tab + Operations Ledger + Transport (full page since 20 Nov 2026)', async ({ page }) => {
   await fakeOwnerSession(page);
   await page.goto('/camp-hub/?location=sri-lanka&view=local', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => { try { return typeof LOCAL_MANAGER_MODE === 'boolean' && typeof showPage === 'function'; } catch (_) { return false; } });
@@ -177,7 +177,7 @@ test('camp-hub local manager view: Camp Tab + Operations Ledger + Drivers (16 No
   });
   expect(r.mode).toBe(true);
   expect(r.tabs).toEqual(['pos', 'expenses', 'transport']);
-  expect(r.drivers).toBe('Drivers');
+  expect(r.drivers).toBe('Transport');
   expect(r.afterWeek).toBe('expenses');
   expect(r.afterOverview).toBe('expenses');
   expect(r.afterWeekly).toBe('expenses');

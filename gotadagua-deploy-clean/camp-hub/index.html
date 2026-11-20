@@ -5023,8 +5023,8 @@ async function removeClosedWeekIncome(payload={}){
 // ═══════════════════════════════════════════════════════════
 function showPage(p){
   if(CAMP_TAB_ONLY_MODE && p!=='pos') p='pos';
-  // Sri Lanka ?view=local also has «Drivers» (camp-hub/transport.js, 16 Nov 2026): log the runs and pay the drivers.
-  if(LOCAL_MANAGER_MODE && p!=='pos' && p!=='expenses' && !(p==='transport' && window.TransportUI && TransportUI.localDrivers)) p='expenses';
+  // Sri Lanka ?view=local also has Transport (camp-hub/transport.js): since 20 Nov 2026 the full page, except deleting / cancelling airport transfers.
+  if(LOCAL_MANAGER_MODE && p!=='pos' && p!=='expenses' && !(p==='transport' && window.TransportUI && TransportUI.localTransport)) p='expenses';
   activePage=p;
   document.querySelectorAll('.page').forEach(el=>el.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
@@ -10544,7 +10544,7 @@ function applyLocalManagerMode(){
   // Money from HQ arrives through the bank statement, not from him.
   const qeHq=document.querySelector('#qe_type option[value="transfer"]'); if(qeHq) qeHq.remove();
   document.querySelectorAll('.exp-quick-btn[data-cat="Cash Float"]').forEach(b=>b.remove());
-  document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses' || (btn.dataset.page==='transport' && window.TransportUI && TransportUI.localDrivers)) ? '' : 'none'; });
+  document.querySelectorAll('.ntab, .ntab-m').forEach(btn=>{ btn.style.display = (btn.dataset.page==='pos' || btn.dataset.page==='expenses' || (btn.dataset.page==='transport' && window.TransportUI && TransportUI.localTransport)) ? '' : 'none'; });
   showPage('expenses');
 }
 // Until Sep 2026 the hub also kept the bookings copy in the browser

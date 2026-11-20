@@ -81,19 +81,18 @@
     // runSessionSplit is Morning.
     runSessions: [{ key: 'morning', label: 'Morning', time: '07:30' }, { key: 'afternoon', label: 'Afternoon', time: '14:00' }],
     runSessionSplit: '12:00',
-    // Who may add / plan / send / edit each area of runs (Miguel, 17 Nov 2026): the surf runs and the tours are always
-    // Francisco's (the full camp hub view), the camp runs (Market / food, Laundry, Staff, Errand) are Nadith's too.
-    // An entry is a view — 'manager' = the full camp hub, 'local' = ?view=local — or a login email. The others see
-    // those runs read-only; «Pay a driver» is not affected. To let the social host run the tours later, add their login
-    // email (or the name of their view, once it exists) to `tours`, e.g. tours: ['manager', 'host@gotadaguasurf.com'].
-    runAreas: { surf: ['manager'], tours: ['manager'], camp: ['manager', 'local'] },
+    // Who may add / plan / send / edit each area of runs. An entry is a view — 'manager' = the full camp hub,
+    // 'local' = ?view=local — or a login email. The others see those runs read-only; «Pay a driver» is not affected.
+    // 17 Nov 2026: surf and tours were Francisco's only. 20 Nov 2026 (Miguel: Nadith gets the full Transport, he only
+    // may not delete airport transfers): every area is Nadith's too. To let the social host run the tours later, add
+    // their login email (or the name of their view, once it exists) to `tours`, e.g. tours: [..., 'host@gotadaguasurf.com'].
+    runAreas: { surf: ['manager', 'local'], tours: ['manager', 'local'], camp: ['manager', 'local'] },
     payMethod: 'Cash',
     airportSupplier: null,
     // Transport's page (16 Nov 2026 UX pass): one pill per kind of trip, the words this camp uses. `add` = the blue
     // button of a runs pill (opens today's run sheet on that pill's routes); the Airport pill's blue button sends.
     transportTabs: [{ key: 'airport', label: 'Airport' }, { key: 'tuktuk', label: 'Tuk-tuks', add: 'Add tuk-tuk runs', sheet: 'Tuk-tuk runs' }],
     transportHow: 'Airport transfers to and from Colombo, and the tuk-tuk runs. Pay a driver from «Owed to drivers».',
-    localDriversHow: 'Plan the tuk-tuks in the morning and send the order, log the runs, and pay the drivers in cash from «Owed to drivers».',
   };
 
   // ── Morocco (14 Nov 2026) ─────────────────────────────────────────────────
