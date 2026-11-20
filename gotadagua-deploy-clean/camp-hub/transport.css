@@ -559,3 +559,21 @@
 }
 .tr-oc:not([open]) > summary { border-bottom: 0; }
 @media (max-width: 640px) { .tr-oc:not([open]) > summary { padding: 2px 10px; } }
+
+/* «More details» in the short add forms (20 Nov 2026, Miguel: «as janelas têm bué opções»): flight / phone / vehicle of an
+   airport transfer, the pick-up time of a tour transfer — closed until tapped. */
+.tr-modal .tr-more { margin: var(--sp-2) 0 var(--sp-3); border-top: 1px solid var(--border); padding-top: var(--sp-2); }
+.tr-modal .tr-more > summary { cursor: pointer; font-weight: 600; font-size: 13px; color: var(--ocean); list-style: none; display: flex; gap: 8px; align-items: baseline; padding: 6px 0; }
+.tr-modal .tr-more > summary::-webkit-details-marker { display: none; }
+.tr-modal .tr-more > summary::before { content: '+'; display: inline-block; width: 12px; }
+.tr-modal .tr-more[open] > summary::before { content: '−'; }
+.tr-modal .tr-more[open] > summary { margin-bottom: var(--sp-2); }
+.tr-modal #tt_v { flex-wrap: wrap; }
+/* Sri Lanka's tour transfers (Tours pill): a «Tour» tag like Arrival / Departure, the status and Edit under each other. */
+.badge.tr-dir.tr-tourtag { background: var(--ocean-soft); color: var(--ocean); border: 1px solid var(--border); }
+.tr-srow.tr-row.tr-tour { grid-template-areas: "time what ppl drv price status"; }
+.tr-srow.tr-row.tr-tour .tr-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.tr-tour-hint { margin: 0 0 var(--sp-3); }
+@media (max-width: 700px) { .tr-srow.tr-row.tr-tour { grid-template-areas: "time what price" "time what status"; } }
+/* Five pills on a phone (Sri Lanka: All · Airport · Tuk-tuks · Tours · Overview, 20 Nov 2026) stay on one line at 390. */
+@media (max-width: 420px) { #transportRoot .tr-tabs { gap: 6px; } #transportRoot .tr-tabs .pill { padding: 0 9px; } }

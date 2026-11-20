@@ -91,8 +91,13 @@
     airportSupplier: null,
     // Transport's page (16 Nov 2026 UX pass): one pill per kind of trip, the words this camp uses. `add` = the blue
     // button of a runs pill (opens today's run sheet on that pill's routes); the Airport pill's blue button sends.
-    transportTabs: [{ key: 'airport', label: 'Airport' }, { key: 'tuktuk', label: 'Tuk-tuks', add: 'Add tuk-tuk runs', sheet: 'Tuk-tuk runs' }],
-    transportHow: 'Airport transfers to and from Colombo, and the tuk-tuk runs. Pay a driver from «Owed to drivers».',
+    // 20 Nov 2026 (Miguel: «e se o Francisco quiser adicionar uns transfers para um tour?»): a third pill, Tours — one trip per
+    // tour transfer (tuk-tuk, car, minivan or van; camp_trips kind 'other', purpose 'tour', tour_name = the Camp Tab tour).
+    // form: 'tour' = the pill's blue button and its days' «+ Add» open the tour transfer form, not a run sheet (Morocco's
+    // own 'tours' pill is a run sheet and has no `form`). Tuk-tuk tour runs ordered with Sampath stay on the Tuk-tuks pill.
+    transportTabs: [{ key: 'airport', label: 'Airport' }, { key: 'tuktuk', label: 'Tuk-tuks', add: 'Add tuk-tuk runs', sheet: 'Tuk-tuk runs' },
+      { key: 'tours', label: 'Tours', add: 'Add tour transfer', form: 'tour' }],
+    transportHow: 'Airport transfers to and from Colombo, the tuk-tuk runs and the tour transfers. Pay a driver from «Owed to drivers».',
   };
 
   // ── Morocco (14 Nov 2026) ─────────────────────────────────────────────────

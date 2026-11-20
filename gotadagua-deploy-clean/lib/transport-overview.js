@@ -80,7 +80,8 @@
     if (rates) {                                      // Morocco: the van runs and tours of CampConfig.vanRates
       const r = rates.find(x => x.route === t.route);
       if (r) return { group: r.purpose === 'tour' ? 'tours' : 'runs', key: 'van:' + r.key, label: r.label, order: rates.indexOf(r) };
-    } else if (t.kind !== ((cfg.runs || {}).kind || 'tuktuk')) {
+    } else if (t.kind !== ((cfg.runs || {}).kind || 'tuktuk') && t.purpose !== 'tour') {
+      // (a Sri Lanka tour transfer — kind 'other', purpose 'tour', the Tours pill since 20 Nov 2026 — is a tour below)
       return { group: 'other', key: 'other', label: 'Other', order: 0 };
     }
     if (t.purpose === 'tour' || t.tour_name) { const n = t.tour_name || t.route || 'Tour'; return { group: 'tours', key: 'tour:' + n.toLowerCase(), label: n, order: 99 }; }

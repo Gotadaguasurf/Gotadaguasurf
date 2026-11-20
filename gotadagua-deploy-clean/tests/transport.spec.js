@@ -93,7 +93,7 @@ async function stub(page, opts = {}) {
         return json(st.trips.slice(off, off + Math.min(lim, 1000)));
       }
       if (opts.noFreeColumn && body && [].concat(body).some(r => 'free_reason' in r)) { st.calls.push({ t: 'free_refused', method }); return json({ code: 'PGRST204', message: "Could not find the 'free_reason' column of 'camp_trips' in the schema cache" }, 400); }
-      if (method === 'POST') { const rows = (Array.isArray(body) ? body : [body]).map(r => trip({ id: uid('aaaaaaaa'), created_at: new Date().toISOString(), import_key: null, booking_ref: null, guest_names: null, ...r })); st.trips.push(...rows); st.calls.push({ t: 'trip_insert', rows }); return json(rows); }
+      if (method === 'POST') { const rows = (Array.isArray(body) ? body : [body]).map(r => trip({ id: uid('aaaaaaaa'), created_at: new Date().toISOString(), import_key: null, booking_ref: null, guest_names: null, ...r })); st.trips.push(...rows); st.calls.push({ t: 'trip_insert', rows, body }); return json(rows); }
       if (method === 'PATCH') { const t = st.trips.find(x => x.id === idEq); Object.assign(t, body); st.calls.push({ t: 'trip_update', id: idEq, body }); return json([t]); }
       if (method === 'DELETE') { st.trips = st.trips.filter(x => x.id !== idEq); st.calls.push({ t: 'trip_delete', id: idEq }); return json([]); }
     }
@@ -335,10 +335,10 @@ test('trips: no phone for the contact → wa.me without a number; a changed time
 test('trips: an airport transfer by hand is FREE only (Miguel 16 Nov 2026: guests\' transfers come from Bookinglayer) — reason and name required, «what we pay the driver» from /prices', async ({ page }) => {
   const st = await openTab(page);
   await page.click('#transportRoot .tr-tabs .pill[data-cat="airport"]');
-  await expect(page.locator('#transportRoot [data-add="2026-11-12"]')).toHaveText('Free transfer');
+  await expect(page.locator('#transportRoot [data-add="2026-11-12"]')).toHaveText('Add airport transfer');
   await page.click('#transportRoot [data-add="2026-11-12"]');
-  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add a free airport transfer');
-  await expect(page.locator('#trOv .tr-free-rule')).toContainText('never add them here');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add an airport transfer');
+  await expect(page.locator('#trOv .tr-free-rule')).toContainText('not charged to the guest');
   await expect(page.locator('#trOv #at_ch, #trOv #at_who')).toHaveCount(0);                  // no «who pays us» / «guest» choice: always free
   await expect(page.locator('#trOv #at_fr .pill')).toHaveText(['Staff', 'Gift to guest', 'Compensation', 'Other']);
   await expect(page.locator('#trOv #at_fr .pill.active')).toHaveCount(0);                     // nothing picked for you
@@ -359,10 +359,10 @@ test('trips: an airport transfer by hand is FREE only (Miguel 16 Nov 2026: guest
   await page.click('#at_save');
   const ins = (await call(st, 'trip_insert')).rows[0];
   expect(ins).toMatchObject({ kind: 'airport_arrival', trip_date: '2026-11-12', trip_time: '14:30', guest_names: 'Anna', charge: 'free', free_reason: 'compensation', purpose: 'guests', expected_price: 19000, source: 'manual', driver_id: D.dilan });
-  await expect(page.locator('.tr-row', { hasText: 'Anna' }).locator('.tr-free')).toHaveText('Free · Compensation');
+  await expect(page.locator('.tr-row', { hasText: 'Anna' }).locator('.tr-free')).toHaveText('Not charged · Compensation');
   // Its edit sheet offers only «Free» + the reason — never «In booking» or «Camp Tab».
   await page.locator('.tr-row', { hasText: 'Anna' }).locator('[data-edit]').click();
-  await expect(page.locator('#tr_ch .pill')).toHaveText(['Free (added by hand)']);
+  await expect(page.locator('#tr_ch .pill')).toHaveText(['Not charged (added by hand)']);
   await expect(page.locator('#tr_fr .pill.active')).toHaveText('Compensation');
 });
 
@@ -645,7 +645,7 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await page.setViewportSize(size);
     await openTab(page, weekFixture());
     // The logic in one plain line under the title.
-    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers to and from Colombo, and the tuk-tuk runs. Pay a driver from «Owed to drivers».');
+    await expect(page.locator('#transportRoot .tr-how')).toHaveText('Airport transfers to and from Colombo, the tuk-tuk runs and the tour transfers. Pay a driver from «Owed to drivers».');
     await expect(page.locator('.tr-week')).toHaveText('7–13 Nov');
     await expect(page.locator('[data-total]')).toHaveCount(0);
     expect(norm(await page.locator('#trOwed').innerText())).toBe('OWED TO DRIVERS Dilan LKR 47,500 Pay Sampath LKR 1,500 Pay Pay another driver');
@@ -657,9 +657,9 @@ for (const [name, size] of [['phone 390', { width: 390, height: 844 }], ['deskto
     await expect(row(R(101)).locator('.tr-pay')).toContainText('12 Nov · linked by Nadith');
     await expect(row(R(102)).locator('[data-pay="owed"]')).toHaveText('Owed');
     await expect(row(R(103)).locator('[data-pay="owed"]')).toHaveText('Owed');            // free for the guest, still owed to the driver
-    await expect(row(R(103)).locator('.tr-free')).toHaveText('Free · Staff');
+    await expect(row(R(103)).locator('.tr-free')).toHaveText('Not charged · Staff');
     await expect(row(R(103))).toContainText('added by Nadith');
-    await expect(row(R(104)).locator('.tr-free')).toHaveText('Free · Gift');
+    await expect(row(R(104)).locator('.tr-free')).toHaveText('Not charged · Gift');
     await expect(row(R(104)).locator('[data-pay="paid"]')).toHaveText('Paid');
     await expect(row(R(105)).locator('[data-status-sel]')).toHaveValue('planned');      // still to come: the status select (Pending)
     await showCancelled(page);                                                            // cancelled rows sit behind «Show N cancelled» (17 Nov 2026)
@@ -1337,7 +1337,7 @@ test('final QA: since 20 Nov 2026 Nadith sees Francisco\'s surf cancellation in 
   await ctx.close();
 });
 
-test('free: a transfer for staff or a gift — Add a free airport transfer (Staff), mark a trip Free with its reason, delete one added by hand', async ({ page }) => {
+test('free: a transfer for staff or a gift — Add an airport transfer (Staff), mark a trip Not charged with its reason, delete one added by hand', async ({ page }) => {
   const errors = collectFatalErrors(page);
   const st = await openTab(page, { trips: NEXT_WEEK() });
   await page.evaluate(() => TransportUI.openAddTransfer());
@@ -1349,15 +1349,15 @@ test('free: a transfer for staff or a gift — Add a free airport transfer (Staf
   const ins = (await call(st, 'trip_insert')).rows[0];
   expect(ins).toMatchObject({ kind: 'airport_arrival', guest_names: 'Kasun', purpose: 'staff', charge: 'free', free_reason: 'staff', notes: 'visa run', expected_price: 21000, source: 'manual' });
   const mine = page.locator('.tr-row', { hasText: 'Kasun' });
-  await expect(mine.locator('.tr-free')).toHaveText('Free · Staff');
+  await expect(mine.locator('.tr-free')).toHaveText('Not charged · Staff');
   // A Bookinglayer transfer becomes a gift.
   await page.click('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-line1 b');
   await expect(page.locator('#tr_del')).toHaveCount(0);                             // imported trips are cancelled, never deleted
-  await page.click('#tr_ch .pill:has-text("Free")');
+  await page.click('#tr_ch .pill:has-text("Not charged")');
   await page.click('#tr_fr .pill:has-text("Gift to guest")');
   await page.click('#trOv .btn-p');
   expect((await call(st, 'trip_update')).body).toEqual({ charge: 'free', free_reason: 'gift' });   // not an import field: edited_fields untouched
-  await expect(page.locator('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-free')).toHaveText('Free · Gift');
+  await expect(page.locator('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-free')).toHaveText('Not charged · Gift');
   // … and back to «In booking».
   await page.click('.tr-row[data-trip="aaaaaaaa-0000-4000-8000-00000000a001"] .tr-line1 b');
   await page.click('#tr_ch .pill:has-text("In booking")');
@@ -1382,8 +1382,8 @@ test('free: before the database update (no free_reason column) the save is repea
   expect(ins.charge).toBe('free');
   expect('free_reason' in ins).toBe(false);
   expect(st.calls.filter(c => c.t === 'free_refused').length).toBe(1);
-  await expect(page.locator('#toast')).toHaveText('Free transfer added');
-  await expect(page.locator('.tr-row', { hasText: 'Kasun' }).locator('.tr-free')).toHaveText('Free');
+  await expect(page.locator('#toast')).toHaveText('Airport transfer added');
+  await expect(page.locator('.tr-row', { hasText: 'Kasun' }).locator('.tr-free')).toHaveText('Not charged');
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1641,7 +1641,7 @@ test('local view (20 Nov 2026): Nadith has the full «Transport» — Overview, 
   expect(await page.evaluate(() => activePage)).toBe('transport');
   await expect(page.locator('#transportRoot .section-title')).toHaveText('Transport');
   // The same page as Francisco: pills + Overview, the week's send button, Drivers and Export month at the foot.
-  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Overview']);
+  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Tours', 'Overview']);
   await expect(page.locator('#transportRoot [data-foot-links] button')).toHaveText(['Drivers and contacts', 'Export month']);
   // Airport rows: editable — the row opens the trip, Edit / WhatsApp buttons, no read-only rows.
   await expect(page.locator('#transportRoot .tr-row-ro')).toHaveCount(0);
@@ -1729,7 +1729,7 @@ const SHEET_SHOTS = process.env.SHEET_SHOTS || path.join(__dirname, '..', 'test-
 test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with the day and the category), a footer per category', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await openTab(page, weekFixture());
-  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Overview']);
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Tours', 'Overview']);
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await expect(page.locator('#trDay-2026-11-07')).toContainText('Nothing on this day');
   await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(2);
@@ -1741,7 +1741,7 @@ test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with
   await expect(page.locator('#transportRoot .tr-row').first()).toBeVisible();
   await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(1);
   await page.click('#transportRoot [data-add="2026-11-12"]');
-  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add a free airport transfer');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add an airport transfer');
   await expect(page.locator('#at_d')).toHaveValue('2026-11-12');
   await page.evaluate(() => TransportUI.closeModal());
   // Tuk-tuks: runs only; «+ Add» opens the run sheet on that day (17 Nov 2026: Sri Lanka marks and sends there; a later day's runs are planned).
@@ -1762,7 +1762,7 @@ test('sheet: Airport / Tuk-tuks pills, seven days with «+ Add» (prefilled with
   await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
   await page.click('#transportRoot [data-add="2026-11-10"]');
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add on Tue 10 Nov');
-  await expect(page.locator('#trOv [data-add-cat]')).toHaveText(['Free airport transfer (staff, gift…)', 'Tuk-tuk run']);
+  await expect(page.locator('#trOv [data-add-cat]')).toHaveText(['Airport transfer (not charged to the guest)', 'Tuk-tuk run', 'Tour transfer']);
   await page.click('#trOv [data-add-cat="airport"]');
   await expect(page.locator('#at_d')).toHaveValue('2026-11-10');
   expect(errors).toEqual([]);
@@ -1801,17 +1801,17 @@ for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { wid
   });
 }
 
-test('sheet · Nadith (?view=local, 20 Nov 2026): the same sheet as Francisco — «+ Free transfer» on Airport, airport rows with Edit; «+ Add» on a day asks which kind', async ({ page }) => {
+test('sheet · Nadith (?view=local, 20 Nov 2026): the same sheet as Francisco — «+ Add airport transfer» on Airport, airport rows with Edit; «+ Add» on a day asks which kind', async ({ page }) => {
   const errors = collectFatalErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, { query: '&view=local', ...weekFixture() });
   await page.evaluate(() => showPage('transport'));
   await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
-  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Overview']);
+  await expect(page.locator('#transportRoot .tr-cats .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Tours', 'Overview']);
   await expect(page.locator('#transportRoot .tr-day')).toHaveCount(7);
   await page.click('#transportRoot .tr-cats .pill[data-cat="airport"]');
   await expect(page.locator('#transportRoot [data-add]')).toHaveCount(7);
-  await expect(page.locator('#transportRoot [data-add]').first()).toContainText('Free transfer');
+  await expect(page.locator('#transportRoot [data-add]').first()).toContainText('Add airport transfer');
   await expect(page.locator('#transportRoot .tr-row-ro')).toHaveCount(0);
   await expect(page.locator('#transportRoot .tr-row .tr-btns').first()).toBeVisible();
   await page.click('#transportRoot .tr-cats .pill[data-cat="all"]');
@@ -1872,6 +1872,7 @@ test('local view (20 Nov 2026): Nadith edits an airport transfer and adds a free
   await page.fill('#at_d', '2026-11-14');
   await page.click('#at_save');
   expect((await call(st, 'trip_insert')).rows[0]).toMatchObject({ kind: 'airport_arrival', guest_names: 'Nimal', charge: 'free', free_reason: 'staff', source: 'manual' });
+  await expect(page.locator('#trOv.open')).toHaveCount(0);                     // the add sheet has closed (its save is done)
   // A manual tuk-tuk run: Delete still works for him.
   await page.evaluate(id => TransportUI.openRuns([id]), R(704));
   await page.click('#rn_del');
@@ -2324,5 +2325,257 @@ test('tuk-tuk camp runs: the price is the /prices row only — no row → «pric
   expect(ins).toMatchObject({ route: 'Market / food', expected_price: 0, import_flags: ['no /prices row for «Market / food» — price to set in /prices'] });
   await page.locator('.tr-tap-main[data-key="camp|Laundry"]').click();
   expect((await call(st, 'trip_insert', 2)).rows[0]).toMatchObject({ route: 'Laundry', expected_price: 700 });
+  expect(errors).toEqual([]);
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  20 Nov 2026 (Miguel): «paid tem de ser sempre no Pay driver»; «+ Add airport transfer» (not charged to the guest);
+//  a page-level add button on Airport; Sri Lanka's Tours pill for tour transfers (tuk-tuk / car / minivan / van).
+// ════════════════════════════════════════════════════════════════════════════
+const T20 = n => `aaaaaaaa-0000-4000-8000-00000002${String(n).padStart(4, '0')}`;
+const noPaidWrites = st => st.calls.filter(c => ['trip_insert', 'trip_update'].includes(c.t))
+  .flatMap(c => [].concat(c.body || [])).filter(r => r && 'payment_entry_id' in r);   // what the app SENT (rows = the stub's full row)
+
+test('20 Nov · paid only in «Pay a driver»: adding, editing, status steps, tour transfers never pay nor link; the row\'s «Owed» chip opens the normal Pay sheet and nothing is paid until «Save payment»', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const future = trip({ id: T20(1), guest_names: 'Future Guest', trip_date: '2026-11-15', trip_time: '10:00', flight: 'QR1', guest_phone: '+491700000201' });
+  const st = await openTab(page, { trips: [future] });
+  // An airport transfer added for a day already past: it is owed (done), never «Paid».
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="airport"]');
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await page.click('#at_fr .pill:has-text("Staff")');
+  await page.fill('#at_g', 'Kasun Staff');
+  await page.click('#at_save');
+  const insCall = await call(st, 'trip_insert'); const ins = insCall.rows[0];
+  expect('payment_entry_id' in [].concat(insCall.body)[0]).toBe(false);
+  await expect(page.locator('#toast')).toHaveText('Airport transfer added');
+  const row = page.locator('.tr-row', { hasText: 'Kasun Staff' });
+  await expect(row.locator('[data-pay]')).toHaveText('Owed');
+  await expect(row.locator('.tr-free')).toHaveText('Not charged · Staff');
+  // Edit it, step the future one Pending → Message Sent → Confirmed and back: no payment anywhere.
+  await row.locator('[data-edit]').click();
+  await page.fill('#tr_n', 'visa run');
+  await page.click('#trOv .btn-p');
+  await call(st, 'trip_update');
+  await page.click('button[title="Next week"]');
+  await page.selectOption(`.tr-row[data-trip="${T20(1)}"] [data-status-sel]`, 'sent');
+  await call(st, 'trip_update', 2);
+  await page.selectOption(`.tr-row[data-trip="${T20(1)}"] [data-status-sel]`, 'confirmed');
+  await call(st, 'trip_update', 3);
+  await page.click('button[title="Previous week"]');
+  // A tour transfer (Tours pill): added and edited, never paid.
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await page.selectOption('#tt_tour', 'River Safari');
+  await page.fill('#tt_pr', '9000');
+  await page.click('#tt_save');
+  expect('payment_entry_id' in [].concat((await call(st, 'trip_insert', 2)).body)[0]).toBe(false);
+  await page.locator('.tr-tour', { hasText: 'River Safari' }).locator('[data-edit]').click();
+  await page.fill('#tt_pr', '9500');
+  await page.click('#tt_save');
+  expect((await call(st, 'trip_update', 4)).body).toEqual({ expected_price: 9500 });
+  // Nothing so far paid or linked a trip.
+  expect(st.calls.filter(c => c.t === 'pay' || c.t === 'link_set')).toEqual([]);
+  expect(noPaidWrites(st)).toEqual([]);
+  expect(st.trips.filter(t => t.payment_entry_id)).toEqual([]);
+  // The guard: a patch carrying payment_entry_id is written without it (only camp_trips_pay / link_set pay).
+  await page.evaluate(id => TransportUI.updateTrip(id, { notes: 'x', payment_entry_id: 'eeeeeeee-0000-4000-8000-000000009999' }), ins.id);
+  expect((await call(st, 'trip_update', 5)).body).toEqual({ notes: 'x' });
+  // «Owed to drivers» → Dilan: the normal Pay sheet, both trips ticked; still nothing paid until «Save payment».
+  await page.click(`#trOwed [data-owed="${D.dilan}"]`);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Dilan');
+  await expect(page.locator('#py_sub')).toHaveText('2 trips ticked · LKR 30,500');       // the two done ones (the 15 Nov one is listed «not yet», unticked)
+  await expect(page.locator(`#trOv [data-pay-group="${T20(1)}"] input[type=checkbox]`)).not.toBeChecked();
+  expect(st.calls.filter(c => c.t === 'pay')).toEqual([]);
+  await page.evaluate(() => TransportUI.closeModal());
+  expect(st.trips.filter(t => t.payment_entry_id)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { width: 1280, height: 900 }]]) {
+  test(`20 Nov · Airport pill: a page-level «+ Add airport transfer» (secondary; the blue stays «Send the whole week»), the short form with «More details» closed — ${name}`, async ({ page }) => {
+    const errors = collectFatalErrors(page);
+    await page.setViewportSize(size);
+    await openTab(page, { trips: [trip({ id: T20(11), guest_names: 'Week Guest', trip_date: '2026-11-13', trip_time: '20:00', flight: 'QR9', guest_phone: '+491700000211' })] });
+    await page.click('#transportRoot .tr-tabs .pill[data-cat="airport"]');
+    const acts = page.locator('#transportRoot .tr-weekacts');
+    await expect(acts.locator('[data-add-air]')).toHaveText('Add airport transfer');
+    await expect(acts.locator('[data-add-air]')).toHaveClass(/btn-s/);
+    await expect(acts.locator('.btn-p')).toHaveCount(1);
+    await expect(acts.locator('.btn-p')).toContainText('Send the whole week');
+    await expect(page.locator('#transportRoot [data-add="2026-11-12"]')).toHaveText('Add airport transfer');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    fsx.mkdirSync(SHEET_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-airport-add-${name}.png`), fullPage: size.width < 700 });
+    await acts.locator('[data-add-air]').click();
+    await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add an airport transfer');
+    await expect(page.locator('#at_d')).toHaveValue('2026-11-13');                 // today
+    await expect(page.locator('#trOv .tr-free-rule')).toContainText('come from the website (Bookinglayer) automatically');
+    await expect(page.locator('#trOv label').filter({ hasText: 'Who is it for?' })).toHaveCount(1);
+    await expect(page.locator('#at_fr .pill')).toHaveText(['Staff', 'Gift to guest', 'Compensation', 'Other']);
+    // flight / phone / vehicle wait in «More details» (closed); the price is the /prices suggestion, editable
+    await expect(page.locator('#at_more')).not.toHaveAttribute('open', '');
+    await expect(page.locator('#at_f')).toBeHidden();
+    await expect(page.locator('#at_v')).toBeHidden();
+    await expect(page.locator('#at_pr')).toBeVisible();
+    await expect(page.locator('#at_pr')).toHaveValue('21000');
+    await expect(page.locator('#at_pr')).toBeEditable();
+    await expect(page.locator('#trOv .btn-p')).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    await page.waitForTimeout(400);                                                // the sheet's fade-in
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-airport-form-${name}.png`) });
+    await page.click('#at_more summary');
+    await expect(page.locator('#at_f')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+}
+
+test('20 Nov · Tours pill (Sri Lanka): tour transfers only (a tuk-tuk tour run stays on Tuk-tuks); «Add tour transfer» + «+ Add» per day; the form: Camp Tab tours + Other, vehicle pills incl. Tuk-tuk, no price prefilled and required; saved as kind other / purpose tour / charge null', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const tukTour = trip({ id: T20(21), kind: 'tuktuk', purpose: 'tour', route: 'River Safari', tour_name: 'River Safari', trip_date: '2026-11-11', trip_time: '09:00', guest_names: null, vehicle: 'Tuk-tuk', driver_id: D.sampath, expected_price: 1000, source: 'manual', charge: null });
+  const car = trip({ id: T20(22), kind: 'other', purpose: 'tour', route: 'Tea Plantation Visit', tour_name: 'Tea Plantation Visit', place: null, trip_date: '2026-11-10', trip_time: '08:00', guest_names: null, pax: 5, vehicle: 'Van', driver_id: D.dilan, expected_price: 18000, source: 'manual', charge: null });
+  const st = await openTab(page, { trips: [tukTour, car] });
+  await expect(page.locator('#transportRoot .tr-tabs .pill')).toHaveText(['All', 'Airport', 'Tuk-tuks', 'Tours', 'Overview']);
+  // All: both, each once.
+  await expect(page.locator(`#transportRoot [data-trip="${T20(22)}"]`)).toHaveCount(1);
+  await expect(page.locator('#transportRoot .tr-tuk-line', { hasText: 'River Safari' })).toHaveCount(1);
+  await expect(page.locator('#transportRoot [data-foot="tours"]')).toContainText('1 transfer · LKR 18,000');
+  // Tuk-tuks: the tuk-tuk tour run, never the tour transfer.
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tuktuk"]');
+  await expect(page.locator('#transportRoot .tr-tuk-line', { hasText: 'River Safari' })).toHaveCount(1);
+  await expect(page.locator(`#transportRoot [data-trip="${T20(22)}"]`)).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-foot="tours"]')).toHaveCount(0);
+  // Tours: the tour transfer only, its own blue button, no «Plan the day», no run-sheet badges.
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  const tourRowEl = page.locator(`#transportRoot .tr-tour[data-trip="${T20(22)}"]`);
+  await expect(tourRowEl).toContainText('Tea Plantation Visit');
+  await expect(tourRowEl).toContainText('Van');
+  await expect(tourRowEl.locator('[data-pay]')).toHaveText('Owed');
+  await expect(page.locator('#transportRoot .tr-tuk-line')).toHaveCount(0);
+  await expect(page.locator('#transportRoot .tr-weekacts .btn-p')).toHaveCount(1);
+  await expect(page.locator('#transportRoot [data-add-tour]')).toHaveText('Add tour transfer');
+  await expect(page.locator('#transportRoot [data-plan]')).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-plan-state]')).toHaveCount(0);
+  await expect(page.locator('#transportRoot [data-tour-hint]')).toContainText('stay on the Tuk-tuks pill');
+  await expect(page.locator('#transportRoot [data-foot]')).toHaveCount(1);
+  // «+ Add» on a day: the form on that day.
+  await page.click('#transportRoot [data-add="2026-11-12"]');
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add a tour transfer');
+  await expect(page.locator('#tt_d')).toHaveValue('2026-11-12');
+  const opts = await page.locator('#tt_tour option').allInnerTexts();
+  expect(opts).toEqual(['Pick the tour', 'Cooking Class', 'Tea Plantation Visit', 'River Safari', 'Ice Bath', 'Safari Yala', 'Other…']);
+  await expect(page.locator('#tt_v .pill')).toHaveText(['Tuk-tuk', 'Car', 'Minivan', 'Van']);
+  await expect(page.locator('#tt_v .pill.active')).toHaveText('Car');
+  await expect(page.locator('#tt_pr')).toHaveValue('');                          // never prefilled
+  await expect(page.locator('#tt_dr')).toHaveValue(D.dilan);
+  await expect(page.locator('#tt_t')).toBeHidden();                              // pick-up time in «More details»
+  await expect(page.locator('#trOv .btn-p')).toHaveCount(1);
+  // Tuk-tuk → the tuk-tuk driver; back to a car → Dilan.
+  await page.click('#tt_v .pill:has-text("Tuk-tuk")');
+  await expect(page.locator('#tt_dr')).toHaveValue(D.sampath);
+  await page.click('#tt_v .pill:has-text("Minivan")');
+  await expect(page.locator('#tt_dr')).toHaveValue(D.dilan);
+  await page.selectOption('#tt_tour', 'Safari Yala');
+  await page.fill('#tt_p', '4');
+  await page.click('#tt_save');                                                  // no price → refused
+  await expect(page.locator('#toast')).toHaveText('Type what we pay the driver');
+  expect(st.calls.filter(c => c.t === 'trip_insert')).toHaveLength(0);
+  await page.fill('#tt_pr', '15000');
+  await page.fill('#tt_n', 'Yala day');
+  await page.click('#tt_save');
+  const ins = (await call(st, 'trip_insert')).rows[0];
+  expect(ins).toMatchObject({ kind: 'other', purpose: 'tour', tour_name: 'Safari Yala', trip_date: '2026-11-12', pax: 4, vehicle: 'Minivan', driver_id: D.dilan,
+    expected_price: 15000, notes: 'Yala day', source: 'manual', status: 'planned', charge: null });
+  await expect(page.locator('#toast')).toHaveText('Tour transfer added · Safari Yala');
+  await expect(page.locator('#transportRoot .tr-tour', { hasText: 'Safari Yala' })).toHaveCount(1);
+  // «Other» + a name typed.
+  await page.click('#transportRoot [data-add-tour]');
+  await expect(page.locator('#tt_d')).toHaveValue('2026-11-13');
+  await page.selectOption('#tt_tour', '__other');
+  await expect(page.locator('#tt_other')).toBeVisible();
+  await page.fill('#tt_other', 'Galle Fort');
+  await page.click('#tt_v .pill:has-text("Tuk-tuk")');
+  await page.fill('#tt_pr', '4000');
+  await page.click('#tt_save');
+  expect((await call(st, 'trip_insert', 2)).rows[0]).toMatchObject({ kind: 'other', purpose: 'tour', tour_name: 'Galle Fort', vehicle: 'Tuk-tuk', driver_id: D.sampath, expected_price: 4000 });
+  // Edit + delete a tour transfer added by hand.
+  await page.locator('.tr-tour', { hasText: 'Galle Fort' }).click();
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Edit tour transfer · Fri 13 Nov');
+  await expect(page.locator('#tt_other')).toHaveValue('Galle Fort');
+  await page.click('#tt_del');
+  await call(st, 'trip_delete');
+  await expect(page.locator('.tr-tour', { hasText: 'Galle Fort' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { width: 1280, height: 900 }]]) {
+  test(`20 Nov · Tours pill and its form — no horizontal overflow, screenshots — ${name}`, async ({ page }) => {
+    const errors = collectFatalErrors(page);
+    await page.setViewportSize(size);
+    const car = trip({ id: T20(31), kind: 'other', purpose: 'tour', route: 'Safari Yala', tour_name: 'Safari Yala', place: null, trip_date: '2026-11-12', trip_time: '05:00', guest_names: null, pax: 6, vehicle: 'Van', driver_id: D.dilan, expected_price: 25000, source: 'manual', charge: null, notes: 'Yala jeep day' });
+    const car2 = trip({ id: T20(32), kind: 'other', purpose: 'tour', route: 'Tea Plantation Visit', tour_name: 'Tea Plantation Visit', place: null, trip_date: '2026-11-14', trip_time: null, guest_names: null, pax: 3, vehicle: 'Tuk-tuk', driver_id: D.sampath, expected_price: 3500, source: 'manual', charge: null });
+    await openTab(page, { trips: [car, car2] });
+    await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+    await expect(page.locator(`#transportRoot .tr-tour[data-trip="${T20(31)}"]`)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    if (size.width < 700) expect(await page.evaluate(() => { const ps = [...document.querySelectorAll('#transportRoot .tr-tabs .pill')]; return new Set(ps.map(p => Math.round(p.getBoundingClientRect().top))).size; })).toBe(1);   // five pills, one line
+    fsx.mkdirSync(SHEET_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-tours-${name}.png`), fullPage: true });
+    await page.click('#transportRoot [data-add-tour]');
+    await expect(page.locator('#trOv .mhdr-title')).toHaveText('Add a tour transfer');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    expect(await page.evaluate(() => { const m = document.querySelector('#trOv .modal'); return m.scrollWidth <= m.clientWidth + 1; })).toBe(true);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-tour-form-${name}.png`) });
+    expect(errors).toEqual([]);
+  });
+}
+
+test('20 Nov · a tour transfer is owed to its driver and paid in «Pay Dilan»: its own line, and the saved ledger line\'s linked item is the tour (the Camp Tab name) — the «Tour with no cost» chip sees it', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const air = trip({ id: T20(41), guest_names: 'Arrival Owed', trip_date: '2026-11-11', trip_time: '09:00', flight: 'QR2', guest_phone: '+491700000241', expected_price: 21000 });
+  const car = trip({ id: T20(42), kind: 'other', purpose: 'tour', route: 'Safari Yala', tour_name: 'Safari Yala', place: null, trip_date: '2026-11-12', trip_time: '05:00', guest_names: null, pax: 6, vehicle: 'Van', driver_id: D.dilan, expected_price: 25000, source: 'manual', charge: null });
+  const tuk = trip({ id: T20(43), kind: 'tuktuk', purpose: 'tour', route: 'River Safari', tour_name: 'River Safari', place: null, trip_date: '2026-11-12', trip_time: '09:00', guest_names: null, vehicle: 'Tuk-tuk', driver_id: D.sampath, expected_price: 1000, source: 'manual', charge: null, status: 'done' });
+  const st = await openTab(page, { trips: [air, car, tuk] });
+  await expect(page.locator(`#trOwed [data-owed="${D.dilan}"]`)).toContainText('LKR 46,000');
+  await page.click(`#trOwed [data-owed="${D.dilan}"]`);
+  await expect(page.locator('#trOv .mhdr-title')).toHaveText('Pay Dilan');
+  const line = page.locator(`#trOv [data-pay-group="${T20(42)}"]`);
+  await expect(line).toContainText('Tour transfer · Safari Yala · Van');
+  await expect(line.locator('input[type=checkbox]')).toBeChecked();
+  await expect(line.locator('[data-pay-minus]')).toHaveCount(0);                  // never removed from here
+  await expect(page.locator('#py_sub')).toHaveText('2 trips ticked · LKR 46,000');
+  await page.click('#py_save');
+  const pay = await call(st, 'pay');
+  const byItem = Object.fromEntries(pay.body.p_entries.map(e => [e.linked_item, e]));
+  expect(Object.keys(byItem).sort()).toEqual(['Airport', 'Safari Yala']);
+  expect(byItem['Safari Yala']).toMatchObject({ amount_local: 25000, trip_ids: [T20(42)], category: 'Transport' });
+  expect(byItem['Safari Yala'].description).toBe('Dilan · 1 tour transfer (Safari Yala) · 12 Nov');
+  await expect(page.locator(`#transportRoot [data-trip="${T20(42)}"] [data-pay]`)).toHaveText('Paid');
+  // The ledger check: a Safari Yala sale with this cost after it is not «a tour with no cost».
+  const sale = { type: 'income', category: 'Tours', linkedItem: 'Safari Yala', date: '2026-11-20', quantity: 6 };
+  const cost = { type: 'expense', category: 'Transport', linkedItem: byItem['Safari Yala'].linked_item, date: '2026-11-21' };
+  expect(await page.evaluate(([a, b]) => [CampExtras.toursWithoutCost([a], '2026-12-31').length, CampExtras.toursWithoutCost([a, b], '2026-12-31').length], [sale, cost])).toEqual([1, 0]);
+  // The Overview counts it as a tour, not «Fuel & other».
+  const O = require('../lib/transport-overview.js'); const CCfg = require('../lib/camp-config.js');
+  expect(O.classify(car, CCfg.SL)).toMatchObject({ group: 'tours', label: 'Safari Yala' });
+  expect(O.classify(tuk, CCfg.SL)).toMatchObject({ group: 'tours', label: 'River Safari' });
+  expect(O.classify(trip({ kind: 'other', purpose: 'errand', route: 'x' }), CCfg.SL)).toMatchObject({ group: 'other' });
+  expect(errors).toEqual([]);
+});
+
+test('20 Nov · Nadith (?view=local) has the Tours pill too: adds a tour transfer at 390', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const st = await open(page, { query: '&view=local' });
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await page.click('#transportRoot [data-add-tour]');
+  await page.selectOption('#tt_tour', 'Cooking Class');
+  await page.fill('#tt_pr', '2500');
+  await page.click('#tt_save');
+  expect((await call(st, 'trip_insert')).rows[0]).toMatchObject({ kind: 'other', purpose: 'tour', tour_name: 'Cooking Class', expected_price: 2500, charge: null });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);
 });
