@@ -2373,7 +2373,7 @@ test('20 Nov · paid only in «Pay a driver»: adding, editing, status steps, to
   await page.locator('.tr-tour', { hasText: 'River Safari' }).locator('[data-edit]').click();
   await page.fill('#tt_pr', '9500');
   await page.click('#tt_save');
-  expect((await call(st, 'trip_update', 4)).body).toEqual({ expected_price: 9500 });
+  expect((await call(st, 'trip_update', 4)).body).toEqual({ expected_price: 9500, edited_fields: ['expected_price'] });
   // Nothing so far paid or linked a trip.
   expect(st.calls.filter(c => c.t === 'pay' || c.t === 'link_set')).toEqual([]);
   expect(noPaidWrites(st)).toEqual([]);
@@ -2485,7 +2485,7 @@ test('20 Nov · Tours pill (Sri Lanka): tour transfers only (a tuk-tuk tour run 
   await page.click('#tt_save');
   const ins = (await call(st, 'trip_insert')).rows[0];
   expect(ins).toMatchObject({ kind: 'other', purpose: 'tour', tour_name: 'Safari Yala', trip_date: '2026-11-12', pax: 4, vehicle: 'Minivan', driver_id: D.dilan,
-    expected_price: 15000, notes: 'Yala day', source: 'manual', status: 'planned', charge: null });
+    expected_price: 15000, notes: 'Yala day', source: 'manual', status: 'planned', charge: null, edited_fields: ['expected_price'] });   // a typed price: never repriced from /prices
   await expect(page.locator('#toast')).toHaveText('Tour transfer added · Safari Yala');
   await expect(page.locator('#transportRoot .tr-tour', { hasText: 'Safari Yala' })).toHaveCount(1);
   // «Other» + a name typed.

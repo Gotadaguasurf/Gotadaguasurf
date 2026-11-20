@@ -1648,7 +1648,7 @@
       .map(t => {
         const dep = t.kind === 'airport_departure', air = isAirport(t);
         const e = t.payment_entry_id ? ledgerById(t.payment_entry_id) : null;
-        return [t.trip_date, t.trip_time || '', air ? (dep ? 'OUT' : 'IN') : 'run',
+        return [t.trip_date, t.trip_time || '', air ? (dep ? 'OUT' : 'IN') : isTourCar(t) ? 'tour' : 'run',
           air ? (dep ? `Surfcamp → ${city(t.place)} airport` : `${city(t.place)} airport → Surfcamp`) : runLabel(t),
           t.guest_names || '', air ? (Number(t.pax) || 1) : (runPax(t) == null ? '' : runPax(t)), air ? (t.flight || '') : '', t.vehicle || (air ? '' : RUN.veh), driverById(t.driver_id)?.name || '',
           t.status === 'cancelled' ? 0 : Number(t.expected_price || 0), t.status === 'cancelled' ? 'No' : 'Yes', tripStatusLabel(t), t.payment_entry_id ? 'yes' : 'no', e && e.date ? e.date : ''];
@@ -1988,7 +1988,9 @@
     TR.busy.add('tt');
     try {
       if (!t) {
-        const row = { kind: 'other', purpose: 'tour', place: null, source: 'manual', status: 'planned', charge: null, ...next };
+        // edited_fields 'expected_price': the typed price is kept — camp_trips__reprice (transport-catalog-one-source.sql) reprices
+        // an upcoming kind 'other' trip from a /prices row «<route> — <vehicle>» (Morocco's van runs) unless the price was typed.
+        const row = { kind: 'other', purpose: 'tour', place: null, source: 'manual', status: 'planned', charge: null, edited_fields: ['expected_price'], ...next };
         if (await insertTrip(row)) { closeModal(); TR.week = GT.weekStart(row.trip_date); TR.view = 'trips'; render(); say(`Tour transfer added · ${name}`); }
         return;
       }
@@ -1996,7 +1998,7 @@
       if (!Object.keys(patch).length) { closeModal(); return; }
       // A tour transfer moved into the future is planned again (a past one is owed by its date, isDone).
       if (t.status === 'done' && ('trip_date' in patch || 'trip_time' in patch) && `${next.trip_date}T${next.trip_time || '23:59'}` >= colomboNow()) patch.status = 'planned';
-      if (await updateTrip(t.id, patch)) { closeModal(); render(); say('Saved'); }
+      if (await updateTrip(t.id, patch, ['expected_price'])) { closeModal(); render(); say('Saved'); }   // the price stays typed (see the insert)
     } finally { TR.busy.delete('tt'); }
   }
   async function removeTour(id) {
