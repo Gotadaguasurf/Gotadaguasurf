@@ -577,3 +577,17 @@
 @media (max-width: 700px) { .tr-srow.tr-row.tr-tour { grid-template-areas: "time what price" "time what status"; } }
 /* Five pills on a phone (Sri Lanka: All · Airport · Tuk-tuks · Tours · Overview, 20 Nov 2026) stay on one line at 390. */
 @media (max-width: 420px) { #transportRoot .tr-tabs { gap: 6px; } #transportRoot .tr-tabs .pill { padding: 0 9px; } }
+/* Tour transfers: what we charged, the driver and the profit (20 Nov 2026) */
+.tr-tour-money b, .tr-tour-profit b, .tr-tm b { font-weight: 600; }
+.tr-pos { color: var(--green, #1a7f4b); }
+.tr-neg { color: var(--red, #c0392b); }
+.tr-tour-profit { margin-top: 4px; }
+.tr-tms { display: grid; gap: 0; }
+.tr-tm { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: var(--sp-2, 8px); align-items: center; padding: 10px var(--card-pad, 16px); border-top: 1px solid var(--border); }
+.tr-tm-head { border-top: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding-top: 0; }
+.tr-tm-name { display: flex; flex-direction: column; min-width: 0; }
+.tr-tm-name b { overflow-wrap: anywhere; }
+.tr-tm-total { font-weight: 600; }
+[data-ov-tour-money] > .hint { padding: 0 var(--card-pad, 16px) 12px; }
+@media (max-width: 480px) { .tr-tm { grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr)); font-size: 13px; gap: 6px; padding: 10px 16px; } [data-ov-tour-money] > .hint { padding: 0 16px 12px; } }
+.tr-tm .r { text-align: right; white-space: nowrap; }

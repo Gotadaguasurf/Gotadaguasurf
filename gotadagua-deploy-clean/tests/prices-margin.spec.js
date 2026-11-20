@@ -34,7 +34,8 @@ test('/prices: the margin converts the MAD cost to € first (Souk Tour €25 vs
   expect(await page.evaluate(() => [eurFx.rate, eurFx.source])).toEqual([11, 'period']);         // the camp's ledger, not the stored default (10.8)
   expect(calls[0]).toMatch(/select=entry_date,currency,amount_eur,amount_local/);
   await page.evaluate(() => { filterArea = 'tours'; renderTable(); });
-  await expect(page.locator('td[data-label="Margin"]').first()).toHaveText('45%');             // (25 − 150/11) / 25
+  await expect(page.locator('td[data-label="Margin"] > span').first()).toHaveText('45%');      // (25 − 150/11) / 25
+  await expect(page.locator('[data-pp-profit]').first()).toHaveText('≈ €11.36 / person');           // a tour also says it in money (20 Nov 2026)
   await page.evaluate(() => { filterArea = 'transfers'; renderTable(); });
   await expect(page.locator('[data-tf-margin]')).toHaveText(['margin 24%', 'margin 32%']);   // (30 − 250/11) / 30, (40 − 300/11) / 40
   // the modal shows the two transport numbers that must never be mixed: seats and people one paid transfer covers

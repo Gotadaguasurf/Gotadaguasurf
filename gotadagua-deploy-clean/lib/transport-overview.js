@@ -378,6 +378,30 @@
     return out;
   }
 
+  // Tours: what the guests were charged against what the drivers cost, per tour, in a period (20 Nov 2026, Miguel: «o preço de
+  // transporte que vai para os drivers e depois o que cobramos, que é o dinheiro de lucro para nós»). From the trip items of
+  // the kind 'tours' (collect()): a trip with a guest price (camp_trips.guest_price, per person, the camp's money) is charged
+  // pax × guest price; its profit = charged − its driver price. A trip with no guest price (older, or not charged) has no
+  // profit — never «−driver»: its driver cost is told apart (uncharged). Display only, nothing here reaches the ledger.
+  //   → { rows: [{ label, trips, people, charged, driver, profit, uncharged, unchargedTrips }], total: { …same } }
+  function tourMoney(C, P) {
+    const blank = label => ({ label, trips: 0, people: 0, charged: 0, driver: 0, profit: 0, uncharged: 0, unchargedTrips: 0 });
+    const by = new Map(); const total = blank('Total');
+    (C.items || C).forEach(it => {
+      if (it.src !== 'trip' || it.kind !== 'tours' || !inPeriod(it, P)) return;
+      const t = it.trip || {}; const gp = Number(t.guest_price);
+      const r = by.get(it.part) || blank(it.part); by.set(it.part, r);
+      [r, total].forEach(x => {
+        if (t.guest_price != null && t.guest_price !== '' && gp > 0) {
+          const pax = Number(t.pax) || 1; const charged = pax * gp;
+          x.trips++; x.people += pax; x.charged += charged; x.driver += it.cost; x.profit += charged - it.cost;
+        } else { x.unchargedTrips++; x.uncharged += it.cost; }
+      });
+    });
+    const rows = [...by.values()].filter(r => r.trips > 0).sort((a, b) => b.profit - a.profit || a.label.localeCompare(b.label));
+    return { rows, total };
+  }
+
   // The view as a table for the CSV: exactly the numbers shown (kinds with their parts, then drivers), the euros last.
   function viewTable(V, cur, rate) {
     const E = rate > 0; const e = (...v) => E ? v.map(x => eur(x, rate)) : [];
@@ -404,5 +428,5 @@
   }
 
   return { period, shift, lastYear, periodName, classify, classifyLine, serviceDate, linePeople, supplierOf, driverOf, collect, view, yearView, compare, owedNow,
-    viewTable, yearTable, tripInWeek, addDays, MON, KIND_ORDER, kindOf, kindLabel, eurRate, eur, FX_RANGE, guestMoney, surferDays, perSurferDay };
+    viewTable, yearTable, tripInWeek, addDays, MON, KIND_ORDER, kindOf, kindLabel, eurRate, eur, FX_RANGE, guestMoney, tourMoney, surferDays, perSurferDay };
 });

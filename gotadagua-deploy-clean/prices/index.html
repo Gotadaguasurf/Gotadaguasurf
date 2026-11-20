@@ -448,7 +448,7 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
         <div class="msection-title">Pricing</div>
         <div class="mgrid">
           <div class="mfield">
-            <label for="em_sell">Guest price</label>
+            <label for="em_sell" id="em_sell_lbl">Guest price</label>
             <input type="number" id="em_sell" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
           </div>
           <div class="mfield">
@@ -458,7 +458,7 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
         </div>
         <div class="mgrid">
           <div class="mfield">
-            <label for="em_cost">Cost per guest</label>
+            <label for="em_cost" id="em_cost_lbl">Cost per guest</label>
             <input type="number" id="em_cost" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
           </div>
           <div class="mfield">
@@ -466,6 +466,9 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
             <select id="em_currency"></select>
           </div>
         </div>
+        <!-- Tours only (20 Nov 2026): what the cost is, and the profit per person it leaves. -->
+        <div class="help" id="em_tour_cost_help" style="display:none">What we pay per person: the driver's share, tickets, a guide. Drivers are paid per trip — each tour transfer in Transport → Tours shows its real profit.</div>
+        <div class="help" id="em_pp_profit" data-em-profit style="display:none"></div>
         <div class="mfield">
           <label for="em_notes">Notes</label>
           <input type="text" id="em_notes" placeholder="What's included, shown on the price list" autocomplete="off">
@@ -489,7 +492,7 @@ AppShell.mount('appNav', { app:'prices', tabAttr:'data-view', tabsId:'viewToggle
         <div class="msection-title">Visibility</div>
         <label class="mtoggle" id="em_show_ct_row">
           <input type="checkbox" id="em_show_ct">
-          <span class="label">Show in Camp Tab<small>Guests can charge this item to their tab.</small></span>
+          <span class="label">Show in Camp Tab<small id="em_show_ct_help">Guests can charge this item to their tab.</small></span>
         </label>
         <label class="mtoggle" id="em_show_tp_row">
           <input type="checkbox" id="em_show_tp">
@@ -1553,7 +1556,7 @@ function renderTable(){
           canEdit ? `<button class="btn btn-s" onclick="openNew()">${ic('plus')} New item</button>` : '');
     return;
   }
-  wrap.innerHTML = catalogCard(rows, { title: area?.label, drag: canEdit, sections: filterArea === 'surf' });
+  wrap.innerHTML = catalogCard(rows, { title: area?.label, drag: canEdit, sections: filterArea === 'surf', tours: filterArea === 'tours' });
   paintFlash();
 }
 
@@ -1581,8 +1584,8 @@ function catalogCard(rows, opts = {}){
     ${drag ? '<th class="drag-col" aria-label="Order"></th>' : ''}
     <th>Name</th>
     <th>Category</th>
-    <th class="r">Guest price</th>
-    ${canViewCosts ? '<th class="r">Cost</th><th class="r">Margin</th>' : ''}
+    <th class="r">${opts.tours ? 'We charge / person' : 'Guest price'}</th>
+    ${canViewCosts ? (opts.tours ? '<th class="r">Cost / person</th><th class="r">Profit / person</th>' : '<th class="r">Cost</th><th class="r">Margin</th>') : ''}
     <th class="c">PDF</th>
     <th class="c">Camp Tab</th>
     <th class="c">Transport quick-add</th>
@@ -1643,8 +1646,13 @@ function itemBadges(r){
 
 function catalogRowHtml(r, opts = {}){
   const m = canViewCosts ? marginOf(r) : null;
+  // A tour also says its profit per person in money (20 Nov 2026, Miguel: «o preço de transporte que vai para os drivers e
+  // depois o que cobramos, que é o dinheiro de lucro para nós»): We charge − Cost per person, in the guest price currency.
+  const isTour = r.category === 'Tour';
+  const sellCcy = r.sell_currency || r.currency || 'EUR';
+  const ppTxt = (m && isTour) ? `<div class="cell-sub ${m.pct >= 0 ? 'margin-pos' : 'margin-neg'}" data-pp-profit>${m.converted ? '≈ ' : ''}${escapeHtml(money(Math.round((Number(r.sell_price || 0) - m.costSell) * 100) / 100, sellCcy))} / person</div>` : '';
   const marginTxt = m
-    ? `<span class="${m.pct >= 0 ? 'margin-pos' : 'margin-neg'}" title="${m.converted ? `cost ≈ ${escapeHtml(money(m.costSell, r.sell_currency || 'EUR'))} at ${Math.round(eurFx.rate * 10) / 10} per €` : ''}">${m.pct}%</span>`
+    ? `<span class="${m.pct >= 0 ? 'margin-pos' : 'margin-neg'}" title="${m.converted ? `cost ≈ ${escapeHtml(money(m.costSell, r.sell_currency || 'EUR'))} at ${Math.round(eurFx.rate * 10) / 10} per €` : ''}">${m.pct}%</span>${ppTxt}`
     : '<span class="na">—</span>';
   const areaTag = opts.showArea ? `<div class="cell-sub area-tag">${escapeHtml(areaLabelOf(r))}</div>` : '';
   const dragAttrs = opts.drag ? ` ondragover="onRowDragOver(event)" ondragleave="onRowDragLeave(event)" ondrop="onRowDrop(event,'${r.id}')"` : '';
@@ -1653,8 +1661,8 @@ function catalogRowHtml(r, opts = {}){
     <td class="td-name" data-label="Name"><span class="item-name">${escapeHtml(r.name || '')}</span>${itemBadges(r)}
       ${r.notes ? `<div class="cell-sub">${escapeHtml(r.notes)}</div>` : ''}${areaTag}</td>
     <td class="td-cat" data-label="Category">${categoryBadge(r.category)}</td>
-    <td class="r" data-label="Guest price" data-short="Guest price">${priceCell(r, 'sell_price')}</td>
-    ${canViewCosts ? `<td class="r" data-label="Cost" data-short="Cost">${priceCell(r, 'cost_per_guest')}</td><td class="r" data-label="Margin" data-short="Margin">${marginTxt}</td>` : ''}
+    <td class="r" data-label="Guest price" data-short="${isTour ? 'We charge' : 'Guest price'}">${priceCell(r, 'sell_price')}</td>
+    ${canViewCosts ? `<td class="r" data-label="Cost" data-short="${isTour ? 'Cost / person' : 'Cost'}">${priceCell(r, 'cost_per_guest')}</td><td class="r" data-label="Margin" data-short="${isTour ? 'Profit' : 'Margin'}">${marginTxt}</td>` : ''}
     <td class="c" data-label="In the PDF" data-short="PDF">${pdfCell(r)}</td>
     <td class="c" data-label="Camp Tab" data-short="Camp Tab">${toggleCell(r, 'show_in_camp_tab')}</td>
     <td class="c${canViewCosts ? '' : ' td-toggle-wide'}" data-label="Transport quick-add" data-short="Quick-add">${toggleCell(r, 'show_in_transport_picker')}</td>
@@ -2544,11 +2552,32 @@ window.onCategoryChange = ()=>{
     $('em_show_ct').checked = true;
     $('em_show_tp').checked = false;
   }
+  // A tour says what its two prices are (20 Nov 2026): what we charge per person, what it costs us per person (the driver's
+  // share for a transport-only tour like Galle). Camp Tab off = not sold on the tab; it still shows in Transport → Tours.
+  const tour = cat === 'Tour';
+  $('em_sell_lbl').textContent = tour ? 'We charge (per person)' : 'Guest price';
+  $('em_cost_lbl').textContent = tour ? 'Cost per person' : 'Cost per guest';
+  $('em_tour_cost_help').style.display = tour ? '' : 'none';
+  $('em_show_ct_help').textContent = tour ? 'Off: not sold on the Camp Tab. The tour still shows in Transport → Tours.' : 'Guests can charge this item to their tab.';
+  updateTourProfit();
   // Hide Connections section entirely for categories with no linkages
   const showConnections = (cat === 'Tour' || cat === 'Transport');
   $('em_connections_section').style.display = showConnections ? '' : 'none';
   updateEffectiveCostPreview();
 };
+
+// «Profit per person: LKR 2,000» under a tour's prices, live (We charge − Cost per person, the cost converted when the
+// two currencies differ — marginOf's rule).
+function updateTourProfit(){
+  const el = $('em_pp_profit'); if (!el) return;
+  const sell = Number($('em_sell').value || 0), cost = Number($('em_cost').value || 0);
+  const sellCcy = ($('em_sell_currency') && $('em_sell_currency').value) || $('em_currency').value;
+  const m = canViewCosts && $('em_category').value === 'Tour' && sell > 0 ? marginOf({ sell_price: sell, cost_per_guest: cost, currency: $('em_currency').value, sell_currency: sellCcy }) : null;
+  const pp = m ? Math.round((sell - m.costSell) * 100) / 100 : (canViewCosts && sell > 0 && !(cost > 0) && $('em_category').value === 'Tour' ? sell : null);
+  el.style.display = pp == null ? 'none' : '';
+  el.innerHTML = pp == null ? '' : `Profit per person: <b class="${pp >= 0 ? 'margin-pos' : 'margin-neg'}">${m && m.converted ? '≈ ' : ''}${escapeHtml(money(pp, sellCcy))}</b>${m ? ` · ${m.pct}%` : ' · no cost typed'}`;
+}
+['em_sell','em_cost','em_currency','em_sell_currency'].forEach(id => { const el = $(id); if (el) { el.addEventListener('input', updateTourProfit); el.addEventListener('change', updateTourProfit); } });
 
 function updateEffectiveCostPreview(){
   const cat = $('em_category').value;

@@ -380,14 +380,15 @@
         }
         return { data: out };
       };
-      const [d, t, l] = await Promise.all([
+      const [d, t, l, tc] = await Promise.all([
         c.from('camp_drivers').select('*').eq('location_id', loc).order('name'),
         all(() => c.from('camp_trips').select('*').eq('location_id', loc).gte('trip_date', TRIPS_LOAD_FROM).order('trip_date').order('trip_time').order('id')),
         all(() => c.from('camp_transport_payments').select('*').eq('location_id', loc).order('entry_id')),
+        loadTourCatalog(c, loc),
       ]);
       const err = d.error || t.error || l.error;
       if (err) { TR.error = err.message || String(err); TR.errorMissing = missingTable(err); TR.loaded = false; return; }
-      TR.drivers = d.data || []; TR.trips = t.data || []; TR.links = l.data || [];
+      TR.drivers = d.data || []; TR.trips = t.data || []; TR.links = l.data || []; TR.tourCat = tc;
       try { const { data: ss } = await c.auth.getSession(); TR.me = String((ss && ss.session && ss.session.user && ss.session.user.email) || '').toLowerCase(); } catch (_) { TR.me = ''; }
       TR.error = ''; TR.errorMissing = false; TR.loaded = true;
     })();
@@ -397,10 +398,21 @@
     // Tours by product counts the runs done for each tour (paid or not): redraw it once the trips are in.
     try { if (typeof activePage !== 'undefined' && activePage === 'overview' && typeof renderOverview === 'function') renderOverview(); } catch (_) {}
   }
-  // free_reason / added_by_local arrive with supabase/camp-trips-v2.sql. Until it is run, a save
-  // that carries them is repeated without them (charge = 'free' is still stored) — never a lost edit.
-  const NEW_COLS = ['free_reason', 'added_by_local', 'guest_notified_at', 'guest_confirmed_at', 'guest_told_snapshot'];
-  const newColMissing = error => !!error && /free_reason|added_by_local|guest_notified_at|guest_confirmed_at|guest_told_snapshot/.test(String(error.message || '') + String(error.details || ''));
+  // The camp's tour rows of /prices (pricing_catalog, category Tour, active — Camp Tab on or off): the Tours pill's tour list
+  // and the «We charge per person» it prefills (20 Nov 2026). Sri Lanka only (the tour form); a failed read = no rows, never
+  // a failed page.
+  async function loadTourCatalog(c, loc) {
+    if (!TOUR_TAB) return [];
+    try {
+      const { data, error } = await c.from('pricing_catalog').select('id,name,sell_price,sell_currency,currency,show_in_camp_tab,sort_order')
+        .eq('location_id', loc).eq('category', 'Tour').eq('active', true).order('sort_order', { ascending: true });
+      return error || !Array.isArray(data) ? [] : data;
+    } catch (_) { return []; }
+  }
+  // free_reason / added_by_local arrive with supabase/camp-trips-v2.sql, guest_price with supabase/tour-guest-price.sql. Until
+  // they are run, a save that carries them is repeated without them (charge = 'free' is still stored) — never a lost edit.
+  const NEW_COLS = ['free_reason', 'added_by_local', 'guest_notified_at', 'guest_confirmed_at', 'guest_told_snapshot', 'guest_price'];
+  const newColMissing = error => !!error && /free_reason|added_by_local|guest_notified_at|guest_confirmed_at|guest_told_snapshot|guest_price/.test(String(error.message || '') + String(error.details || ''));
   const withoutNew = row => { const r = { ...row }; NEW_COLS.forEach(k => delete r[k]); return r; };
   // edited = fields typed by hand (the import keeps them); cleared = fields back on the /prices value (the import and
   // camp_trips_reprice may change them again).
@@ -1155,10 +1167,12 @@
     const drv = h(driverById(t.driver_id)?.name || 'no driver');
     const ps = payState(t);
     const sub = [h(t.vehicle || ''), t.notes ? h(t.notes) : ''].filter(Boolean).join(' · ');
+    const tm = t.status === 'cancelled' || t.status === 'merged' ? null : tourMoney(t);   // what we charged and kept (20 Nov 2026)
     return `<div class="tr-row tr-srow tr-tour" role="button" tabindex="0" data-trip="${t.id}" data-cat="${h(catOf(t))}" onclick="TransportUI.openTrip('${t.id}')">
       <div class="tr-time tr-c-time">${time}</div>
       <div class="tr-main tr-c-what"><div class="tr-line1"><span class="badge tr-dir tr-tourtag">Tour</span> <b>${h(t.tour_name || 'Tour')}</b>${isFree(t) ? ` <span class="badge badge-blue tr-free">${h(freeLabel(t))}</span>` : ''}</div>
-        ${sub ? `<div class="cell-sub tr-c-sub">${sub}</div>` : ''}<div class="tr-c-meta cell-sub">${ppl(Number(t.pax) || 1)} · ${drv}</div></div>
+        ${sub ? `<div class="cell-sub tr-c-sub">${sub}</div>` : ''}<div class="tr-c-meta cell-sub">${ppl(Number(t.pax) || 1)} · ${drv}</div>${tm ? `
+        <div class="cell-sub tr-tour-money" data-tour-money>Charged ${h(money(tm.charged))} · Driver ${h(money(tm.driver))} · Profit <b class="${tm.profit < 0 ? 'tr-neg' : 'tr-pos'}">${h(money(tm.profit))}</b></div>` : ''}</div>
       <div class="tr-c-ppl num">${pplCell(t.pax)}</div><div class="tr-c-drv">${drv}</div><div class="tr-c-price num">${money(t.expected_price)}</div>
       <div class="tr-side tr-c-status"><div class="tr-pay"><span class="badge ${ps.cls}" data-pay="${ps.key}">${ps.label}</span>${ps.sub ? `<span class="cell-sub">${h(ps.sub)}</span>` : ''}</div>
         <div class="tr-btns"><button class="btn btn-s btn-sm" data-edit="${t.id}" onclick="event.stopPropagation();TransportUI.openTrip('${t.id}')">${ic('edit')} Edit</button></div></div></div>`;
@@ -1486,7 +1500,7 @@
       const when = P.mode === 'week' ? (now ? 'this week' : `in the week of ${fmtRange(P.from, P.to)}`) : P.mode === 'month' ? (now ? 'this month' : `in ${ovLabel(P)}`) : (now ? 'this year' : `in ${P.anchor}`);
       return filters + ovTiles(D, true) + `<div class="card tr-ov-card" data-ov-empty><div class="empty-state">${ic('truck')}<div class="empty-title">No transport recorded ${h(when)}</div><p>No trips and no transport payments in the ledger for these dates.</p></div></div>`;
     }
-    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx, D.surf) + ovGuestMoney(D) + ovSuppliers(V, fx) + ovNote(D);
+    return filters + ovTiles(D) + (Y ? ovYearChart(Y, fx) : '') + ovKinds(V, fx, D.surf) + ovGuestMoney(D) + ovTourMoney(D) + ovSuppliers(V, fx) + ovNote(D);
   }
   // Three numbers: what transport cost (up or down), what we owe right now, the cost per person.
   function ovTiles(D, owedOnly) {
@@ -1575,6 +1589,20 @@
       <div class="summary-grid tr-ov-kpis">${tile('revenue', est ? 'Guests paid (est.)' : 'Guests paid', fmtEur(G.revenue), h(how))}
         ${tile('cost', 'Drivers', fmtEur(G.costEur), `<span class="num">${money(G.cost)}</span>`)}
         ${tile('margin', 'Margin', fmtEur(G.margin), G.revenue > 0 ? `${Math.round(G.margin / G.revenue * 100)}% of what guests paid` : '', G.margin < 0 ? 'kv-red' : '')}</div></div>`;
+  }
+  // Tours: what we charged the guests against the drivers, per tour (20 Nov 2026). Only the tour transfers with a «We charge
+  // per person»; the others are counted apart in one line. Shown like the airport card above: to everyone who has the
+  // Overview (the local manager included — he types the driver prices too).
+  function ovTourMoney(D) {
+    const T = TO().tourMoney(D.C, D.P); if (!T.rows.length) return '';
+    const cell = (v, cls) => `<div class="r num${cls ? ' ' + cls : ''}">${h(money(v))}</div>`;
+    const row = (r, tot) => `<div class="tr-tm${tot ? ' tr-tm-total' : ''}" data-ov-tour="${h(tot ? 'Total' : r.label)}"><div class="tr-tm-name"><b>${h(r.label)}</b><span class="cell-sub">${plural(r.trips, 'trip')} · ${plural(r.people, 'person', 'people')}</span></div>
+      ${cell(r.charged)}${cell(r.driver)}${cell(r.profit, r.profit < 0 ? 'tr-neg' : 'tr-pos')}</div>`;
+    const U = T.total.unchargedTrips ? `<div class="hint" data-ov-tour-uncharged>Not in these totals: ${plural(T.total.unchargedTrips, 'tour trip')} with no charge typed (drivers ${h(money(T.total.uncharged))}).</div>` : '';
+    return `<div class="card tr-ov-card" data-ov-tour-money><div class="card-hdr"><div><div class="card-title">Tours · charged and drivers</div>
+      <div class="card-hint">People × what we charge per person, against what the drivers cost, in ${h(CUR)}</div></div></div>
+      <div class="tr-tms" data-ov-table="tours"><div class="tr-tm tr-tm-head"><div>Tour</div><div class="r">Charged</div><div class="r">Driver</div><div class="r">Profit</div></div>
+      ${T.rows.map(r => row(r)).join('')}${T.rows.length > 1 ? row(T.total, true) : ''}</div>${U}</div>`;
   }
   // Who we pay: each driver / supplier with this period's cost and where it stands (paid, owed → Pay, still to come).
   function ovSuppliers(V, fx) {
@@ -1908,15 +1936,52 @@
   // The tours are the Camp Tab's Tours menu only — the revenue lines' linked items, so the names match exactly (the /prices
   // tour rows are tuk-tuk prices with their own names, «Tea Plantation» ≠ «Tea Plantation Visit»); «Other» takes any name. Vehicle: Tuk-tuk / Car / Minivan / Van («nos tours pode ser tuk-tuk
   // também»). No price is suggested («normalmente isto não são preços fixos»): what we pay the driver is typed each time.
+  // What we charge (20 Nov 2026, Miguel: «um tour Galle… o preço de transporte que vai para os drivers e depois o que cobramos,
+  // que é o dinheiro de lucro para nós» — and such a tour need not be on the Camp Tab): the list also takes every active tour
+  // row of /prices (Camp Tab on or off), and «We charge per person» is prefilled from its guest price when that is in the
+  // camp's money (a € price, Yala's, is never typed as LKR). Stored per trip in camp_trips.guest_price (camp's currency,
+  // per person; empty = not known → no profit shown). Display only: nothing is written to the ledger.
   const TOUR_OTHER = '__other';
   const TOUR_VEHICLES = ['Tuk-tuk', 'Car', 'Minivan', 'Van'];
-  function tourNames() {
+  function tourMenu() {
     let menu = [];
     try { menu = ((typeof currentCampTabMenu === 'function' && currentCampTabMenu()) || {}).Tours || []; } catch (_) { menu = []; }
     if (!menu.length && typeof TOUR_MENU_ITEMS !== 'undefined') menu = TOUR_MENU_ITEMS;
+    return menu;
+  }
+  // The Camp Tab menu first (its order), then the /prices tour rows that are not on it (Camp Tab off, e.g. «Galle»).
+  function tourNames() {
     const out = []; const seen = new Set();
-    menu.map(x => x && x.n).forEach(n => { n = String(n || '').trim(); const k = n.toLowerCase(); if (n && !seen.has(k)) { seen.add(k); out.push(n); } });
+    const add = n => { n = String(n || '').trim(); const k = n.toLowerCase(); if (n && !seen.has(k)) { seen.add(k); out.push(n); } };
+    tourMenu().forEach(x => add(x && x.n));
+    (TR.tourCat || []).forEach(r => add(r && r.name));
     return out;
+  }
+  // The guest price per person of a tour in the camp's money, or null: the /prices row, else the Camp Tab menu item.
+  function tourCharge(name) {
+    const k = String(name || '').trim().toLowerCase(); if (!k) return null;
+    const row = (TR.tourCat || []).find(r => String(r.name || '').trim().toLowerCase() === k);
+    if (row) { const cur = String(row.sell_currency || row.currency || CUR).toUpperCase(); return cur === CUR && Number(row.sell_price) > 0 ? Number(row.sell_price) : null; }
+    const it = tourMenu().find(x => String((x && x.n) || '').trim().toLowerCase() === k);
+    return it && Number(it.p) > 0 ? Number(it.p) : null;
+  }
+  // A tour transfer's money: charged = people × guest price, the driver = its price, profit = the difference; null when no
+  // guest price was typed (an older trip, or a tour we do not charge for).
+  function tourMoney(t) {
+    const gp = Number(t && t.guest_price);
+    if (!t || t.guest_price == null || t.guest_price === '' || !(gp > 0)) return null;
+    const charged = (Number(t.pax) || 1) * gp; const driver = Number(t.expected_price || 0);
+    return { charged, driver, profit: charged - driver };
+  }
+  const fmtN = n => Math.round(Number(n) || 0).toLocaleString('en-US');
+  // «Profit: 4 × 3,000 − 8,000 = LKR 4,000» under the form's prices, live.
+  function tourProfitLine() {
+    const el = $('tt_profit'); if (!el) return;
+    const gp = Number($('tt_gp') && $('tt_gp').value); const pax = Math.max(1, parseInt($('tt_p').value, 10) || 1); const drv = Number($('tt_pr').value) || 0;
+    if (!(gp > 0)) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    const profit = pax * gp - drv;
+    el.style.display = '';
+    el.innerHTML = `Profit: ${pax} × ${fmtN(gp)} − ${fmtN(drv)} = <b class="${profit < 0 ? 'tr-neg' : 'tr-pos'}">${h(money(profit))}</b>`;
   }
   function tourForm(t, day) {
     const paid = !!(t && t.payment_entry_id); const dis = paid ? 'disabled' : '';
@@ -1932,13 +1997,23 @@
       <div class="mfield"><label>Vehicle</label><div class="pills tr-seg" id="tt_v">${vehs.map(v => `<button type="button" class="pill${v === veh ? ' active' : ''}" data-v="${h(v)}" ${dis}>${h(v)}</button>`).join('')}</div></div>
       <div class="g2"><div class="mfield"><label>Driver</label><select id="tt_dr" ${dis}>${driverOptions(drv)}</select></div>
       <div class="mfield"><label>What we pay the driver (${CUR})</label><input type="number" min="0" id="tt_pr" inputmode="numeric" placeholder="Type the amount" value="${t && Number(t.expected_price) > 0 ? Number(t.expected_price) : ''}" ${dis}></div></div>
+      <div class="mfield"><label>We charge per person (${CUR})</label><input type="number" min="0" id="tt_gp" inputmode="numeric" placeholder="Empty = not charged" value="${t && Number(t.guest_price) > 0 ? Number(t.guest_price) : ''}">
+        <div class="hint tr-tour-profit" id="tt_profit" data-tour-profit style="display:none"></div></div>
       <div class="mfield"><label>Note</label><input id="tt_n" placeholder="Optional" value="${h(t ? t.notes || '' : '')}"></div>
       <details class="tr-more" id="tt_more"${t && t.trip_time ? ' open' : ''}><summary>More details <span class="hint">pick-up time</span></summary>
         <div class="mfield"><label>Pick-up time</label>${timeSelect('tt_t', t ? t.trip_time : '', dis, true)}</div></details>
       ${paid ? paidNote(t) : ''}`;
   }
-  function wireTourForm() {
-    const sel = $('tt_tour'); if (sel) sel.addEventListener('change', () => { const o = $('tt_other'); if (o) { o.style.display = sel.value === TOUR_OTHER ? '' : 'none'; if (sel.value === TOUR_OTHER) o.focus(); } });
+  function wireTourForm(isNew) {
+    // A new transfer: picking a tour fills «We charge per person» from /prices — until the field is typed in by hand.
+    let typed = !isNew; const gp = $('tt_gp');
+    if (gp) gp.addEventListener('input', () => { typed = true; });
+    ['tt_gp', 'tt_p', 'tt_pr'].forEach(id => { const el = $(id); if (el) el.addEventListener('input', tourProfitLine); });
+    const sel = $('tt_tour'); if (sel) sel.addEventListener('change', () => {
+      const o = $('tt_other'); if (o) { o.style.display = sel.value === TOUR_OTHER ? '' : 'none'; if (sel.value === TOUR_OTHER) o.focus(); }
+      if (!typed && gp) { const c = sel.value && sel.value !== TOUR_OTHER ? tourCharge(sel.value) : null; gp.value = c ? String(c) : ''; tourProfitLine(); }
+    });
+    tourProfitLine();
     // A tuk-tuk takes the tuk-tuk driver (Sampath), a car / van the airport driver (Dilan) — unless a driver was picked by hand.
     let picked = false; const dr = $('tt_dr'); if (dr) dr.addEventListener('change', () => { picked = true; });
     wireSeg('tt_v', () => {
@@ -1954,7 +2029,7 @@
     TR.tourEdit = null;
     modal('Add a tour transfer', 'A car, van or tuk-tuk taking guests to a tour', tourForm(null, onDay),
       `<button class="btn btn-s" onclick="TransportUI.closeModal()">Cancel</button><button class="btn btn-p" id="tt_save" onclick="TransportUI.saveTour()">Save</button>`);
-    wireTourForm();
+    wireTourForm(true);
   }
   function openTour(id) {
     const t = TR.trips.find(x => x.id === id); if (!t || !isTourCar(t)) return;
@@ -1963,7 +2038,7 @@
     const footer = `${!paid && mine && t.source === 'manual' ? `<button class="btn btn-danger" id="tt_del" onclick="TransportUI.removeTour('${id}')">${ic('trash')} Delete</button>` : ''}
       ${mine ? `<button class="btn btn-p" id="tt_save" onclick="TransportUI.saveTour()">Save</button>` : `<button class="btn btn-p" onclick="TransportUI.closeModal()">Close</button>`}`;
     modal(`Edit tour transfer · ${fmtDay(t.trip_date)}`, `${h(t.tour_name || 'Tour')} · ${payState(t).label}`, tourForm(t), footer);
-    wireTourForm();
+    wireTourForm(false);
   }
   async function saveTour() {
     if (TR.busy.has('tt')) return;
@@ -1972,14 +2047,17 @@
     const sel = $('tt_tour') ? $('tt_tour').value : '';
     const name = (sel === TOUR_OTHER ? ($('tt_other').value || '') : sel).trim().replace(/\s+/g, ' ');
     const price = Number($('tt_pr').value);
+    const gpv = Number($('tt_gp') ? $('tt_gp').value : ''); const guestPrice = gpv > 0 ? gpv : null;
     const next = { tour_name: name || null, route: name || null, trip_date: $('tt_d').value || cToday(), trip_time: ($('tt_t') && $('tt_t').value) || null,
       pax: Math.max(1, parseInt($('tt_p').value, 10) || 1), vehicle: segVal('tt_v') || 'Car', driver_id: $('tt_dr').value || null,
-      expected_price: price, notes: $('tt_n').value.trim() || null };
+      expected_price: price, notes: $('tt_n').value.trim() || null, guest_price: guestPrice };
+    const same = (a, b) => String(a ?? '') === String(b ?? '');
     if (t && t.payment_entry_id) {
-      // Paid: only the note — unlink the payment first to change anything else.
-      if (String(next.notes || '') === String(t.notes || '')) { closeModal(); return; }
+      // Paid: only the note and what we charge (neither touches the driver's payment) — unlink the payment to change the rest.
+      const patch = {}; if (!same(next.notes, t.notes)) patch.notes = next.notes; if (!same(next.guest_price, t.guest_price)) patch.guest_price = next.guest_price;
+      if (!Object.keys(patch).length) { closeModal(); return; }
       TR.busy.add('tt');
-      try { if (await updateTrip(t.id, { notes: next.notes })) { closeModal(); render(); say('Saved'); } } finally { TR.busy.delete('tt'); }
+      try { if (await updateTrip(t.id, patch)) { closeModal(); render(); say('Saved'); } } finally { TR.busy.delete('tt'); }
       return;
     }
     if (!name) { say('Pick the tour (or «Other» and type its name)', 'err'); return; }
@@ -1991,6 +2069,7 @@
         // edited_fields 'expected_price': the typed price is kept — camp_trips__reprice (transport-catalog-one-source.sql) reprices
         // an upcoming kind 'other' trip from a /prices row «<route> — <vehicle>» (Morocco's van runs) unless the price was typed.
         const row = { kind: 'other', purpose: 'tour', place: null, source: 'manual', status: 'planned', charge: null, edited_fields: ['expected_price'], ...next };
+        if (row.guest_price == null) delete row.guest_price;   // nothing charged: the row works before supabase/tour-guest-price.sql
         if (await insertTrip(row)) { closeModal(); TR.week = GT.weekStart(row.trip_date); TR.view = 'trips'; render(); say(`Tour transfer added · ${name}`); }
         return;
       }

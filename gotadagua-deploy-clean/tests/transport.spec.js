@@ -79,6 +79,8 @@ async function stub(page, opts = {}) {
       // a database where supabase/transport-catalog-one-source.sql has not run yet: the new columns do not exist
       if (opts.noNewCatalogCols && /covers_pax|bl_product/.test(url)) return json({ code: '42703', message: 'column pricing_catalog.covers_pax does not exist' }, 400);
       if (opts.catalogFails && url.includes('category=eq.Transport')) return json({ code: '500', message: 'timeout' }, 500);
+      // /prices tour rows (20 Nov 2026): the Camp Tab reads only show_in_camp_tab = true, Transport's tour list every active one
+      if (opts.tourCatalog && url.includes('category=eq.Tour')) return json(opts.tourCatalog.filter(r => !url.includes('show_in_camp_tab=eq.true') || r.show_in_camp_tab));
       return json(slug === 'sri-lanka' && url.includes('category=eq.Transport') && !st.noPrices ? (opts.catalog || CATALOG) : []);
     }
     if (url.includes('/rest/v1/location_state_store') && method !== 'GET') st.calls.push({ t: 'state_store', body });
@@ -92,6 +94,8 @@ async function stub(page, opts = {}) {
         const off = Number((url.match(/[?&]offset=(\d+)/) || [])[1] || 0); const lim = Number((url.match(/[?&]limit=(\d+)/) || [])[1] || 1000);
         return json(st.trips.slice(off, off + Math.min(lim, 1000)));
       }
+      // a database where supabase/tour-guest-price.sql has not run yet
+      if (opts.noGuestPrice && body && [].concat(body).some(r => 'guest_price' in r)) { st.calls.push({ t: 'guest_price_refused', method }); return json({ code: 'PGRST204', message: "Could not find the 'guest_price' column of 'camp_trips' in the schema cache" }, 400); }
       if (opts.noFreeColumn && body && [].concat(body).some(r => 'free_reason' in r)) { st.calls.push({ t: 'free_refused', method }); return json({ code: 'PGRST204', message: "Could not find the 'free_reason' column of 'camp_trips' in the schema cache" }, 400); }
       if (method === 'POST') { const rows = (Array.isArray(body) ? body : [body]).map(r => trip({ id: uid('aaaaaaaa'), created_at: new Date().toISOString(), import_key: null, booking_ref: null, guest_names: null, ...r })); st.trips.push(...rows); st.calls.push({ t: 'trip_insert', rows, body }); return json(rows); }
       if (method === 'PATCH') { const t = st.trips.find(x => x.id === idEq); Object.assign(t, body); st.calls.push({ t: 'trip_update', id: idEq, body }); return json([t]); }
@@ -2579,3 +2583,164 @@ test('20 Nov · Nadith (?view=local) has the Tours pill too: adds a tour transfe
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   expect(errors).toEqual([]);
 });
+
+// ── 20 Nov 2026 · Tour profit (Miguel: «um tour Galle… o preço de transporte que vai para os drivers e depois o que
+//    cobramos, que é o dinheiro de lucro para nós» — and the tour need not be on the Camp Tab) ──────────────────────────
+const TOUR_CAT = [
+  { id: 'pt-1', name: 'Cooking Class', sell_price: 6000, sell_currency: 'LKR', currency: 'LKR', show_in_camp_tab: true, sort_order: 1, category: 'Tour', active: true },
+  { id: 'pt-2', name: 'Galle', sell_price: 4000, sell_currency: 'LKR', currency: 'LKR', show_in_camp_tab: false, sort_order: 50, category: 'Tour', active: true },
+  { id: 'pt-3', name: 'Yala Park Safari', sell_price: 80, sell_currency: 'EUR', currency: 'LKR', show_in_camp_tab: false, sort_order: 60, category: 'Tour', active: true },
+];
+const tourCar = (n, o) => trip({ id: T20(n), kind: 'other', purpose: 'tour', place: null, guest_names: null, trip_time: '08:00', vehicle: 'Van', driver_id: D.dilan, source: 'manual', charge: null, ...o });
+
+test('20 Nov · tour profit: a /prices tour with Camp Tab OFF (Galle) is in the tour list (not on the Camp Tab); «We charge per person» prefilled from /prices (never a € price), kept once typed; live profit line; saved as guest_price; the row shows charged · driver · profit', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page, { trips: [], tourCatalog: TOUR_CAT });
+  expect(await page.evaluate(() => (currentCampTabMenu().Tours || []).map(x => x.n))).not.toContain('Galle');   // Camp Tab off: not sold on the tab
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await page.click('#transportRoot [data-add-tour]');
+  const opts = await page.locator('#tt_tour option').allInnerTexts();
+  expect(opts).toContain('Galle'); expect(opts).toContain('Cooking Class'); expect(opts).toContain('Yala Park Safari');
+  expect(opts.filter(o => o === 'Cooking Class')).toHaveLength(1);                  // on the tab and in /prices: once
+  expect(opts[opts.length - 1]).toBe('Other…');
+  await expect(page.locator('#tt_gp')).toHaveValue('');
+  await expect(page.locator('#tt_profit')).toBeHidden();
+  await page.selectOption('#tt_tour', 'Galle');
+  await expect(page.locator('#tt_gp')).toHaveValue('4000');                      // from /prices
+  await expect(page.locator('#tt_pr')).toHaveValue('');                          // the driver is never prefilled
+  await page.fill('#tt_p', '4');
+  await page.fill('#tt_pr', '8000');
+  await expect(page.locator('#tt_profit')).toHaveText('Profit: 4 × 4,000 − 8,000 = LKR 8,000');
+  await page.fill('#tt_pr', '20000');
+  await expect(page.locator('#tt_profit')).toHaveText('Profit: 4 × 4,000 − 20,000 = -LKR 4,000');
+  await expect(page.locator('#tt_profit b')).toHaveClass(/tr-neg/);
+  await page.selectOption('#tt_tour', 'Yala Park Safari');
+  await expect(page.locator('#tt_gp')).toHaveValue('');                          // €80 is never typed as LKR 80
+  await expect(page.locator('#tt_profit')).toBeHidden();
+  await page.selectOption('#tt_tour', 'Galle');
+  await expect(page.locator('#tt_gp')).toHaveValue('4000');
+  await page.fill('#tt_gp', '3500');                                               // typed by hand: kept when the tour changes
+  await page.selectOption('#tt_tour', 'Cooking Class');
+  await expect(page.locator('#tt_gp')).toHaveValue('3500');
+  await page.selectOption('#tt_tour', 'Galle');
+  await page.fill('#tt_pr', '8000');
+  await expect(page.locator('#tt_profit')).toHaveText('Profit: 4 × 3,500 − 8,000 = LKR 6,000');
+  await expect(page.locator('#trOv .btn-p')).toHaveCount(1);
+  await page.click('#tt_save');
+  const ins = (await call(st, 'trip_insert')).rows[0];
+  expect(ins).toMatchObject({ kind: 'other', purpose: 'tour', tour_name: 'Galle', pax: 4, expected_price: 8000, guest_price: 3500 });
+  const row = page.locator('#transportRoot .tr-tour', { hasText: 'Galle' });
+  await expect(row.locator('[data-tour-money]')).toHaveText('Charged LKR 14,000 · Driver LKR 8,000 · Profit LKR 6,000');
+  // Edit: the charge is shown, never re-prefilled; cleared → null, the money line goes.
+  await row.click();
+  await expect(page.locator('#tt_gp')).toHaveValue('3500');
+  await page.selectOption('#tt_tour', 'Cooking Class');
+  await expect(page.locator('#tt_gp')).toHaveValue('3500');
+  await page.selectOption('#tt_tour', 'Galle');
+  await page.fill('#tt_gp', '');
+  await page.click('#tt_save');
+  expect((await call(st, 'trip_update')).body).toMatchObject({ guest_price: null });
+  await expect(page.locator('#transportRoot .tr-tour', { hasText: 'Galle' }).locator('[data-tour-money]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('20 Nov · tour profit: a paid tour transfer keeps its charge editable (note + charge only); the Overview totals per tour (charged, driver, profit) leave out trips with no charge', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const trips = [
+    tourCar(51, { route: 'Galle', tour_name: 'Galle', trip_date: '2026-11-10', pax: 4, expected_price: 8000, guest_price: 4000 }),
+    tourCar(52, { route: 'Galle', tour_name: 'Galle', trip_date: '2026-11-11', pax: 6, expected_price: 12000, guest_price: 4000 }),
+    tourCar(53, { route: 'Cooking Class', tour_name: 'Cooking Class', trip_date: '2026-11-12', pax: 2, expected_price: 15000, guest_price: 6000 }),
+    tourCar(54, { route: 'Safari Yala', tour_name: 'Safari Yala', trip_date: '2026-11-12', pax: 5, expected_price: 25000 }),                       // no charge typed
+    tourCar(55, { route: 'Galle', tour_name: 'Galle', trip_date: '2026-11-09', pax: 3, expected_price: 6000, guest_price: 4000, status: 'cancelled' }),   // cancelled: out
+    tourCar(56, { route: 'Tea Plantation Visit', tour_name: 'Tea Plantation Visit', trip_date: '2026-11-11', pax: 2, expected_price: 5000, payment_entry_id: 'eeeeeeee-0000-4000-8000-0000000000p1' }),
+  ];
+  const st = await openTab(page, { trips, tourCatalog: TOUR_CAT, ledger: [ledgerRow('eeeeeeee-0000-4000-8000-0000000000p1', 'Dilan · 1 tour transfer', 5000, '2026-11-12', { linked_item: 'Tea Plantation Visit' })] });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await expect(page.locator(`#transportRoot [data-trip="${T20(51)}"] [data-tour-money]`)).toHaveText('Charged LKR 16,000 · Driver LKR 8,000 · Profit LKR 8,000');
+  await expect(page.locator(`#transportRoot [data-trip="${T20(53)}"] [data-tour-money]`)).toHaveText('Charged LKR 12,000 · Driver LKR 15,000 · Profit -LKR 3,000');
+  await expect(page.locator(`#transportRoot [data-trip="${T20(54)}"] [data-tour-money]`)).toHaveCount(0);
+  // Paid: every field locked except the note and the charge.
+  await page.locator(`#transportRoot [data-trip="${T20(56)}"]`).click();
+  await expect(page.locator('#tt_pr')).toBeDisabled();
+  await expect(page.locator('#tt_gp')).toBeEnabled();
+  await page.fill('#tt_gp', '3000');
+  await page.click('#tt_save');
+  expect((await call(st, 'trip_update')).body).toEqual({ guest_price: 3000 });
+  await expect(page.locator(`#transportRoot [data-trip="${T20(56)}"] [data-tour-money]`)).toHaveText('Charged LKR 6,000 · Driver LKR 5,000 · Profit LKR 1,000');
+  // Overview, the month.
+  await page.evaluate(() => TransportUI.setView('overview'));
+  await page.evaluate(() => TransportUI.ovMode('month'));
+  const card = page.locator('[data-ov-tour-money]');
+  await expect(card.locator('.card-title')).toHaveText('Tours · charged and drivers');
+  const cells = sel => card.locator(`[data-ov-tour="${sel}"] .r`).allInnerTexts();
+  expect((await cells('Galle')).map(x => x.replace(/\s+/g, ' '))).toEqual(['LKR 40,000', 'LKR 20,000', 'LKR 20,000']);                 // 4×4,000 + 6×4,000 − (8,000 + 12,000)
+  expect((await cells('Cooking Class')).map(x => x.replace(/\s+/g, ' '))).toEqual(['LKR 12,000', 'LKR 15,000', '-LKR 3,000']);
+  expect((await cells('Tea Plantation Visit')).map(x => x.replace(/\s+/g, ' '))).toEqual(['LKR 6,000', 'LKR 5,000', 'LKR 1,000']);
+  expect((await cells('Total')).map(x => x.replace(/\s+/g, ' '))).toEqual(['LKR 58,000', 'LKR 40,000', 'LKR 18,000']);
+  await expect(card.locator('[data-ov-tour="Safari Yala"]')).toHaveCount(0);
+  await expect(card.locator('[data-ov-tour-uncharged]')).toHaveText('Not in these totals: 1 tour trip with no charge typed (drivers LKR 25,000).');
+  await expect(card.locator('[data-ov-tour="Galle"]')).toContainText('2 trips · 10 people');
+  // The pure function (lib/transport-overview.js) agrees.
+  const T = await page.evaluate(() => { const P = TransportOverview.period('month', '2026-11'); return TransportOverview.tourMoney(TransportOverview.collect({ trips: TransportUI._state.trips, ledger: [], drivers: [], cfg: {}, goLive: '2026-11-01', now: '2026-11-13T10:00', linked: new Set() }), P).total; });
+  expect(T).toMatchObject({ trips: 4, people: 14, charged: 58000, driver: 40000, profit: 18000, unchargedTrips: 1, uncharged: 25000 });
+  expect(errors).toEqual([]);
+});
+
+test('20 Nov · tour profit: before supabase/tour-guest-price.sql the tour transfer is saved without the charge — no error', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  const st = await openTab(page, { trips: [], tourCatalog: TOUR_CAT, noGuestPrice: true });
+  await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+  await page.click('#transportRoot [data-add-tour]');
+  await page.selectOption('#tt_tour', 'Galle');
+  await page.fill('#tt_p', '3');
+  await page.fill('#tt_pr', '9000');
+  await page.click('#tt_save');
+  await call(st, 'guest_price_refused');
+  const ins = (await call(st, 'trip_insert')).rows[0];
+  expect(ins).toMatchObject({ kind: 'other', purpose: 'tour', tour_name: 'Galle', pax: 3, expected_price: 9000 });
+  expect('guest_price' in (await call(st, 'trip_insert')).body).toBe(false);
+  await expect(page.locator('#toast')).toHaveText('Tour transfer added · Galle');
+  await expect(page.locator('#transportRoot .tr-tour', { hasText: 'Galle' })).toHaveCount(1);
+  // An edit that only changes the charge stays on this screen (nothing to save without the column), no error.
+  const id = await page.evaluate(() => TransportUI._state.trips.find(t => t.tour_name === 'Galle').id);
+  await page.locator(`#transportRoot [data-trip="${id}"]`).click();
+  await page.fill('#tt_gp', '5000');
+  await page.click('#tt_save');
+  await call(st, 'guest_price_refused', 2);
+  await expect(page.locator('#toast')).toHaveText('Saved');
+  expect(errors).toEqual([]);
+});
+
+for (const [name, size] of [['390', { width: 390, height: 844 }], ['1280', { width: 1280, height: 900 }]]) {
+  test(`20 Nov · tour profit at ${name}: form with the profit line, Tours rows, Overview card — no horizontal overflow, screenshots`, async ({ page }) => {
+    const errors = collectFatalErrors(page);
+    await page.setViewportSize(size);
+    const trips = [
+      tourCar(61, { route: 'Galle', tour_name: 'Galle', trip_date: '2026-11-12', pax: 6, expected_price: 12000, guest_price: 4000, notes: 'Fort and lighthouse' }),
+      tourCar(62, { route: 'Cooking Class', tour_name: 'Cooking Class', trip_date: '2026-11-14', trip_time: null, pax: 3, vehicle: 'Tuk-tuk', driver_id: D.sampath, expected_price: 3500, guest_price: 6000 }),
+    ];
+    await openTab(page, { trips, tourCatalog: TOUR_CAT });
+    await page.click('#transportRoot .tr-tabs .pill[data-cat="tours"]');
+    await expect(page.locator(`#transportRoot [data-trip="${T20(61)}"] [data-tour-money]`)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    fsx.mkdirSync(SHEET_SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-tour-profit-rows-${name}.png`), fullPage: true });
+    await page.click('#transportRoot [data-add-tour]');
+    await page.selectOption('#tt_tour', 'Galle');
+    await page.fill('#tt_p', '5');
+    await page.fill('#tt_pr', '10000');
+    await expect(page.locator('#tt_profit')).toHaveText('Profit: 5 × 4,000 − 10,000 = LKR 10,000');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    expect(await page.evaluate(() => { const m = document.querySelector('#trOv .modal'); return m.scrollWidth <= m.clientWidth + 1; })).toBe(true);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-tour-profit-form-${name}.png`) });
+    await page.evaluate(() => TransportUI.closeModal());
+    await page.evaluate(() => TransportUI.setView('overview'));
+    await page.evaluate(() => TransportUI.ovMode('month'));
+    await expect(page.locator('[data-ov-tour-money]')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(size.width);
+    await page.locator('[data-ov-tour-money]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(SHEET_SHOTS, `sl-tour-profit-overview-${name}.png`), fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}
