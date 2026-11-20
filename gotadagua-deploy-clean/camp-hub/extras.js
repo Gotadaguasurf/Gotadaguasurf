@@ -20,7 +20,7 @@
        «Bank LKR … · payroll ~… due ~28th → Money from HQ needed ≈ …».
        Nothing is ever written to the ledger.
    B6  «This week» card at the top of the Weekly P&L (full view, Sri Lanka).
-   B9  «Tour sold this week with no cost: <tour> ×N».
+   B9  «Tour with no cost for 2+ weeks: <tour> ×N (since <day>)» — guides are paid weekly or fortnightly.
 
    Index.html globals used (classic-script globals): S, LOCAL_MANAGER_MODE,
    CAMP_TAB_ONLY_MODE, __HUB_LOCATION_SLUG, HUB_CAMP_TAB_MODE, LOCAL_PER_EUR,
@@ -42,7 +42,9 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   const CAMP_TZ = CAMP_CFG().tz || 'Asia/Colombo';
   const SALARY_DUE_DAY = 28;          // payday ~28th: from then on the chip checks THIS month
   const MONEY_CHIP_FROM_DAY = 15;     // «Money from HQ needed» from the 15th of the month
-  const TOUR_COST_LOOKBACK_DAYS = 3;  // a tour cost paid up to 3 days before the week still counts
+  const TOUR_COST_LOOKBACK_DAYS = 3;  // (kept for settings; the chip now waits TOUR_COST_WAIT_DAYS)
+  const TOUR_COST_WAIT_DAYS = 14;     // tour guides are paid weekly or every 2 weeks: only warn when a sale is 2+ weeks old with no cost since
+  const TOUR_CHECK_FROM = '2026-11-14'; // Sri Lanka control starts with the 16 Nov fresh start (week of 14 Nov) — older sales are never flagged
   const TOURS_WITHOUT_COST = [];      // tours that never have a cost (none known yet)
   const DEAD_STATUSES = ['cancelled', 'canceled', 'expired', 'not_here'];   // not_here = dropped out of a later Guests file (build/sl-week)
   const PREFILL_RETRY_MS = 1500;
@@ -75,6 +77,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     return `${p.year}-${p.month}-${p.day}`;
   }
   const dayNum = (ymd) => { const [y, m, d] = String(ymd).split('-').map(Number); return Date.UTC(y, (m || 1) - 1, d || 1) / 86400000; };
+  const shortDay = (ymd) => new Date(dayNum(ymd) * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
   const addDays = (ymd, n) => new Date((dayNum(ymd) + n) * 86400000).toISOString().slice(0, 10); // pure date arithmetic on a UTC midnight
   const daysBetween = (a, b) => Math.round(dayNum(b) - dayNum(a));
   // Saturday of the Sat–Fri week (same rule as GuestsTrips.weekStart).
@@ -331,17 +334,27 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
   };
 
   // ── B9 · Tour sold this week with no cost ─────────────────────────────────
+  // A tour sale is «covered» by the next cost of that tour on or after its date
+  // (the guide is paid later, weekly or fortnightly). Flag a tour only when its
+  // oldest uncovered sale is TOUR_COST_WAIT_DAYS old or more.
   function toursWithoutCost(rows, today) {
-    const ws = weekStart(today); const from = addDays(ws, -TOUR_COST_LOOKBACK_DAYS);
-    const sold = new Map();
+    const lastCost = new Map();
+    rows.forEach((r) => {
+      const d = String(r.date || ''); const item = String(r.linkedItem || '').trim();
+      if (r.type !== 'expense' || !item || d > today) return;
+      if (!lastCost.has(item) || d > lastCost.get(item)) lastCost.set(item, d);
+    });
+    const open = new Map();
     rows.forEach((r) => {
       const d = String(r.date || '');
-      if (!isIncome(r) || !/^tours?$/i.test(String(r.category || '').trim()) || d < ws || d > today) return;
+      if (!isIncome(r) || !/^tours?$/i.test(String(r.category || '').trim()) || d < TOUR_CHECK_FROM || d > today) return;
       const item = String(r.linkedItem || '').trim(); if (!item || TOURS_WITHOUT_COST.includes(item)) return;
-      sold.set(item, (sold.get(item) || 0) + (Number(r.quantity) > 0 ? Number(r.quantity) : 1));
+      if (lastCost.has(item) && lastCost.get(item) >= d) return;
+      const o = open.get(item) || { item, n: 0, since: d };
+      o.n += Number(r.quantity) > 0 ? Number(r.quantity) : 1; if (d < o.since) o.since = d;
+      open.set(item, o);
     });
-    const costed = new Set(rows.filter((r) => r.type === 'expense' && String(r.date || '') >= from && String(r.date || '') <= today).map((r) => String(r.linkedItem || '').trim()).filter(Boolean));
-    return [...sold.entries()].filter(([item]) => !costed.has(item)).map(([item, n]) => ({ item, n }));
+    return [...open.values()].filter((o) => dayNum(today) - dayNum(o.since) >= TOUR_COST_WAIT_DAYS).sort((a, b) => a.since < b.since ? -1 : 1);
   }
   const tourCheck = {
     id: 'tour-without-cost',
@@ -349,7 +362,7 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
       if (!ctx || ctx.isLocal || !EXTRAS_LOCATIONS.includes(ctx.location) || !fullView()) return null;
       const list = toursWithoutCost(ctx.ledger || [], ctx.today);
       if (!list.length) return null;
-      return { text: `Tour sold this week with no cost: ${list.map((x) => `${x.item} ×${x.n}`).join(', ')}`, level: 'info' };
+      return { text: `Tour with no cost for 2+ weeks: ${list.map((x) => `${x.item} ×${x.n} (since ${shortDay(x.since)})`).join(', ')}`, level: 'info' };
     },
   };
 
@@ -521,6 +534,6 @@ window.CAMP_CHECKS = window.CAMP_CHECKS || [];
     state, colomboToday, weekStart, salaryMonth, payeeOf, expectedPayees, salaryStatus, moneyStatus, toursWithoutCost,
     leavingGroups, prefillList, prefillCampTab, loadWeekGuests, renderLeaving, renderWeekCard, openSalaries,
     checks: { salaryCheck, moneyCheck, tourCheck },
-    settings: { EXTRAS_LOCATIONS, SALARY_DUE_DAY, MONEY_CHIP_FROM_DAY, TOUR_COST_LOOKBACK_DAYS, TOURS_WITHOUT_COST },
+    settings: { EXTRAS_LOCATIONS, SALARY_DUE_DAY, MONEY_CHIP_FROM_DAY, TOUR_COST_LOOKBACK_DAYS, TOUR_COST_WAIT_DAYS, TOUR_CHECK_FROM, TOURS_WITHOUT_COST },
   };
 })();

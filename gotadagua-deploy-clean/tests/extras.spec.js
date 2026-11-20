@@ -5,7 +5,7 @@
 //       «Leaving today/tomorrow with open tab» chips above it;
 //   B4  salary and «Money from HQ needed» chips (read-only);
 //   B6  the «This week» card on the Weekly P&L;
-//   B9  «Tour sold this week with no cost».
+//   B9  «Tour with no cost for 2+ weeks».
 //
 // Everything is stubbed (in-memory PostgREST): nothing reaches Supabase, and
 // the Camp Tab only ever runs inside the hub. Phone width (390) throughout.
@@ -376,13 +376,26 @@ test('money chip: from the 15th, bank below the payroll still due → Money from
 });
 
 // ── B9 · Tours ───────────────────────────────────────────────────────────────
-test('tour chip: Cooking Class sold twice this week with no cost (last month\'s cost does not count); River Safari has its boat', async ({ page }) => {
+test('tour chip: waits 2 weeks (guides paid weekly/fortnightly) — Cooking Class sold 15 Nov, last month\'s cost does not count; River Safari has its boat', async ({ page }) => {
   await openHub(page, { waitFrame: false });
   await page.evaluate(() => showPage('expenses'));
-  await expect(page.locator('#expChecks .health-chip', { hasText: 'Tour sold' })).toHaveText('Tour sold this week with no cost: Cooking Class ×2');
-  await page.locator('#expChecks').scrollIntoViewIfNeeded();
-  await page.evaluate(() => window.scrollBy(0, -120));
-  await page.screenshot({ path: `${SHOTS}/extras-chips.png`, fullPage: false });
+  await page.waitForTimeout(500);
+  // Mon 16 Nov: the sale is 1 day old → no chip yet.
+  expect((await chipTexts(page, 'expChecks')).filter(c => /^Tour/.test(c))).toEqual([]);
+  // 13 days later still quiet; from 14 days the chip shows.
+  const run = (today) => page.evaluate((t) => CAMP_CHECKS.find(c => c.id === 'tour-without-cost').run({ ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: t }), today);
+  expect(await run('2026-11-28')).toBeNull();
+  expect((await run('2026-11-29')).text).toBe('Tour with no cost for 2+ weeks: Cooking Class ×2 (since 15 Nov)');
+  // A Cooking Class cost on/after the sale covers it.
+  const covered = await page.evaluate(() => CampExtras.toursWithoutCost([...S.ledger, { type: 'expense', date: '2026-11-27', linkedItem: 'Cooking Class', category: 'Tours & activities', amountLocal: 12000 }], '2026-12-01'));
+  expect(covered).toEqual([]);
+  const p2 = await page.context().newPage();
+  await openHub(p2, { waitFrame: false, at: '2026-11-30T04:30:00Z' });
+  await p2.evaluate(() => showPage('expenses'));
+  await expect(p2.locator('#expChecks .health-chip', { hasText: 'Tour with no cost' })).toHaveText('Tour with no cost for 2+ weeks: Cooking Class ×2 (since 15 Nov)');
+  await p2.locator('#expChecks').scrollIntoViewIfNeeded();
+  await p2.evaluate(() => window.scrollBy(0, -120));
+  await p2.screenshot({ path: `${SHOTS}/extras-chips.png`, fullPage: false });
 });
 
 // ── B6 · This week card ──────────────────────────────────────────────────────
