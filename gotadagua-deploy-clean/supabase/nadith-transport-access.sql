@@ -35,7 +35,8 @@
 --  Run AFTER camp-trips.sql, camp-trips-v2.sql, camp-trips-own-link.sql,
 --  camp-trips-morocco.sql, camp-trips-local-pay.sql and bl-report-ingest.sql.
 --  Idempotent. NOT run by the agent: Miguel runs it after his OK — before or together with
---  the deploy of feat/nadith-transport (without it Nadith's airport edits are refused by RLS).
+--  the deploy of feat/nadith-transport. Without it an RLS-denied update returns zero rows and
+--  no error: his airport edits and «Drivers saved» would look saved but not persist.
 --
 --  Pre-check (optional): the live link_set should match supabase/camp-trips.sql except the gate:
 --  select pg_get_functiondef('public.camp_transport_link_set(uuid, uuid, uuid[], text)'::regprocedure);
@@ -120,12 +121,13 @@ grant execute on function public.camp_transport_link_set(uuid, uuid, uuid[], tex
 create or replace function public.camp_trips_local_airport_guard()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if coalesce(old.kind, '') not like 'airport%' then
-    return case when tg_op = 'DELETE' then old else new end;
-  end if;
-  -- HQ, Francisco and the service role (camp_trips_can_manage) are never limited here.
-  if not public.is_local_manager(old.location_id) or public.camp_trips_can_manage(old.location_id) then
-    return case when tg_op = 'DELETE' then old else new end;
+  -- Only an airport row, and only the local manager: HQ, Francisco and the service role
+  -- (camp_trips_can_manage — the hourly import) are never limited here.
+  if coalesce(old.kind, '') not like 'airport%'
+     or not public.is_local_manager(old.location_id)
+     or public.camp_trips_can_manage(old.location_id) then
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
   end if;
   if tg_op = 'DELETE' then
     raise exception 'Only the camp manager or HQ can delete an airport transfer' using errcode = '42501';

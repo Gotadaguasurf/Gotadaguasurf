@@ -156,13 +156,12 @@ test('mobile (Sri Lanka ?view=local, Nadith, 20 Nov 2026): the full Â«TransportÂ
   await expect(page.locator('#transportRoot .tr-row-ro')).toHaveCount(0);
   await check(page, 'sl-local-transport', report);
   const air = page.locator('#transportRoot .tr-row[data-cat="airport"] [data-edit]');
-  if (await air.count()) {
-    await air.first().click();
-    await expect(page.locator('#trOv.open')).toHaveCount(1);
-    await expect(page.locator('#trOv button:has-text("Cancel trip"), #trOv #tr_del')).toHaveCount(0);
-    await check(page, 'sl-local-airport-trip', report);
-    await close(page);
-  }
+  await expect(air.first()).toBeVisible();
+  await air.first().click();
+  await expect(page.locator('#trOv.open')).toHaveCount(1);
+  await expect(page.locator('#trOv button:has-text("Cancel trip"), #trOv #tr_del')).toHaveCount(0);
+  await check(page, 'sl-local-airport-trip', report);
+  await close(page);
   await page.evaluate(() => TransportUI.openTuktuk());
   await expect(page.locator('#trOv .mhdr-title')).toHaveText('Tuk-tuk runs');
   await expect(page.locator('#trOv .tr-tap-ro')).toHaveCount(0);

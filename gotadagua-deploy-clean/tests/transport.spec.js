@@ -2046,6 +2046,28 @@ test('bl check: «Booked ✓» stamps the check (who and when); «Not booked» c
   await expect(page.locator('#transportRoot [data-chip="blcheck"]')).toHaveText('1 transfer to check in Bookinglayer');   // yesterday's
 });
 
+// In production the local manager's ledger has no HQ-paid lines (supabase/local-manager.sql): a payment link can point
+// at a ledger row he cannot read. Since 20 Nov 2026 he loads the links: the page, the chip and «To check» must not break.
+test('local view (20 Nov 2026): payment links whose ledger rows he cannot read — the page, «payments to check» and the Paid label still render', async ({ page }) => {
+  const errors = collectFatalErrors(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const F = weekFixture();
+  const hidden = 'ffffffff-0000-4000-8000-000000000991';
+  const links = [...F.links, { entry_id: hidden, location_id: LOC, driver_id: D.dilan, entry_amount: 9000, trips_amount: 0, trips_count: 0, state: 'review', reason: 'unlinked', linked_by: 'auto', reviewed_by: null }];
+  await open(page, { query: '&view=local', trips: F.trips, links, ledger: [] });
+  await page.evaluate(() => showPage('transport'));
+  await page.waitForFunction(() => window.TransportUI && TransportUI._state.loaded, null, { timeout: 10000 });
+  await expect(page.locator('#transportRoot .section-title')).toHaveText('Transport');
+  await expect(page.locator(`#transportRoot .tr-row[data-trip="${R(101)}"] [data-pay]`)).toHaveText('Paid');
+  const chip = page.locator('#transportRoot [data-chip="check"]');
+  if (await chip.count()) await chip.click(); else await page.evaluate(() => TransportUI.openChecks());
+  await expect(page.locator('#trOv.open')).toHaveCount(1);
+  await page.evaluate(() => TransportUI.closeModal());
+  await page.click('#transportRoot [data-view="overview"]');
+  await expect(page.locator('#transportRoot .tr-tripview')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('bl check: Nadith (?view=local, 20 Nov 2026) checks like Francisco — link, «Booked ✓», the chip — but «Not booked» (it cancels) only on a transfer that already happened', async ({ page }) => {
   const st = await open(page, { query: '&view=local', ...blFixture() });
   await page.evaluate(() => showPage('transport'));
