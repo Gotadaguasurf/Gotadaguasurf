@@ -863,7 +863,7 @@ test('contacts: three rows (the camp teams); a phone is checked (E.164); the cle
 });
 
 // ── Chips (shared registry) ────────────────────────────────────────────────
-test('chips: «Guests file is N days old» after 3 days; yoga paid/unpaid from the ledger, read-only', async ({ page }) => {
+test('chips: «Guests file is N days old» after 3 days; yoga unpaid only after 2 weeks, read-only', async ({ page }) => {
   // latest import Fri 13 Nov 13:30 Colombo (08:00 UTC) → 4 days old on Tue 17
   const guests = [...guestsFromFile(), ...CARRY()].map(g => g.import_id === IMPORT_NEW ? { ...g, updated_at: '2026-11-13T08:00:00Z' } : g);
   await page.clock.setFixedTime(new Date('2026-11-17T04:30:00Z'));   // the shared strip reads the real clock: Tue 17 10:00 Colombo
@@ -872,18 +872,19 @@ test('chips: «Guests file is N days old» after 3 days; yoga paid/unpaid from t
     return { file: WeekUI.checks.file.run(ctx), yoga: WeekUI.checks.yoga.run(ctx) }; });
   let r = await run();
   expect(r.file.text).toBe('Bookinglayer import stopped 4 days ago – tell Miguel');
-  // last week (7–13 Nov) had Anja with Yoga Pack and no yoga payment
-  expect(r.yoga.map(x => x.text)).toEqual(['Yoga students last week (1) but no Yoga payment']);
+  // Tue 17: last week (7–13 Nov, Anja with Yoga Pack) is before the 14 Nov start and not 2 weeks old → no yoga chip
+  expect(r.yoga).toBeNull();
   await page.evaluate(() => showPage('overview'));
   await expect(page.locator('#ovChecks')).toContainText('Bookinglayer import stopped 4 days ago – tell Miguel');
-  // a yoga payment in the ledger (Salary, «Yoga teacher») clears it
-  await page.evaluate(() => { S.ledger.push({ id: 'y1', type: 'expense', category: 'Salary', description: 'Yoga teacher week 46', date: '2026-11-15', amountLocal: 30000, paymentMethod: 'Cash' }); });
-  r = await run();
-  expect(r.yoga).toBeNull();
-  // Fri 20: this week's 13 yoga students, the 15 Nov payment counts → no chip; without it → chip
-  const fri = await page.evaluate(() => WeekUI.checks.yoga.run({ ledger: [], location: 'sri-lanka', isLocal: false, today: '2026-11-20' }));
-  expect(fri.map(x => x.text)).toContain('Yoga students this week (13) but no Yoga payment');
-  expect(await page.evaluate(() => WeekUI.checks.yoga.run({ ledger: S.ledger, location: 'sri-lanka', isLocal: false, today: '2026-11-20' }))).toBeNull();
+  // The 14–20 Nov students (13): the teacher is paid weekly or every 2 weeks → quiet until Sat 28, then the chip if nothing was paid since 14 Nov
+  const yoga = (today, ledger) => page.evaluate(([t, l]) => WeekUI.checks.yoga.run({ ledger: l || S.ledger, location: 'sri-lanka', isLocal: false, today: t }), [today, ledger]);
+  expect(await yoga('2026-11-20', [])).toBeNull();
+  expect(await yoga('2026-11-27', [])).toBeNull();
+  expect((await yoga('2026-11-28', [])).map(x => x.text)).toEqual(['Yoga students 14–20 Nov (13) but no Yoga payment in 2+ weeks']);
+  // a yoga payment in the ledger (Salary, «Yoga teacher») on or after 14 Nov clears it — also one paid the week after
+  expect(await yoga('2026-11-28', [{ id: 'y1', type: 'expense', category: 'Salary', description: 'Yoga teacher', date: '2026-11-24', amountLocal: 66000, paymentMethod: 'Cash' }])).toBeNull();
+  // a payment before the week does not count
+  expect((await yoga('2026-11-28', [{ id: 'y0', type: 'expense', category: 'Salary', description: 'Yoga teacher', date: '2026-11-13', amountLocal: 30000, paymentMethod: 'Cash' }])).length).toBe(1);
 });
 
 test('chips: a fresh Guests file shows no age chip; a missing table shows a set-up line, not an error', async ({ page }) => {

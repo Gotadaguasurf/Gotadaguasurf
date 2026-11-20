@@ -49,7 +49,8 @@
   const FILE_OLD_DAYS = 3;              // chip «Bookinglayer import stopped N days ago» after this
   const YOGA_TIME = '08:00';            // shown in the Surf message (B1 template)
   const YOGA_PAY_CATEGORIES = ['Salary', 'Tours & activities', 'Tours'];
-  const YOGA_CHECK_FROM_WEEKDAY = 5;    // 0 = Sat … 6 = Fri: the «no Yoga payment» chip for the running week shows from Thu
+  const YOGA_WAIT_DAYS = 14;            // the yoga teacher is paid weekly or every 2 weeks: a week's students are flagged only 14+ days after the week started with no Yoga payment since
+  const YOGA_CHECK_FROM = '2026-11-14'; // Sri Lanka control starts with the 16 Nov fresh start — older weeks are never flagged
   const UNDO_MS = 5000;
   // Room order of the staff images (shared rooms first in the file anyway).
   const ROOM_ORDER = ['marissa', 'kabalana', 'unawatuna', 'hiriketeya', 'ahangama', 'madiha', 'midigama', 'welligama', 'weligama'];
@@ -631,7 +632,8 @@
       if (force) W.cache = {};
       await Promise.all([loadMeta(), loadGroup()]);
       const ws = W.week || GT.weekStart(cToday());
-      await Promise.all([loadWeek(ws, force), loadWeek(GT.weekStart(cToday()), force), loadWeek(add(GT.weekStart(cToday()), -7), force)]);
+      const now = GT.weekStart(cToday());
+      await Promise.all([loadWeek(ws, force), loadWeek(now, force), loadWeek(add(now, -7), force), loadWeek(add(now, -14), force), loadWeek(add(now, -21), force)]);
       if (window.TransportUI && !TR().loaded && TransportUI.load) { try { await TransportUI.load(); } catch (_) {} }
     })();
     try { await W.loading; } finally { W.loading = null; }
@@ -1493,15 +1495,16 @@
     id: 'week-yoga-unpaid',
     run(ctx) {
       if (!ctx || ctx.isLocal || !WEEK_ENABLED_LOCATIONS.has(ctx.location) || !W.metaLoaded) return null;
-      const today = ctx.today || cToday(); const ws = GT.weekStart(today); const prev = add(ws, -7);
+      const today = ctx.today || cToday(); const ws = GT.weekStart(today);
       const yogaIn = w => W.cache[w] ? rowsOf(w).filter(g => counted(g) && inWeek(g, w) && isYoga(g)).length : 0;
       const out = [];
-      const nNow = yogaIn(ws);
-      if (nNow && daysBetween(ws, today) >= YOGA_CHECK_FROM_WEEKDAY && !yogaPayments(ws, today, ctx.ledger).length)
-        out.push({ text: `Yoga students this week (${nNow}) but no Yoga payment`, level: 'info', onClick: () => { W.week = ws; W.tab = 'surf'; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
-      const nPrev = yogaIn(prev);
-      if (nPrev && !yogaPayments(prev, today, ctx.ledger).length)
-        out.push({ text: `Yoga students last week (${nPrev}) but no Yoga payment`, level: 'info', onClick: () => { W.week = prev; W.tab = 'surf'; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
+      // The weeks that started 14–27 days ago (the teacher's payment may come up to 2 weeks later).
+      [add(ws, -14), add(ws, -21)].forEach(w => {
+        if (w < YOGA_CHECK_FROM || daysBetween(w, today) < YOGA_WAIT_DAYS) return;
+        const n = yogaIn(w);
+        if (n && !yogaPayments(w, today, ctx.ledger).length)
+          out.push({ text: `Yoga students ${span(w, add(w, 6))} (${n}) but no Yoga payment in 2+ weeks`, level: 'info', onClick: () => { W.week = w; W.tab = 'surf'; W.team = 'surf'; W.day = 'week'; W.mode = 'lists'; showPage('week'); } });
+      });
       return out.length ? out : null;
     },
   };
